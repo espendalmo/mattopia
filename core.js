@@ -1,5 +1,5 @@
 import {restoreRewards} from './rewards.js';
-export const VERSION='1.2.1';
+export const VERSION='1.2.2';
 export const ROUND_LENGTH=8;
 export const STORAGE_KEY='tallvenn-v1';
 export const LEVELS={1:{label:'Tall til 20',description:'Små tall, tiervenner, pluss og minus.'},2:{label:'Tall til 100',description:'Tiere, enere og overganger mellom tiere.'},3:{label:'Tall til 999',description:'Hundrere, tiere, enere og tall med null.'}};

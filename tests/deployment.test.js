@@ -7,23 +7,19 @@ import {VERSION} from '../core.js';
 const root = new URL('../', import.meta.url);
 const worker = await fs.readFile(new URL('sw.js', root), 'utf8');
 
-function harness(base) {
+function harness(base, {failAsset, claim = async () => {}} = {}) {
   const events = {};
   const stores = new Map();
   const deleted = [];
+  const downloads = [];
+  let skipped = 0;
   const absolute = key => new URL(typeof key === 'string' ? key : key.url, base).href;
   const caches = {
     async open(name) {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name);
       return {
-        async addAll(paths) {
-          for (const p of paths) {
-            const local = p === './' ? 'index.html' : p.replace('./', '');
-            const bytes = await fs.readFile(new URL(local, root));
-            store.set(absolute(p), { bytes, url: absolute(p) });
-          }
-        },
+        async put(key, response) { store.set(absolute(key), response); },
         async match(key) { return store.get(absolute(key)); },
       };
     },
@@ -31,12 +27,21 @@ function harness(base) {
     async delete(key) { deleted.push(key); return stores.delete(key); },
   };
   vm.runInNewContext(worker, {
-    URL, caches, fetch: async () => { throw new Error('Offline'); },
-    self: { location: new URL('sw.js', base), skipWaiting: async () => {}, clients: { claim: async () => {} }, addEventListener: (n, fn) => { events[n] = fn; } },
+    URL, Request, caches, fetch: async request => {
+      if (!request.cache) throw new Error('Offline');
+      downloads.push(request);
+      const url = new URL(request.url);
+      const local = url.pathname.slice(new URL(base).pathname.length) || 'index.html';
+      if (local === failAsset) return {ok:false};
+      const bytes = await fs.readFile(new URL(local, root));
+      return {ok:true, bytes, url:request.url};
+    },
+    self: { location: new URL('sw.js', base), skipWaiting: async () => {skipped++;}, clients: { claim }, addEventListener: (n, fn) => { events[n] = fn; } },
   });
   async function lifecycle(name) { let pending; events[name]({ waitUntil: p => { pending = p; } }); await pending; }
   async function request(path, mode = 'cors') { let result; events.fetch({ request: { url: new URL(path, base).href, method: 'GET', mode }, respondWith: p => { result = p; } }); return result; }
-  return { lifecycle, request, stores, deleted, events };
+  async function message(data, port) { let pending; events.message({data,ports:port?[port]:[],waitUntil:p => {pending=p;}});await pending; }
+  return { lifecycle, request, message, stores, deleted, events, downloads, skipped:() => skipped };
 }
 
 test('All offline assets exist and load from cache at root and GitHub project paths', async () => {
@@ -74,8 +79,42 @@ test('Manifest is portable and all icon declarations resolve to real files', asy
 
 test('The actual service worker reports the same release as the app and package',async()=>{
   const h=harness('https://example.github.io/tallvenn/');let reported;
-  h.events.message({data:{type:'GET_VERSION'},ports:[{postMessage:data=>{reported=data.version;}}]});
+  await h.message({type:'GET_VERSION'},{postMessage:data=>{reported=data.version;}});
   assert.equal(reported,VERSION);
   const pkg=JSON.parse(await fs.readFile(new URL('package.json',root),'utf8'));
   assert.equal(pkg.version,VERSION);
+});
+
+test('Every release asset bypasses the HTTP cache and is stored under its normal offline URL',async()=>{
+  const h=harness('https://example.github.io/tallvenn/');await h.lifecycle('install');
+  assert.ok(h.downloads.length>=15);
+  for(const request of h.downloads){
+    assert.equal(request.cache,'reload');
+    assert.equal(new URL(request.url).searchParams.get('__tallvenn_release'),VERSION);
+  }
+  assert.equal(h.skipped(),1);
+  const result=await h.request('core.js');
+  assert.ok(result.bytes.toString().includes(`VERSION='${VERSION}'`));
+});
+
+test('An incomplete download cannot activate or replace the previous complete offline bundle',async()=>{
+  const h=harness('https://example.github.io/tallvenn/',{failAsset:'app.js'});
+  const old=new Map([['saved',{bytes:'previous release'}]]);
+  h.stores.set('tallvenn:/tallvenn/:1.2.1',old);
+  await assert.rejects(h.lifecycle('install'),/Incomplete app download/);
+  assert.equal(h.skipped(),0);
+  assert.equal(h.stores.get('tallvenn:/tallvenn/:1.2.1'),old);
+  assert.deepEqual(h.deleted,[]);
+});
+
+test('A legacy page cannot receive the new worker version before activation and claiming finish',async()=>{
+  let claimStarted,releaseClaim;
+  const started=new Promise(resolve=>{claimStarted=resolve;});
+  const h=harness('https://example.github.io/tallvenn/',{claim:()=>{claimStarted();return new Promise(resolve=>{releaseClaim=resolve;});}});
+  const activating=h.lifecycle('activate');await started;
+  let reported;
+  const response=h.message({type:'GET_VERSION'},{postMessage:data=>{reported=data.version;}});
+  await Promise.resolve();assert.equal(reported,undefined);
+  releaseClaim();await activating;await response;
+  assert.equal(reported,VERSION);
 });

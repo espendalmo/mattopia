@@ -17,7 +17,7 @@ test('The encouraging retry melody and completion fanfare are distinct and bound
 });
 function updateHarness(version='1.1.0'){
   const events={},messages=[];let reloaded=0,saved=0,checks=0,fail=false;
-  const worker={postMessage(data,ports){ports[0].postMessage({version});ports[0].close();}};
+  const worker={state:'activated',addEventListener(){},postMessage(data,ports){if(data.type==='GET_VERSION'){ports[0].postMessage({version});ports[0].close();}}};
   const registration={active:worker,installing:null,update:async()=>{checks++;if(fail)throw Error('Offline');},addEventListener(){}};
   const serviceWorker={controller:worker,register:async()=>registration,addEventListener:(key,fn)=>{events[key]=fn;}};
   const updater=createUpdater({currentVersion:'1.1.0',serviceWorker,onStatus:m=>messages.push(m),beforeReload:()=>saved++,reload:()=>reloaded++});
@@ -33,7 +33,7 @@ test('Manual update errors remain visible and do not claim the offline app is up
 
 test('An update cannot reload the page when saving progress fails',async()=>{
   let reloaded=false;const statuses=[];
-  const worker={postMessage(data,ports){ports[0].postMessage({version:'1.2.0'});ports[0].close();}};
+  const worker={state:'activated',addEventListener(){},postMessage(data,ports){if(data.type==='GET_VERSION'){ports[0].postMessage({version:'1.2.0'});ports[0].close();}}};
   const serviceWorker={controller:worker,register:async()=>({active:worker,addEventListener(){}}),addEventListener(){}};
   const updater=createUpdater({currentVersion:'1.1.0',serviceWorker,onStatus:s=>statuses.push(s),beforeReload:()=>false,reload:()=>{reloaded=true;}});
   await updater.init();await updater.apply();assert.equal(reloaded,false);assert.equal(statuses.at(-1).status,'error');

@@ -68,10 +68,12 @@ test('The task, accessible text, help sequence and feedback all follow the same 
     context.fixture = {type:'count', n, answer, support:'visible', mode:'choice', choices:[698, 699, 700]};
     const render = (stage, solved = false) => vm.runInContext(`state.active = createRound(3, 1); state.active.tasks[0] = fixture; state.active.hintStages[0] = ${stage}; state.active.solved = ${solved}; view = 'round'; renderRound(); root.innerHTML;`, context);
     const initial = render(0);
-    assert.ok(initial.includes(`aria-label="${first}, ${n}, hvilket tall kommer nå?"`));
+    assert.ok(initial.includes(n === 700 ? 'aria-label="Hvilket tall mangler? Ukjent tall, 700, 701."' : `aria-label="${first}, ${n}, hvilket tall kommer nå?"`));
+    const equation = initial.match(/<div class="equation sequence"[\s\S]*?<\/div>/)[0];
+    assert.ok(n === 700 ? equation.indexOf('class="blank') < equation.indexOf('class="sequence-number') : equation.lastIndexOf('class="sequence-number') < equation.indexOf('class="blank'));
     assert.match(initial, n === 700 ? /Ett steg bakover/ : /Ett steg videre/);
     const hinted = render(1);
-    const expected = n === 700 ? '702, 701, 700, hvilket tall, 698' : '697, 698, 699, hvilket tall, 701';
+    const expected = n === 700 ? '698, hvilket tall, 700, 701, 702' : '697, 698, 699, hvilket tall, 701';
     assert.ok(hinted.includes(`aria-label="${expected}"`));
     assert.match(hinted, new RegExp(`Én ${label} enn før`));
     assert.ok(!hinted.includes(`class="line-target">${answer}</span>`));
