@@ -43,7 +43,7 @@ test('All offline assets exist and load from cache at root and GitHub project pa
   for (const base of ['https://example.github.io/', 'https://example.github.io/tallvenn/']) {
     const h = harness(base);
     await h.lifecycle('install');
-    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'update.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
+    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'update.js', 'rewards.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
       assert.ok((await h.request(name)).bytes.length > 0, name);
     }
     assert.ok((await h.request('?from=home', 'navigate')).bytes.length > 0, 'navigation query falls back to cached entry');

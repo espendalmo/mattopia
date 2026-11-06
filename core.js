@@ -1,4 +1,5 @@
-export const VERSION='1.1.0';
+import {restoreRewards} from './rewards.js';
+export const VERSION='1.2.0';
 export const ROUND_LENGTH=8;
 export const STORAGE_KEY='tallvenn-v1';
 export const LEVELS={1:{label:'Tall til 20',description:'Små tall, tiervenner, pluss og minus.'},2:{label:'Tall til 100',description:'Tiere, enere og overganger mellom tiere.'},3:{label:'Tall til 999',description:'Hundrere, tiere, enere og tall med null.'}};
@@ -74,7 +75,7 @@ export function advanceRound(round){
 }
 export function roundSummary(r){if(r?.index!==8||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
-export function freshState(){return{version:1,level:1,sound:true,alwaysShowVisuals:false,roundsCompleted:0,history:[],active:null};}
+export function freshState(){return{version:1,level:1,sound:true,alwaysShowVisuals:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>typeof r?.id==='string'&&validLevel(r.level)&&typeof r.date==='string'&&Number.isInteger(r.firstTry)&&r.firstTry>=0&&r.firstTry<=8&&Number.isInteger(r.helped)&&r.helped>=0&&r.helped<=8).slice(-40):[];
@@ -82,5 +83,6 @@ export function restoreState(raw){
   const validTask=t=>t&&POOLS[1].concat('shift').includes(t.type)&&Number.isInteger(t.answer)&&t.answer>=0&&t.answer<=999&&Array.isArray(t.choices)&&t.choices.length===3&&new Set(t.choices).size===3&&t.choices.includes(t.answer)&&t.choices.every(x=>Number.isInteger(x)&&x>=0&&x<=999)&&(['remove','count','place','shift','subtract'].includes(t.type)?Number.isInteger(t.n)&&t.n>=1&&t.n<=999:Number.isInteger(t.a)&&t.a>=0&&t.a<=9)&&(['remove','shift','subtract','add'].includes(t.type)?Number.isInteger(t.b):true);
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&r.tasks.length===8&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<8&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===8)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'?'optional':'visible',mode:t.mode==='input'?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===8?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,roundsCompleted:Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length,history,active};
+  const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,alwaysShowVisuals:raw.alwaysShowVisuals===true,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

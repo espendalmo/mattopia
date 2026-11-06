@@ -36,3 +36,22 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 @media(prefers-reduced-motion:reduce){.confetti{display:none}.garden-grown .growing-plant{animation:none}}
 .mental-note{min-height:90px;padding:16px 10px}.with-keypad .feedback-area{min-height:35px;padding-top:12px}.entered-correct{display:flex;align-items:center;justify-content:center;gap:14px}.entered-correct svg{width:29px;height:29px}
 .earned-star{right:auto;left:-8px;top:-8px}
+
+/* Five large, studded bricks make one small toy. */
+.garden-art.brick-art{width:330px;max-width:100%;height:184px}
+.brick-art>.brick-figure{position:absolute;right:-4px;bottom:-3px;width:200px;height:195px;overflow:visible}
+.brick-art .garden-friend{left:0;bottom:4px}
+.brick-piece{stroke-linejoin:round}.unbuilt-piece{opacity:.24}
+.new-brick{animation:place-brick .65s cubic-bezier(.2,.8,.25,1) both;transform-box:fill-box;transform-origin:center}
+.completion-garden.completion-build{width:340px;max-width:100%}
+.completion-build .earned-star svg{fill:none;stroke:#8b6825;stroke-width:1.8}
+.reward-choice-icon{display:grid;place-items:center;width:37px;height:40px;border-radius:12px;background:#e4efd9;color:#4b7750;flex-shrink:0}
+.reward-choice-icon svg{width:26px;height:26px}.reward-choice-icon.brick-choice{background:#e3eef9;color:#477ba4}
+.reward-options .level-option{gap:10px}.reward-options .level-option small{font-size:12px}
+.build-collection{padding-top:17px;margin-top:17px;border-top:1px solid var(--line)}
+.mini-builds{display:flex;justify-content:center;align-items:flex-end;gap:12px}.mini-builds .brick-figure{width:53px;height:53px}
+.build-collection p{color:var(--muted);font-size:12px;line-height:1.5;margin:8px 0 0}
+@keyframes place-brick{0%{opacity:0;transform:translateY(-26px) rotate(-4deg)}75%{opacity:1;transform:translateY(2px) rotate(0)}100%{opacity:1;transform:translateY(0) rotate(0)}}
+@media(max-width:600px){.brick-art .garden-friend{transform:scale(.88);transform-origin:left bottom}.home:has(.brick-art){margin-top:18px}.reward-options .level-option{padding:13px 11px}}
+@media(max-width:360px){.brick-art .garden-friend{transform:scale(.76)}.reward-choice-icon{width:30px}.reward-choice-icon svg{width:23px;height:23px}}
+@media(prefers-reduced-motion:reduce){.new-brick{animation:none}}

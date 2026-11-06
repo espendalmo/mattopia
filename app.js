@@ -2,13 +2,16 @@ import { VERSION, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
 import { createUpdater } from './update.js';
+import { modelById, selectRewardMode, prepareReward, awardPractice, renderBuildSvg } from './rewards.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
 let storageWorks = true;
 let state;
 try { state = restoreState(JSON.parse(localStorage.getItem(STORAGE_KEY))); } catch { state = freshState(); }
+if (state.rewardMode === 'bricks') state = selectRewardMode(state, 'bricks');
 let view = 'home';
+let completedReward = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
 let celebrateOnRender = false;
@@ -42,6 +45,7 @@ function icon(name, css = '') {
     sound: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     muted: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>',
     backspace: '<path d="M9 5h12v14H9L2 12l7-7Z"/><path d="m12 9 6 6m0-6-6 6"/>',
+    brick: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M6 8V4h4v4m4 0V4h4v4M3 12h18"/>',
   };
   return `<svg class="${css}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
 }
@@ -61,6 +65,22 @@ function gardenArt(total, happy = false) {
   const flower = g.stage === 5 ? '<g fill="#edb658"><ellipse cx="79" cy="34" rx="9" ry="16"/><ellipse cx="79" cy="34" rx="9" ry="16" transform="rotate(60 79 34)"/><ellipse cx="79" cy="34" rx="9" ry="16" transform="rotate(120 79 34)"/><circle cx="79" cy="34" r="8" fill="#fff1bc"/></g>' : g.stage === 4 ? '<ellipse cx="79" cy="40" rx="9" ry="13" fill="#edbe68"/>' : '';
   return `<div class="garden-art ${happy ? 'garden-grown' : ''}"><div class="garden-friend">${buddy(happy)}</div><svg class="growing-plant" viewBox="0 0 140 155" role="img" aria-label="${g.label}"><ellipse cx="75" cy="139" rx="48" ry="8" fill="#e3eadd"/><path d="M52 113h47l-7 25H59Z" fill="#dba88b"/><path d="M49 111h53v9H49Z" fill="#e7b99a"/>${g.stage === 0 ? '<ellipse cx="76" cy="108" rx="7" ry="4" fill="#8b7151"/>' : `<path d="M76 111Q85 90 79 ${111-height}" stroke="#548452" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M79 ${102-height/3}Q47 ${85-height/3} 48 ${75-height/3}Q77 ${70-height/3} 79 ${102-height/3}" fill="#99c37c"/>${g.stage>=2?`<path d="M80 ${86-height/4}Q110 ${83-height/4} 112 ${64-height/4}Q84 ${61-height/4} 80 ${86-height/4}" fill="#679d60"/>`:''}${g.stage>=3?'<path d="M79 66Q57 59 59 45Q77 43 79 66" fill="#87b66d"/>':''}${flower}`}</svg></div>`;
 }
+function rewardDetails(reward = null) {
+  const mode = reward?.mode || state.rewardMode;
+  if (mode !== 'bricks') return {mode:'plant',...growthState(reward?.plantRounds ?? state.plantRounds)};
+  const build = reward?.build || state.brickBuild;
+  const model = modelById(build.model), full = build.pieces === model.pieces.length;
+  return {mode,build,model,full,label:full ? model.done : `Vi bygger ${model.name}!`};
+}
+function rewardArt(happy = false, reward = null) {
+  const info = rewardDetails(reward);
+  if (info.mode === 'plant') return gardenArt(reward?.plantRounds ?? state.plantRounds, happy);
+  return `<div class="garden-art brick-art"><div class="garden-friend">${buddy(happy)}</div>${renderBuildSvg(info.build,{animate:happy})}</div>`;
+}
+function buildCollection(build) {
+  if (!build.completed) return '';
+  return `<div class="build-collection"><div class="mini-builds">${build.collection.slice(-3).map(id=>renderBuildSvg({model:id,pieces:modelById(id).pieces.length},{mini:true})).join('')}</div><p>${build.completed} ${build.completed === 1 ? 'figur bygget' : 'figurer bygget'}. Fint jobbet!</p></div>`;
+}
 function confetti() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
   const colors = ['#79a85d','#efbd57','#8bb6d5','#d99da5','#b5ce8b'];
@@ -70,19 +90,21 @@ function confetti() {
 function renderHome() {
   const total = state.roundsCompleted;
   const stars = Array.from({ length: 5 }, (_, i) => icon('star', i < Math.min(total, 5) ? '' : 'empty-star')).join('');
-  const g = growthState(total);
+  const g = rewardDetails();
+  const shelf = g.mode === 'bricks' ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.${g.full ? ' Neste runde starter et nytt bygg.' : ' En runde gir én ny kloss.'}` : state.plantRounds === 0 ? 'For hver runde vokser planten litt.' : `${state.plantRounds} ${state.plantRounds === 1 ? 'runde med plantevekst' : 'runder med plantevekst'}.${g.flowers ? ` ${g.flowers} ${g.flowers === 1 ? 'blomst' : 'blomster'} i hagen din!` : ' Planten din vokser!'}`;
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
-    ${gardenArt(total)}<p class="home-eyebrow">${total ? g.label : 'Ett lite steg om gangen'}</p>
+    ${rewardArt()}<p class="home-eyebrow">${g.mode === 'bricks' || state.plantRounds ? g.label : 'Ett lite steg om gangen'}</p>
     <h1 tabindex="-1">Klar for en<br>liten runde?</h1>
     <p class="home-description">8 oppgaver. I ditt tempo.</p>
     <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : 'Start runden'}${icon('arrow')}</button>
     <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av 8 oppgaver.` : 'Vi ser, teller og finner ut sammen.'}</p>
-    <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${total === 0 ? 'For hver runde vokser planten litt.' : `${total} ${total === 1 ? 'runde fullført' : 'runder fullført'}.${g.flowers ? ` ${g.flowers} ${g.flowers === 1 ? 'blomst' : 'blomster'} i hagen din!` : ' Planten din vokser!'}`}</p></div>
+    <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${g.mode === 'bricks' ? buildCollection(g.build) : ''}</div>
   </main></div>`;
 }
 
 function startRound() {
   if (!state.active) {
+    state = prepareReward(state);
     const seed = globalThis.crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now();
     state.active = createRound(state.level, seed, state.roundsCompleted === 0, { history: state.history, alwaysShowVisuals: state.alwaysShowVisuals });
     save();
@@ -200,9 +222,10 @@ function renderRound() {
 }
 
 function renderComplete() {
-  const g = growthState(state.roundsCompleted);
+  const g = rewardDetails(completedReward);
+  const message = g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>Takk for at du øvde med meg.`;
   const party = celebrateOnRender ? confetti() : ''; celebrateOnRender = false;
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden">${gardenArt(state.roundsCompleted, true)}<span class="earned-star" aria-label="En ny stjerne">${icon('star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${g.label}<br>Takk for at du øvde med meg.</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p><button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">En runde til</button></main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p><button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">En runde til</button></main></div>${party}`;
 }
 
 function render() {
@@ -246,6 +269,7 @@ function adultView() {
   showDialog(`<div class="dialog-header"><h2 id="dialog-title">For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Én runde har åtte oppgaver. Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
     <fieldset class="adult-group"><legend>Hva skal dere øve på?</legend>${Object.entries(LEVELS).map(([n, l]) => `<label class="level-option"><input type="radio" name="level" value="${n}" ${state.level === Number(n) ? 'checked' : ''}><span><strong>${l.label}</strong><small>${l.description}</small></span></label>`).join('')}<p class="adult-note">Gjelder fra neste nye runde. Begynn gjerne med tall til 20. Nivået økes når dere velger det sammen.</p></fieldset>
+    <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label><p class="adult-note">Én fullført runde gir én ny kloss eller litt plantevekst. Dere kan bytte uten å miste framgangen i noen av delene. En ferdig figur starter et nytt bygg ved neste nye runde.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
     <label class="sound-setting"><input type="checkbox" id="visual-setting" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan figurene bli valgfrie. Senere kan én eller to oppgaver få talltastatur. «Vis meg» er alltid tilgjengelig.</p>
@@ -258,6 +282,7 @@ function adultView() {
     <button class="delete-button" data-action="reset">Slett øvingshistorikken</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Tallvenn ${VERSION}</p>`, '', d => {
       d.addEventListener('change', e => {
         if (e.target.name === 'level') { state.level = Number(e.target.value); save(); }
+        if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); save(); }
         if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
         if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
       });
@@ -318,7 +343,10 @@ document.addEventListener('click', e => {
     state.active = advanceRound(state.active);
     if (state.active.index === 8) {
       const summary = roundSummary(state.active);
-      if (summary && !state.history.some(r => r.id === summary.id)) { state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++; }
+      if (summary && !state.history.some(r => r.id === summary.id)) {
+        state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
+        const awarded = awardPractice(state, summary.id); state = awarded.state; completedReward = awarded.reward;
+      }
       state.active = null; view = 'complete'; celebrateOnRender = true; playSuccess(true);
     }
     ui = makeUI(); save(); render(); goTop(); focusHeading();
@@ -328,8 +356,8 @@ document.addEventListener('click', e => {
   if (action === 'close-dialog') closeDialog();
   if (action === 'pause') showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
-  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Stjerner, historikk og en påbegynt runde blir slettet på denne enheten.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound } = state; state = { ...freshState(), level, sound }; save(); view = 'home'; render(); focusHeading(); }
+  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Stjerner, plantevekst, bygg og en påbegynt runde blir slettet på denne enheten.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode } = state; state = selectRewardMode({ ...freshState(), level, sound }, rewardMode); completedReward = null; save(); view = 'home'; render(); focusHeading(); }
 });
 
 document.addEventListener('keydown', e => {
