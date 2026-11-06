@@ -1,4 +1,4 @@
-import { VERSION, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState } from './core.js';
+import { VERSION, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
 import { createUpdater } from './update.js';
@@ -124,7 +124,7 @@ function taskTitle(t) {
 function equationText(t) {
   if (t.type === 'ten') return `${t.a} + ${t.answer} = 10`;
   if (t.type === 'add') return `${t.a} + ${t.b} = ${t.answer}`;
-  if (t.type === 'count') return `Etter ${t.n} kommer ${t.answer}.`;
+  if (t.type === 'count') return `${countStep(t) < 0 ? 'Før' : 'Etter'} ${t.n} kommer ${t.answer}.`;
   if (t.type === 'place') return `${partsText(t.n)} er ${t.answer}.`;
   return `${t.n} ${t.type === 'shift' && t.b > 0 ? '+' : '−'} ${Math.abs(t.b)} = ${t.answer}`;
 }
@@ -132,11 +132,11 @@ function equation(t, solved) {
   const blank = `<span class="blank ${solved ? 'answer-filled' : ''}">${solved ? t.answer : '?'}</span>`;
   if (t.type === 'place') return '<div class="place-equation"></div>';
   let content;
-  if (t.type === 'count') content = `<span class="sequence-number">${t.n - 1}</span><span class="sequence-number">${t.n}</span>${blank}`;
+  if (t.type === 'count') content = `<span class="sequence-number">${t.n - countStep(t)}</span><span class="sequence-number">${t.n}</span>${blank}`;
   else if (t.type === 'ten') content = `<span>${t.a}</span><span>+</span>${blank}<span>=</span><span>10</span>`;
   else if (t.type === 'add') content = `<span>${t.a}</span><span>+</span><span>${t.b}</span><span>=</span>${blank}`;
   else content = `<span>${t.n}</span><span>${t.type === 'shift' && t.b > 0 ? '+' : '−'}</span><span>${Math.abs(t.b)}</span><span>=</span>${blank}`;
-  const accessible = solved ? equationText(t) : t.type === 'count' ? `${t.n - 1}, ${t.n}, hvilket tall kommer nå?` : t.type === 'ten' ? `${t.a} pluss hvor mange er ti` : `${t.a ?? t.n} ${t.type === 'add' || t.type === 'shift' && t.b > 0 ? 'pluss' : 'minus'} ${Math.abs(t.b)} er hvor mye?`;
+  const accessible = solved ? equationText(t) : t.type === 'count' ? `${t.n - countStep(t)}, ${t.n}, hvilket tall kommer nå?` : t.type === 'ten' ? `${t.a} pluss hvor mange er ti` : `${t.a ?? t.n} ${t.type === 'add' || t.type === 'shift' && t.b > 0 ? 'pluss' : 'minus'} ${Math.abs(t.b)} er hvor mye?`;
   return `<div class="equation ${t.type === 'count' ? 'sequence' : ''}" role="img" aria-label="${accessible}"><span class="sr-only"></span>${content.replaceAll('<span', '<span aria-hidden="true"')}</div>`;
 }
 
@@ -182,8 +182,11 @@ function renderVisual(t, solved) {
     html = tenFrame(t, solved);
     caption = solved ? `${t.a} og ${t.answer} blir ti.` : ui.added.size ? `Du har lagt til ${ui.added.size}.` : 'Du kan trykke i de tomme rutene.';
   } else if (t.type === 'count') {
-    html = stage || solved ? `<div class="number-line" role="img" aria-label="${t.n - 2}, ${t.n - 1}, ${t.n}, ${solved || stage === 3 ? t.answer : 'hvilket tall'}, ${t.answer + 1}">${Array.from({ length: 5 }, (_, i) => `<span aria-hidden="true" class="${i === 3 ? 'line-target' : ''}">${i === 3 && !solved && stage < 3 ? '?' : t.n - 2 + i}</span>`).join('')}</div>` : '<p class="count-visual-note">Ett steg videre.<br>Hva kommer etterpå?</p>';
-    caption = stage || solved ? 'Én mer enn før.' : '';
+    const step = countStep(t);
+    const numbers = Array.from({ length: 5 }, (_, i) => t.n + (i - 2) * step);
+    const shown = numbers.map((n, i) => i === 3 && !solved && stage < 3 ? '?' : n);
+    html = stage || solved ? `<div class="number-line" role="img" aria-label="${shown.map(n => n === '?' ? 'hvilket tall' : n).join(', ')}">${shown.map((n, i) => `<span aria-hidden="true" class="${i === 3 ? 'line-target' : ''}">${n}</span>`).join('')}</div>` : `<p class="count-visual-note">Ett steg ${step < 0 ? 'bakover' : 'videre'}.<br>Hva kommer ${step < 0 ? 'så' : 'etterpå'}?</p>`;
+    caption = stage || solved ? step < 0 ? 'Én mindre enn før.' : 'Én mer enn før.' : '';
   } else if (t.type === 'add') {
     const bridge = stage >= 2 && t.answer > 10 && !solved;
     html = bridge ? `<div class="bridge-layout">${tenFrame(t, false)}<div class="bridge-extra" role="img" aria-label="${t.b - ui.added.size} nye brikker ved siden av">${dotGroup(t.b - ui.added.size, 20, false, true)}</div></div>` : solved ? quantity(t.answer) : `<div class="add-visual" role="img" aria-label="${t.a} brikker og ${t.b} brikker">${dotGroup(t.a, 0, false, true)}<span class="add-sign" aria-hidden="true">+</span>${dotGroup(t.b, 20, false, true)}</div>`;
@@ -206,7 +209,7 @@ function renderRound() {
   const done = r.index + (r.solved ? 1 : 0);
   const stage = hintStage();
   const progress = Array.from({ length: 8 }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
-  const labels = { remove: 'Se tallene', ten: 'Bygg ti', count: 'Ett steg videre', place: 'Se tallene', shift: 'Tiere og hundrere', add: 'Legg sammen', subtract: 'Ta bort' };
+  const labels = { remove: 'Se tallene', ten: 'Bygg ti', count: countStep(t) < 0 ? 'Ett steg bakover' : 'Ett steg videre', place: 'Se tallene', shift: 'Tiere og hundrere', add: 'Legg sammen', subtract: 'Ta bort' };
   let feedback;
   if (r.solved) {
     const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];

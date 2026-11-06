@@ -8,7 +8,7 @@ test('All three levels generate bounded, mathematically correct rounds with uniq
       const r = createRound(level, seed);
       assert.equal(r.tasks.length, 8);
       for (const t of r.tasks) {
-        const expected = t.type === 'ten' ? 10 - t.a : t.type === 'place' ? t.n : t.type === 'count' ? t.n + 1 : t.type === 'add' ? t.a + t.b : t.type === 'shift' ? t.n + t.b : t.n - t.b;
+        const expected = t.type === 'ten' ? 10 - t.a : t.type === 'place' ? t.n : t.type === 'count' ? t.n + (t.answer < t.n ? -1 : 1) : t.type === 'add' ? t.a + t.b : t.type === 'shift' ? t.n + t.b : t.n - t.b;
         assert.equal(t.answer, expected);
         assert.equal(t.choices.length, 3);
         assert.equal(new Set(t.choices).size, 3);

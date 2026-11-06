@@ -55,3 +55,7 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 @media(max-width:600px){.brick-art .garden-friend{transform:scale(.88);transform-origin:left bottom}.home:has(.brick-art){margin-top:18px}.reward-options .level-option{padding:13px 11px}}
 @media(max-width:360px){.brick-art .garden-friend{transform:scale(.76)}.reward-choice-icon{width:30px}.reward-choice-icon svg{width:23px;height:23px}}
 @media(prefers-reduced-motion:reduce){.new-brick{animation:none}}
+
+/* Keep the missing/solved number the same size as its neighbours. */
+.equation.sequence{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:max-content;max-width:100%;align-self:center;align-items:stretch}
+.equation.sequence>.sequence-number,.equation.sequence>.blank{display:grid;place-items:center;min-width:65px;height:auto;padding:9px 8px;border-width:2px}

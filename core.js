@@ -1,5 +1,5 @@
 import {restoreRewards} from './rewards.js';
-export const VERSION='1.2.0';
+export const VERSION='1.2.1';
 export const ROUND_LENGTH=8;
 export const STORAGE_KEY='tallvenn-v1';
 export const LEVELS={1:{label:'Tall til 20',description:'Små tall, tiervenner, pluss og minus.'},2:{label:'Tall til 100',description:'Tiere, enere og overganger mellom tiere.'},3:{label:'Tall til 999',description:'Hundrere, tiere, enere og tall med null.'}};
@@ -8,7 +8,8 @@ const POOLS={1:['remove','ten','count','add','place','subtract'],2:['remove','te
 const PATTERNS={1:['remove','ten','count','add','place','ten','subtract','add'],2:['remove','ten','count','place','shift','add','shift','count'],3:['place','ten','count','shift','remove','place','shift','count']};
 const validLevel=x=>[1,2,3].includes(Number(x));
 export const topicOf=t=>['place','remove','shift'].includes(typeof t==='string'?t:t.type)?'place':(typeof t==='string'?t:t.type);
-export const factKey=t=>[t.type,t.n??'',t.a??'',t.b??''].join(':');
+export const countStep=t=>t.answer<t.n?-1:1;
+export const factKey=t=>[t.type,t.n??'',t.a??'',t.b??'',...(t.type==='count'?[t.answer]:[])].join(':');
 export function randomGenerator(seed){let n=seed>>>0;return()=>{n+=0x6D2B79F5;let t=n;t=Math.imul(t^t>>>15,t|1);t^=t+Math.imul(t^t>>>7,t|61);return((t^t>>>14)>>>0)/4294967296;};}
 function shuffle(items,rng){const a=[...items];for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 
@@ -32,7 +33,13 @@ function generateTask(type,level,rng,index,first=false){
   const int=(a,b)=>a+Math.floor(rng()*(b-a+1)),pick=a=>a[int(0,a.length-1)];let n,a,b,answer;
   if(type==='remove'){n=level===1?first&&index===0?17:int(11,19):level===2?int(2,9)*10+int(1,9):int(1,9)*100+int(0,9)*10+int(1,9);b=n%10;answer=n-b;}
   else if(type==='ten'){a=int(3,9);answer=10-a;}
-  else if(type==='count'){n=level===1?index%2?int(5,18):pick([9,19]):level===2?int(2,10)*10-1:int(1,9)*100-1;answer=n+1;}
+  else if(type==='count'){
+    const step=pick([-1,1]);
+    if(level===1)n=index%2?int(5,18):step>0?pick([9,19]):10;
+    else if(level===2)n=step>0?int(2,10)*10-1:int(1,9)*10;
+    else n=step>0?int(1,9)*100-1:int(1,9)*100;
+    answer=n+step;
+  }
   else if(type==='place'){n=level===1?int(11,19):level===2?int(2,9)*10+int(0,9):index%2?int(1,9)*100+int(1,9):int(1,9)*100+int(1,9)*10+int(0,9);answer=n;}
   else if(type==='shift'){n=level===2?int(2,8)*10+int(0,9):int(2,7)*100+int(0,9)*10+int(0,9);b=level===3&&index%2===0?pick([-100,100]):pick([-10,10]);answer=n+b;}
   else if(type==='subtract'){n=int(11,18);b=int(1,Math.min(5,n-10));answer=n-b;}

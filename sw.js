@@ -1,5 +1,5 @@
 const PREFIX = `tallvenn:${new URL('./', self.location.href).pathname}:`;
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const CACHE = `${PREFIX}${VERSION}`;
 const ASSETS = ['./', './index.html', './style.css', './app.js', './core.js', './learning.js', './sound.js', './update.js', './rewards.js', './manifest.webmanifest', './assets/icon.svg', './assets/apple-touch-icon.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png'];
 self.addEventListener('install', event => {

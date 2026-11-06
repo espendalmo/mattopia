@@ -29,7 +29,7 @@ export const BUILD_MODELS = [
     {x:44,y:90,w:32,h:34,color:'orange'},
     {x:96,y:80,w:80,h:24,color:'green'},
   ]},
-  { id:'duck', name:'en and', done:'Anda er ferdig!', pieces:[
+  { id:'duck', name:'en and', done:'Anden er ferdig!', pieces:[
     {x:36,y:164,w:128,h:28,color:'orange',print:'feet'},
     {x:52,y:130,w:96,h:34,color:'yellow'},
     {x:20,y:112,w:48,h:18,color:'yellow'},

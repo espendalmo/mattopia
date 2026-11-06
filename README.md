@@ -1,4 +1,4 @@
-# Tallvenn 1.2.0
+# Tallvenn 1.2.1
 
 En liten norsk matteapp for mobil og iPad. Åtte oppgaver i en rolig runde, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -17,6 +17,13 @@ GitHubs veiledning: https://docs.github.com/en/pages/getting-started-with-github
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.2.1
+
+- Tallrekkene øver fortsatt på tier- og hundreroverganger, nå i begge retninger. Eksempler: **698, 699, ? → 700** og **701, 700, ? → 699**. Retningen velges mellom oppgavene. Hint, hjelpetallrekke, skjermlesertekst og tilbakemelding følger samme retning.
+- Teksten for den ferdige klosseanden er endret til **Anden er ferdig!**
+- De tre tallfeltene i tallrekkene har samme størrelse og padding, også når svaret får grønn ramme.
+- Påbegynte oppgaver beholdes ved oppdatering. De nye tallrekkene kommer i nye runder.
 
 ## Nytt i 1.2.0: klossebygging
 
@@ -78,13 +85,13 @@ Ved utvikling kan en eldre service worker holde på filene. Fjern registreringen
 
 ## Oppdateringer fra GitHub Pages
 
-**Fra 1.1 til 1.2:** Erstatt filene med innholdet fra pakken, også den nye `rewards.js`. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.2.0**. Velg **Klossebygging** i voksenvisningen for å aktivere den nye belønningen. Eksisterende planteframgang, stjerner, historikk og lydvalg beholdes.
+**Oppdater til 1.2.1:** Erstatt filene med innholdet fra pakken, også `rewards.js`. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.2.1**. Velg **Klossebygging** i voksenvisningen for å aktivere klossebelønningen. Eksisterende planteframgang, bygg, stjerner, historikk, lydvalg og påbegynt runde beholdes.
 
 Last opp og erstatt appfilene på **samme adresse og sti** som før. Behold `assets/` og alle JavaScript-filene, inkludert `learning.js`, `sound.js`, `update.js` og den nye `rewards.js`.
 
 Appen sjekker etter ny service worker ved åpning og kan sjekke igjen når den kommer tilbake fra bakgrunnen utenfor en øvingsrunde. Du kan også velge **For voksne → Se etter oppdatering**. Når en ny, komplett appversjon er lastet ned, vises **Ny versjon klar → Oppdater** på forsiden eller etter runden. Oppgavene blir aldri automatisk avbrutt av en sidelasting. Knappen lagrer framgangen før den laster siden på nytt. Hvis lagring feiler, venter oppdateringen.
 
-**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.2.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
+**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.2.1** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
 
 Framgang lagres separat fra filcachen og beholdes på samme nettadresse og nettleser/installasjon. Å flytte appen til et annet domene eller en annen enhet gir ikke automatisk synkronisering. En serveroppdatering uten nett kan ikke oppdages før appen får nett igjen.
 
@@ -102,4 +109,4 @@ Ingen bygging eller avhengigheter er nødvendig. For lokal utvikling: `python3 -
 
 Dette er en app for utprøving, med én elev per nettleser/installasjon. Det er ingen skylagring, flere profiler, innlest tale eller tidsbaserte prøver. Appen kan ikke avgjøre om et riktig svar skyldes forståelse eller gjetting.
 
-31 automatiske tester dekker blant annet de fem byggene, én kloss per runde, tilfeldig rekkefølge, lagring, modusbytte og migrering, samt oppgavegenerator, runder, feil/hjelp, repetisjon, forsiktig nedtrapping av støtte, talltastatur, migrering fra 1.0, lydav/på, oppdateringsvarsling og lagring før oppdatering. Offlinefiler og cacheprinsipper testes ved både rotadresse og GitHub-prosjektsti. Grensesnittet kontrolleres i Chrome i mobil- og nettbrettbredder. Safari, lydnivå, installert PWA og den faktiske oppgraderingen på GitHub Pages bør prøves på enheten.
+35 automatiske tester dekker blant annet telling begge veier, hjelpetallrekke, hint og skjermlesertekst, de fem byggene, én kloss per runde, tilfeldig rekkefølge, lagring, modusbytte og migrering, samt oppgavegenerator, runder, feil/hjelp, repetisjon, forsiktig nedtrapping av støtte, talltastatur, migrering fra 1.0, lydav/på, oppdateringsvarsling og lagring før oppdatering. Offlinefiler og cacheprinsipper testes ved både rotadresse og GitHub-prosjektsti. Grensesnittet er tidligere kontrollert i Chrome i mobil- og nettbrettbredder. Safari, lydnivå, installert PWA og den faktiske oppgraderingen på GitHub Pages bør prøves på enheten.
