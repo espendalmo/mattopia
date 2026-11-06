@@ -45,7 +45,10 @@ test('An error neither advances nor ends the round; help and attempts are retain
   assert.equal(r.index, 0);
   r = noteHelp(r);
   r = answerRound(r, r.tasks[0].answer);
-  assert.deepEqual(r.results[0], { type: 'remove', firstTry: false, helped: true, attempts: 2 });
+  assert.equal(r.results[0].type, 'remove');
+  assert.equal(r.results[0].firstTry, false);
+  assert.equal(r.results[0].helped, true);
+  assert.equal(r.results[0].attempts, 2);
   assert.equal(answerRound(r, r.tasks[0].answer), r, 'duplicate taps must not count');
   r = advanceRound(r);
   assert.equal(r.index, 1);

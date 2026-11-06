@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import vm from 'node:vm';
+import {VERSION} from '../core.js';
 
 const root = new URL('../', import.meta.url);
 const worker = await fs.readFile(new URL('sw.js', root), 'utf8');
@@ -31,18 +32,18 @@ function harness(base) {
   };
   vm.runInNewContext(worker, {
     URL, caches, fetch: async () => { throw new Error('Offline'); },
-    self: { location: new URL('sw.js', base), clients: { claim: async () => {} }, addEventListener: (n, fn) => { events[n] = fn; } },
+    self: { location: new URL('sw.js', base), skipWaiting: async () => {}, clients: { claim: async () => {} }, addEventListener: (n, fn) => { events[n] = fn; } },
   });
   async function lifecycle(name) { let pending; events[name]({ waitUntil: p => { pending = p; } }); await pending; }
   async function request(path, mode = 'cors') { let result; events.fetch({ request: { url: new URL(path, base).href, method: 'GET', mode }, respondWith: p => { result = p; } }); return result; }
-  return { lifecycle, request, stores, deleted };
+  return { lifecycle, request, stores, deleted, events };
 }
 
 test('All offline assets exist and load from cache at root and GitHub project paths', async () => {
   for (const base of ['https://example.github.io/', 'https://example.github.io/tallvenn/']) {
     const h = harness(base);
     await h.lifecycle('install');
-    for (const name of ['index.html', 'app.js', 'core.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
+    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'update.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
       assert.ok((await h.request(name)).bytes.length > 0, name);
     }
     assert.ok((await h.request('?from=home', 'navigate')).bytes.length > 0, 'navigation query falls back to cached entry');
@@ -69,4 +70,12 @@ test('Manifest is portable and all icon declarations resolve to real files', asy
   const html = await fs.readFile(new URL('index.html', root), 'utf8');
   assert.ok(!css.includes('@import'));
   assert.ok(!/src=["']https?:/.test(html));
+});
+
+test('The actual service worker reports the same release as the app and package',async()=>{
+  const h=harness('https://example.github.io/tallvenn/');let reported;
+  h.events.message({data:{type:'GET_VERSION'},ports:[{postMessage:data=>{reported=data.version;}}]});
+  assert.equal(reported,VERSION);
+  const pkg=JSON.parse(await fs.readFile(new URL('package.json',root),'utf8'));
+  assert.equal(pkg.version,VERSION);
 });
