@@ -1,6 +1,37 @@
-# Tallvenn 1.3.0
+# Tallvenn 1.4.0
 
 En liten norsk matteapp for mobil og iPad. Åtte oppgaver i en rolig runde, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
+
+## Prøv på egen enhet først
+
+ZIP-filen har to mapper. **`tallvenn-test/`** er den ferdige prøvepakken. **`tallvenn/`** er den vanlige appen og kildekoden.
+
+1. Publiser innholdet i `tallvenn-test/` til en egen GitHub Pages-side, for eksempel fra et eget repository kalt `tallvenn-test`. Behold dagens produksjonspublisering mens du tester.
+2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Tallvenn Test**, viser et **Test**-merke og bruker egen øvingshistorikk.
+3. Når du har godkjent testen, publiserer du innholdet i `tallvenn/` på den vanlige adressen. Først da kan vanlige installasjoner oppdage versjon 1.4.0.
+
+For vanlige GitHub Pages-prosjekter kan `/tallvenn/` og `/tallvenn-test/` ligge ved siden av hverandre. Hvis den vanlige appen ligger i **roten av domenet**, bruk et annet vertsnavn for testen. Da unngår du at en eldre service worker som dekker hele domenet, fanger testadressen. Bruk HTTPS for å teste installasjon, offline og oppdateringer.
+
+En vanlig offentlig Pages-adresse gir adskilte utrullinger, men er tilgjengelig for andre som kjenner adressen. Velg tilgangsbeskyttet hosting hvis selve testadressen skal være privat.
+
+### Neste testpakke og tilbakeføring
+
+Fra kildemappen `tallvenn/` kan du bygge nye statiske pakker uten å installere avhengigheter:
+
+```sh
+node tools/release.mjs preview ../tallvenn-test-1.4.1 1.4.1
+node tools/release.mjs stable ../tallvenn-utgave-1.4.1 1.4.1
+```
+
+Publiser testpakken på den samme testadressen ved hver ny test. Bruk et høyere nummer enn det som allerede er publisert på den adressen. Da kan du prøve selve oppdateringsknappen. For produksjon skal nummeret også være høyere enn den sist publiserte produksjonsversjonen.
+
+Hvis en test feiler, lar du produksjonspakken ligge. Hvis en feil først oppdages etter publisering, bygg den siste fungerende koden med et **høyere** versjonsnummer og publiser den på produksjonsadressen. Eksemplet gjenbruker 1.3.0 etter at 1.4.0 er publisert:
+
+```sh
+node tools/release.mjs stable ../tallvenn-tilbake-1.4.1 1.4.1 ../utpakket-1.3.0/tallvenn
+```
+
+Behold et Git-merke eller en ZIP av hver godkjente kildeutgave. Erstatt hele den publiserte pakken samlet. Den gamle koden forstår tidligere framgang, men kan miste nye figurer og plantevalg når den lagrer. Bruk en fremoverrettet feilretting hvis den nye utgaven allerede er i bruk og de nye samlingene må bevares. Testdataene berører produksjon først hvis man selv flytter dem.
 
 ## Legg på GitHub Pages
 
@@ -17,6 +48,14 @@ GitHubs veiledning: https://docs.github.com/en/pages/getting-started-with-github
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.4.0
+
+- 18 byggefigurer og åtte planter. Hver runde gir én kloss eller ett vekststeg. Fem steg gir et ferdig bygg eller en ferdig plante.
+- Ferdige figurer og planter kan åpnes i stort format fra forsiden eller fra **Se samlingen**.
+- Merker ved 3, 10, 25, 50 og 100 stjerner. Stjerner som allerede er tjent opp, teller med.
+- Riktig svar får et grønt lite utbrudd. Feil valg markeres i dempet rødt og gir et hint. Etter en kort tenkepause åpner **Prøv igjen** svarene på nytt.
+- **For voksne → Kims lek mellom øvingsrundene** legger inn en huskelek etter hver tredje fullførte runde. Barnet skjuler bildet når det er klart. Etter bom får det se alle bildene på nytt. Innstillingen er av som standard.
 
 ## Nytt i 1.3.0
 
@@ -100,7 +139,7 @@ Ved utvikling kan en eldre service worker holde på filene. Fjern registreringen
 
 ## Oppdateringer fra GitHub Pages
 
-**Oppdater til 1.3.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.3.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
+**Oppdater til 1.4.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.4.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
 
 **Hvis iPad åpner en eldre versjon:** Vent til publiseringen på GitHub Pages er ferdig. Åpne appen på nett og velg «Se etter oppdatering». Lukk deretter appen helt fra appveksleren (eller lukk alle Tallvenn-faner hvis du bruker Safari) og åpne den igjen på samme adresse. Dette lukker bare appen; ikke slett den eller nettleserdataene. Kontroller versjonen i voksenvisningen. En installert app og Safari kan ha separat framgang, så prøv i den samme du vanligvis bruker.
 
@@ -108,7 +147,7 @@ Last opp og erstatt appfilene på **samme adresse og sti** som før. Behold `ass
 
 Appen sjekker etter ny service worker ved åpning og kan sjekke igjen når den kommer tilbake fra bakgrunnen utenfor en øvingsrunde. Du kan også velge **For voksne → Se etter oppdatering**. Når en ny, komplett appversjon er lastet ned, vises **Ny versjon klar → Oppdater** på forsiden eller etter runden. Oppgavene blir aldri automatisk avbrutt av en sidelasting. Knappen lagrer framgangen før den laster siden på nytt. Hvis lagring feiler, venter oppdateringen.
 
-**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.3.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
+**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.4.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
 
 Framgang lagres separat fra filcachen og beholdes på samme nettadresse og nettleser/installasjon. Å flytte appen til et annet domene eller en annen enhet gir ikke automatisk synkronisering. En serveroppdatering uten nett kan ikke oppdages før appen får nett igjen.
 
@@ -118,7 +157,7 @@ Teknisk bakgrunn: https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorker
 
 ## Filer og lokal kontroll
 
-`index.html` er inngangspunktet. `app.js` er grensesnittet, `core.js` er oppgaver, progresjon og lagring, `learning.js` er hjelpetekstene, `sound.js` er de lokale melodiene og tastelyden, `update.js` håndterer oppdateringsvarsling, og `rewards.js` inneholder de seks klossemodellene, den isometriske tegningen og den separate belønningsframgangen. `style.css`, manifestet, service workeren og `assets/` følger med.
+`index.html` er inngangspunktet. `app.js` er grensesnittet, `core.js` er oppgaver, progresjon og lagring, `learning.js` er hjelpetekstene, `sound.js` er de lokale melodiene og tastelyden, `update.js` håndterer oppdateringsvarsling, og `rewards.js` inneholder klossemodellene, den isometriske tegningen og belønningsframgangen. `plants.js` tegner plantene, og `breaks.js` lager huskeleken. `style.css`, manifestet, service workeren og `assets/` følger med.
 
 Ingen bygging eller avhengigheter er nødvendig. For lokal utvikling: `python3 -m http.server 8000`, og åpne http://localhost:8000. For automatiske tester: `node --test tests/*.test.js`.
 
@@ -126,4 +165,4 @@ Ingen bygging eller avhengigheter er nødvendig. For lokal utvikling: `python3 -
 
 Dette er en app for utprøving, med én elev per nettleser/installasjon. Det er ingen skylagring, flere profiler, innlest tale eller tidsbaserte prøver. Appen kan ikke avgjøre om et riktig svar skyldes forståelse eller gjetting.
 
-53 automatiske tester dekker blant annet telling begge veier, plassering av svarfeltet, hjelpetallrekke, hint og skjermlesertekst, de seks byggene, isometriske flater, én kloss per runde, tilfeldig rekkefølge, lagring, modusbytte og migrering, samt oppgavegenerator, runder, feil/hjelp, repetisjon, forsiktig nedtrapping av støtte, talltastatur, nye runder uten gammel markering, tastelyd, redusert bevegelse, migrering fra 1.0 og lydav/på. Oppdateringstestene dekker blant annet gammel HTTP-cache, forsinket aktivering, ventende service worker, manglende controllerchange-hendelse, dobbelttrykk, tidsavbrudd og lagring før ny sidelasting. Offlinefiler og cacheprinsipper testes ved både rotadresse og GitHub-prosjektsti. Figurer, hvite taster og luftige svarfelt er kontrollert i Chrome, inkludert mobil- og nettbrettbredder. Lydnivå, installert PWA og den faktiske oppgraderingen på GitHub Pages bør prøves på enheten.
+De automatiske testene dekker oppgaver, svarflyt, belønninger, migrering, lagring, offline og oppdateringer. Prøv prøvepakken på de aktuelle enhetene før publisering.

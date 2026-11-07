@@ -5,8 +5,8 @@ import {BUILD_MODELS,modelById,selectRewardMode,prepareReward,awardPractice,rest
 const rng=()=>.41;
 function earn(state,id){state={...state,roundsCompleted:state.roundsCompleted+1};return awardPractice(state,id,rng);}
 
-test('The six models have five large pieces and their projected faces fit inside the drawing',()=>{
-  assert.equal(BUILD_MODELS.length,6);assert.equal(new Set(BUILD_MODELS.map(m=>m.id)).size,6);
+test('The eighteen models have five large pieces and their projected faces fit inside the drawing',()=>{
+  assert.equal(BUILD_MODELS.length,18);assert.equal(new Set(BUILD_MODELS.map(m=>m.id)).size,18);
   for(const m of BUILD_MODELS){
     assert.equal(m.pieces.length,5);
     const svg=renderBuildSvg({model:m.id,pieces:5});
@@ -41,19 +41,21 @@ test('Mode switching pauses both projects independently and preserves the select
 });
 test('All figures appear before a shuffled set repeats, and neighbouring sets do not repeat immediately',()=>{
   let s=selectRewardMode(freshState(),'bricks',rng),last=null;const firstSet=[];
-  for(let model=0;model<18;model++){
-    s=prepareReward(s,rng);assert.notEqual(s.brickBuild.model,last);if(model<6)firstSet.push(s.brickBuild.model);last=s.brickBuild.model;
+  for(let model=0;model<36;model++){
+    s=prepareReward(s,rng);assert.notEqual(s.brickBuild.model,last);if(model<18)firstSet.push(s.brickBuild.model);last=s.brickBuild.model;
     for(let part=0;part<5;part++)s=earn(s,`${model}-${part}`).state;
   }
-  assert.equal(new Set(firstSet).size,6);assert.equal(s.brickBuild.completed,18);
+  assert.equal(new Set(firstSet).size,18);assert.equal(s.brickBuild.completed,36);assert.equal(s.brickBuild.unlocked.length,18);
 });
 
-test('An existing build gains the superhero in its remaining set without losing pieces or collection',()=>{
+test('An existing build gains the new models without losing pieces or collection',()=>{
   const old={model:'duck',pieces:3,bag:['robot','train'],collection:['rocket'],completed:1};
   const restored=restoreBuild(old);
   assert.equal(restored.model,old.model);assert.equal(restored.pieces,old.pieces);
   assert.deepEqual(restored.collection,old.collection);assert.equal(restored.completed,old.completed);
-  assert.deepEqual(restored.bag,['robot','train','superhero']);
+  assert.deepEqual(restored.bag.filter(id => ['robot','train','superhero'].includes(id)), ['robot','train','superhero']);
+  assert.equal(restored.bag.length, 15);
+  assert.deepEqual(restored.unlocked, ['rocket']);
   assert.deepEqual(restoreBuild(restored),restored);
   assert.deepEqual(restoreBuild({...restored,bag:[]}).bag,[],'the hero is not reinserted after it has been built');
 });
@@ -76,5 +78,26 @@ test('SVG reveals only earned pieces and animates exactly the newly earned piece
     const svg=renderBuildSvg({model:model.id,pieces:3},{animate:true});
     assert.equal((svg.match(/class="brick-piece /g)||[]).length,5);assert.equal((svg.match(/unbuilt-piece/g)||[]).length,2);assert.equal((svg.match(/new-brick/g)||[]).length,1);assert.ok(svg.includes('3 av 5 klosser'));
     assert.ok(!renderBuildSvg({model:model.id,pieces:3}).includes('new-brick'));
+  }
+});
+
+test('Legacy garden progress becomes a sunflower and later plants grow once per round', () => {
+  let state = restoreState({version:1, roundsCompleted:7, plantRounds:7});
+  assert.equal(state.garden.plant, 'sunflower');
+  assert.equal(state.garden.stage, 2);
+  assert.deepEqual(state.garden.collection, ['sunflower']);
+  for (let round = 0; round < 3; round++) state = earn(state, `garden-${round}`).state;
+  assert.equal(state.garden.stage, 5);
+  const planted = prepareReward(state, rng);
+  assert.notEqual(planted.garden.plant, 'sunflower');
+  assert.equal(planted.garden.stage, 0);
+  const resumed = restoreState(JSON.parse(JSON.stringify(planted)));
+  assert.deepEqual(resumed.garden, planted.garden);
+  for (let round = 0, next = resumed; round < 5; round++) {
+    const id = `plant-${round}`;
+    next = earn(next, id).state;
+    assert.equal(next.garden.stage, round + 1);
+    assert.equal(awardPractice(next, id).state, next);
+    if (round === 4) assert.ok(next.garden.collection.includes(next.garden.plant));
   }
 });

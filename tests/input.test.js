@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import vm from 'node:vm';
 import * as core from '../core.js';
 import * as rewards from '../rewards.js';
+import * as plants from '../plants.js';
+import { createFocusBreak } from '../breaks.js';
 import {hintFor} from '../learning.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
@@ -16,8 +18,8 @@ function harness({sound=true,reduced=false}={}){
   const submit={disabled:true},erase={disabled:true,animate:(...args)=>animations.push(args)};
   const digits=Object.fromEntries(Array.from({length:10},(_,i)=>[i,{animate:(...args)=>animations.push(args)}]));
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
-  const context=vm.createContext({...core,...rewards,hintFor,document,navigator:{},window:{addEventListener(){},scrollTo(){}},
-    localStorage:{getItem:()=>null,setItem(){}},requestAnimationFrame:fn=>fn(),matchMedia:()=>({matches:reduced}),
+  const context=vm.createContext({...core,...rewards,...plants,createFocusBreak,hintFor,document,navigator:{},window:{addEventListener(){},scrollTo(){}},
+    localStorage:{getItem:()=>null,setItem(){}},requestAnimationFrame:fn=>fn(),setTimeout(){},matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({play:(...args)=>plays.push(args),unlock(){}}),
   });
   const run=code=>vm.runInContext(code,context);run(source);
@@ -58,4 +60,48 @@ test('Starting another round clears previous answer states and moves focus to th
   const buttons=[...h.root.innerHTML.matchAll(/<button class="answer ([^"]*)"[^>]*>/g)];
   assert.equal(buttons.length,3);assert.ok(buttons.every(b=>!b[0].includes('correct')&&!b[0].includes('tried')&&!b[0].includes('disabled')));
   assert.equal(h.document.activeElement,h.heading);
+});
+
+test('Fast taps after a wrong answer require a fresh retry before accepting another answer', () => {
+  const h = harness();
+  h.run("state.active.tasks[0].mode='choice'; submitAnswer(state.active.tasks[0].choices.find(value => value !== 10)); submitAnswer(10);");
+  assert.equal(h.run('state.active.attempts[0]'), 1);
+  assert.equal(h.run('state.active.solved'), false);
+  assert.match(h.root.innerHTML, /data-action="retry" disabled/);
+  h.run('retryAnswer(); submitAnswer(10);');
+  assert.equal(h.run('state.active.attempts[0]'), 1);
+  h.run('ui.retryUntil = 0; retryAnswer(); submitAnswer(10);');
+  assert.equal(h.run('state.active.attempts[0]'), 2);
+  assert.equal(h.run('state.active.solved'), true);
+});
+
+test('A pending memory game can be retried and completed without awarding another star', () => {
+  const h = harness();
+  h.run("state.active=null;state.roundsCompleted=3;state.focusBreaks=true;state.focusBreakPending=true; startRound();");
+  assert.equal(h.run('view'), 'focus-break');
+  assert.match(h.root.innerHTML, /Husk de fire bildene/);
+  h.run("focusGame.phase='guess'; answerFocusBreak(focusGame.choices.findIndex(item => item !== focusGame.missing));");
+  assert.equal(h.run('focusGame.phase'), 'study');
+  assert.equal(h.run('state.focusBreakPending'), true);
+  h.run("focusGame.phase='guess'; answerFocusBreak(focusGame.choices.indexOf(focusGame.missing));");
+  assert.equal(h.run('state.focusBreakPending'), false);
+  assert.equal(h.run('state.roundsCompleted'), 3);
+  assert.match(h.root.innerHTML, /Til oppgavene/);
+});
+
+test('Completing the third round schedules a game only with the option enabled', () => {
+  for (const enabled of [false, true]) {
+    const h = harness();
+    h.run(`state.focusBreaks=${enabled}; state.roundsCompleted=2;
+      for (let index = 0; index < ROUND_LENGTH; index++) {
+        state.active = answerRound(state.active, state.active.tasks[index].answer);
+        if (index < ROUND_LENGTH - 1) state.active = advanceRound(state.active);
+      }`);
+    const next = { dataset:{action:'next'}, closest:selector => selector === '[data-action]' ? next : null };
+    h.events.click({target:next});
+    assert.equal(h.run('state.roundsCompleted'), 3);
+    assert.equal(h.run('state.focusBreakPending'), enabled);
+    assert.equal(h.run('restoreState(state).focusBreakPending'), enabled);
+    assert.equal(h.run('view'), 'complete');
+  }
 });

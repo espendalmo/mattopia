@@ -1,8 +1,10 @@
-import { VERSION, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState } from './core.js';
+import { VERSION, CHANNEL, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
 import { createUpdater } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, renderBuildSvg } from './rewards.js';
+import { plantById, renderPlant } from './plants.js';
+import { createFocusBreak } from './breaks.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
@@ -12,6 +14,7 @@ try { state = restoreState(JSON.parse(localStorage.getItem(STORAGE_KEY))); } cat
 if (state.rewardMode === 'bricks') state = selectRewardMode(state, 'bricks');
 let view = 'home';
 let completedReward = null;
+let focusGame = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
 let celebrateOnRender = false;
@@ -25,7 +28,7 @@ const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { c
   if (changed && view !== 'round' && !document.querySelector('dialog')) render();
 } });
 
-function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '' }; }
+function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '', retry: false, retryUntil: 0 }; }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); storageWorks = true; }
   catch { storageWorks = false; }
@@ -52,7 +55,7 @@ function icon(name, css = '') {
 function buddy(happy = false) {
   return `<div class="buddy ${happy ? 'happy' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
-function brand() { return `<div class="brand"><span class="brand-mark">${icon('sprout')}</span><span>tallvenn</span></div>`; }
+function brand() { return `<div class="brand"><span class="brand-mark">${icon('sprout')}</span><span>tallvenn</span>${CHANNEL === 'preview' ? '<small class="preview-label">Test</small>' : ''}</div>`; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
 function header() { return `<header class="site-header">${brand()}<div class="header-controls">${soundButton()}<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button></div></header>`; }
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
@@ -60,27 +63,112 @@ function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { a
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
 function goTop() { window.scrollTo({ top: 0, behavior: 'instant' }); }
 
-function gardenArt(total, happy = false) {
-  const g = growthState(total), height = [0,38,54,70,82,89][g.stage];
-  const flower = g.stage === 5 ? '<g fill="#edb658"><ellipse cx="79" cy="34" rx="9" ry="16"/><ellipse cx="79" cy="34" rx="9" ry="16" transform="rotate(60 79 34)"/><ellipse cx="79" cy="34" rx="9" ry="16" transform="rotate(120 79 34)"/><circle cx="79" cy="34" r="8" fill="#fff1bc"/></g>' : g.stage === 4 ? '<ellipse cx="79" cy="40" rx="9" ry="13" fill="#edbe68"/>' : '';
-  return `<div class="garden-art ${happy ? 'garden-grown' : ''}"><div class="garden-friend">${buddy(happy)}</div><svg class="growing-plant" viewBox="0 0 140 155" role="img" aria-label="${g.label}"><ellipse cx="75" cy="139" rx="48" ry="8" fill="#e3eadd"/><path d="M52 113h47l-7 25H59Z" fill="#dba88b"/><path d="M49 111h53v9H49Z" fill="#e7b99a"/>${g.stage === 0 ? '<ellipse cx="76" cy="108" rx="7" ry="4" fill="#8b7151"/>' : `<path d="M76 111Q85 90 79 ${111-height}" stroke="#548452" stroke-width="5" fill="none" stroke-linecap="round"/><path d="M79 ${102-height/3}Q47 ${85-height/3} 48 ${75-height/3}Q77 ${70-height/3} 79 ${102-height/3}" fill="#99c37c"/>${g.stage>=2?`<path d="M80 ${86-height/4}Q110 ${83-height/4} 112 ${64-height/4}Q84 ${61-height/4} 80 ${86-height/4}" fill="#679d60"/>`:''}${g.stage>=3?'<path d="M79 66Q57 59 59 45Q77 43 79 66" fill="#87b66d"/>':''}${flower}`}</svg></div>`;
-}
 function rewardDetails(reward = null) {
   const mode = reward?.mode || state.rewardMode;
-  if (mode !== 'bricks') return {mode:'plant',...growthState(reward?.plantRounds ?? state.plantRounds)};
+  if (mode !== 'bricks') {
+    const garden = reward?.garden || state.garden;
+    const plant = plantById(garden.plant);
+    const full = garden.stage === 5;
+    const label = full ? `${plant.name} er ferdig!` : `Vi dyrker ${plant.name.toLowerCase()}`;
+    return { mode:'plant', garden, plant, full, label };
+  }
   const build = reward?.build || state.brickBuild;
   const model = modelById(build.model), full = build.pieces === model.pieces.length;
   return {mode,build,model,full,label:full ? model.done : `Vi bygger ${model.name}!`};
 }
 function rewardArt(happy = false, reward = null) {
   const info = rewardDetails(reward);
-  if (info.mode === 'plant') return gardenArt(reward?.plantRounds ?? state.plantRounds, happy);
-  return `<div class="garden-art brick-art"><div class="garden-friend">${buddy(happy)}</div>${renderBuildSvg(info.build,{animate:happy})}</div>`;
+  const art = info.mode === 'bricks'
+    ? renderBuildSvg(info.build, {animate:happy})
+    : renderPlant(info.garden.plant, info.garden.stage);
+  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}"><div class="garden-friend">${buddy(happy)}</div>${art}</div>`;
 }
-function buildCollection(build) {
-  if (!build.completed) return '';
-  return `<div class="build-collection"><div class="mini-builds">${build.collection.slice(-3).map(id=>renderBuildSvg({model:id,pieces:modelById(id).pieces.length},{mini:true})).join('')}</div><p>${build.completed} ${build.completed === 1 ? 'figur bygget' : 'figurer bygget'}. Fint jobbet!</p></div>`;
+
+const BADGES = [
+  { stars:3, name:'God start', symbol:'✦', tone:'leaf' },
+  { stars:10, name:'Tallvenn', symbol:'★', tone:'sun' },
+  { stars:25, name:'Talloppdager', symbol:'◆', tone:'sky' },
+  { stars:50, name:'Stjernesamler', symbol:'✶', tone:'rose' },
+  { stars:100, name:'Tallmester', symbol:'✺', tone:'violet' },
+];
+
+function badgeArt(badge) {
+  return `<span class="badge-medal ${badge.tone}" aria-hidden="true">${badge.symbol}</span>`;
 }
+
+function badgeShelf(stars) {
+  const earned = BADGES.filter(badge => stars >= badge.stars);
+  const next = BADGES.find(badge => stars < badge.stars);
+  if (!stars) return '';
+  return `<section class="badge-shelf" aria-label="Merker">
+    ${earned.length ? `<ul class="badge-list">${earned.map(badge =>
+      `<li>${badgeArt(badge)}<strong>${badge.name}</strong><small>${badge.stars} stjerner</small></li>`).join('')}</ul>` : ''}
+    ${next ? `<p class="shelf-note">Neste merke ved ${next.stars} stjerner</p>` : ''}
+  </section>`;
+}
+
+function collectible(kind, id) {
+  if (kind === 'plant') {
+    const plant = plantById(id);
+    return plant && { name:plant.name, art:mini => renderPlant(id, 5, {mini}) };
+  }
+  if (kind === 'brick') {
+    const model = modelById(id);
+    return model && {
+      name:model.name.replace(/^(en|et) /, '').replace(/^./, letter => letter.toUpperCase()),
+      art:mini => renderBuildSvg({model:id,pieces:model.pieces.length},{mini}),
+    };
+  }
+  return null;
+}
+
+function collectionTile(kind, id) {
+  const item = collectible(kind, id);
+  return `<button class="collection-tile" data-action="collectible" data-kind="${kind}" data-id="${id}" aria-label="Se ${item.name} stort">${item.art(true)}<span>${item.name}</span></button>`;
+}
+
+function collectionShelf() {
+  const bricks = state.brickBuild?.unlocked || [];
+  const plants = state.garden.collection;
+  if (!bricks.length && !plants.length) return '';
+  const kind = state.rewardMode === 'bricks' ? 'brick' : 'plant';
+  const recent = kind === 'brick'
+    ? [...new Set(state.brickBuild.collection.slice().reverse())].slice(0, 3)
+    : plants.slice(-3).reverse();
+  return `<section class="collection-shelf" aria-label="Samlingen din">
+    ${recent.length ? `<div class="collection-grid">${recent.map(id => collectionTile(kind, id)).join('')}</div>` : ''}
+    <button class="secondary" data-action="collection">Se samlingen</button>
+  </section>`;
+}
+
+function showCollection() {
+  const bricks = state.brickBuild?.unlocked || [];
+  const plants = state.garden.collection;
+  const dialog = document.querySelector('.collection-dialog');
+  const content = `<div class="dialog-header"><h2 id="dialog-title" tabindex="-1">Samlingen din</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk samlingen">${icon('close')}</button></div>
+    ${bricks.length ? `<h3>Byggefigurer</h3><div class="collection-grid">${bricks.map(id => collectionTile('brick', id)).join('')}</div>` : ''}
+    ${plants.length ? `<h3>Planter</h3><div class="collection-grid">${plants.map(id => collectionTile('plant', id)).join('')}</div>` : ''}`;
+  if (dialog) {
+    dialog.innerHTML = content;
+    dialog.querySelector(`[data-kind="${dialog.dataset.kind}"][data-id="${dialog.dataset.id}"]`)?.focus();
+  } else showDialog(content, 'collection-dialog');
+}
+
+function showCollectible(kind, id) {
+  const item = collectible(kind, id);
+  if (!item) return;
+  const dialog = document.querySelector('.collection-dialog');
+  const content = `<div class="dialog-header"><h2 id="dialog-title" tabindex="-1">${item.name}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk stort bilde">${icon('close')}</button></div>
+    <div class="collectible-large">${item.art(false)}</div>
+    ${dialog ? '<button class="secondary" data-action="collection">Tilbake til samlingen</button>' : ''}`;
+  if (dialog) {
+    dialog.dataset.kind = kind;
+    dialog.dataset.id = id;
+    dialog.innerHTML = content;
+    dialog.querySelector('h2').focus();
+  } else showDialog(content, 'collection-dialog');
+}
+
 function confetti() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return '';
   const colors = ['#79a85d','#efbd57','#8bb6d5','#d99da5','#b5ce8b'];
@@ -91,19 +179,26 @@ function renderHome() {
   const total = state.roundsCompleted;
   const stars = Array.from({ length: 5 }, (_, i) => icon('star', i < Math.min(total, 5) ? '' : 'empty-star')).join('');
   const g = rewardDetails();
-  const shelf = g.mode === 'bricks' ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.${g.full ? ' Neste runde starter et nytt bygg.' : ' En runde gir én ny kloss.'}` : state.plantRounds === 0 ? 'For hver runde vokser planten litt.' : `${state.plantRounds} ${state.plantRounds === 1 ? 'runde med plantevekst' : 'runder med plantevekst'}.${g.flowers ? ` ${g.flowers} ${g.flowers === 1 ? 'blomst' : 'blomster'} i hagen din!` : ' Planten din vokser!'}`;
+  const shelf = g.mode === 'bricks'
+    ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.`
+    : `${g.garden.stage} av 5 vekststeg.`;
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
-    ${rewardArt()}<p class="home-eyebrow">${g.mode === 'bricks' || state.plantRounds ? g.label : 'Ett lite steg om gangen'}</p>
+    ${rewardArt()}<p class="home-eyebrow">${g.label}</p>
     <h1 tabindex="-1">Klar for en<br>liten runde?</h1>
     <p class="home-description">8 oppgaver. I ditt tempo.</p>
-    <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : 'Start runden'}${icon('arrow')}</button>
+    <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : state.focusBreakPending ? 'Spill Kims lek' : 'Start runden'}${icon('arrow')}</button>
     <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av 8 oppgaver.` : 'Vi ser, teller og finner ut sammen.'}</p>
-    <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${g.mode === 'bricks' ? buildCollection(g.build) : ''}</div>
+    <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}</div>
   </main></div>`;
 }
 
 function startRound() {
+  if (!state.active && state.focusBreakPending) {
+    openFocusBreak();
+    return;
+  }
   if (!state.active) {
+    focusGame = null;
     state = prepareReward(state);
     const seed = globalThis.crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now();
     state.active = createRound(state.level, seed, state.roundsCompleted === 0, { history: state.history, alwaysShowVisuals: state.alwaysShowVisuals });
@@ -111,6 +206,50 @@ function startRound() {
   }
   if (state.sound) sounds.unlock();
   view = 'round'; ui = makeUI(); announcer.textContent = ''; render(); goTop(); focusHeading();
+}
+
+function openFocusBreak() {
+  focusGame ||= { ...createFocusBreak(), phase:'study', retry:false };
+  view = 'focus-break';
+  render(); goTop(); focusHeading();
+}
+
+function renderFocusBreak() {
+  const studying = focusGame.phase === 'study';
+  const solved = focusGame.phase === 'solved';
+  const title = studying ? 'Husk de fire bildene' : solved ? 'Du fant det!' : 'Hvilket bilde mangler?';
+  const item = ({ icon, label }) => `<span class="focus-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
+  const study = studying ? focusGame.study : focusGame.study.filter(image => image !== focusGame.missing);
+  const cards = study.map(image => `<li>${item(image)}</li>`).join('');
+  const content = solved
+    ? `<p class="focus-winner">${item(focusGame.missing)}</p><button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`
+    : `<ul class="focus-cards" aria-label="${studying ? 'Bilder å huske' : 'Bilder som er igjen'}">${cards}</ul>
+       ${studying
+         ? '<button class="primary" data-action="focus-hide">Skjul ett bilde</button>'
+         : `<div class="focus-options" aria-label="Velg bildet som mangler">${focusGame.choices.map((image, i) => `<button data-action="focus-answer" data-choice="${i}">${item(image)}</button>`).join('')}</div>`}`;
+  const description = studying
+    ? focusGame.retry ? 'Nesten! Se på alle bildene en gang til.' : 'Se på bildene så lenge du vil. Ett av dem skal bort.'
+    : solved ? 'Godt husket. Klar for en ny runde?' : 'Tre bilder er igjen. Velg det fjerde.';
+  root.innerHTML = `<div class="app-shell">${header()}<main class="focus-game">
+    <p class="home-eyebrow">Mellomspill · Kims lek</p>
+    <h1 tabindex="-1">${title}</h1><p>${description}</p>${content}
+    <button class="text-button" data-action="home">Ferdig for nå</button>
+  </main></div>`;
+}
+
+function answerFocusBreak(index) {
+  if (view !== 'focus-break' || focusGame.phase !== 'guess' || !focusGame.choices[index]) return;
+  if (focusGame.choices[index] === focusGame.missing) {
+    focusGame.phase = 'solved';
+    state.focusBreakPending = false;
+    save();
+    playSuccess();
+  } else {
+    focusGame.phase = 'study';
+    focusGame.retry = true;
+    sounds.play('retry', state.sound);
+  }
+  render(); focusHeading();
 }
 
 function taskTitle(t) {
@@ -215,31 +354,37 @@ function renderRound() {
   if (r.solved) {
     const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${equationText(t)}</p></div></div><button class="primary" data-action="next">${r.index === 7 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
+  } else if (ui.retry) {
+    feedback = `<div class="retry-note" tabindex="-1"><strong>Nesten!</strong><span>Se på hintet og tenk en gang til.</span></div>
+      <button class="secondary retry-button" data-action="retry" ${Date.now() < ui.retryUntil ? 'disabled' : ''}>Prøv igjen</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>Din lille runde</span><strong>Oppgave ${r.index + 1} av 8</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="8" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${taskTitle(t)}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel">${hintText(t)}</div>` : ''}
-    ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : `<div class="answers" role="group" aria-label="Velg svar">${t.choices.map(c => `<button class="answer ${r.solved && c === t.answer ? 'correct' : ''} ${ui.wrong.includes(c) ? 'tried' : ''}" data-answer="${c}" ${r.solved || ui.wrong.includes(c) ? 'disabled' : ''} aria-label="Svar ${c}">${c}${r.solved && c === t.answer ? '<span class="sr-only">. Riktig.</span>' : ''}</button>`).join('')}</div>`}
+    ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : `<div class="answers" role="group" aria-label="Velg svar">${t.choices.map(c => `<button class="answer ${r.solved && c === t.answer ? 'correct' : ''} ${ui.wrong.includes(c) ? 'tried' : ''}" data-answer="${c}" ${r.solved || ui.retry || ui.wrong.includes(c) ? 'disabled' : ''} aria-label="Svar ${c}${ui.wrong.includes(c) ? ', prøvd' : ''}">${c}${ui.wrong.includes(c) ? '<span class="answer-cross" aria-hidden="true">×</span>' : ''}${r.solved && c === t.answer ? '<span class="sr-only">. Riktig.</span>' : ''}</button>`).join('')}</div>`}
     <div class="feedback-area">${feedback}</div></main><footer class="round-footer">Små steg teller.</footer></div>`;
 }
 
 function renderComplete() {
   const g = rewardDetails(completedReward);
-  const message = g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>Takk for at du øvde med meg.`;
+  const message = g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
   const party = celebrateOnRender ? confetti() : ''; celebrateOnRender = false;
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p><button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">En runde til</button></main></div>${party}`;
+  const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
+  const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Nytt merke <strong>${newBadge.name}</strong></span></div>` : '';
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? 'Spill Kims lek' : 'En runde til'}</button></main></div>${party}`;
 }
 
 function render() {
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
+  else if (view === 'focus-break') renderFocusBreak();
   else renderHome();
 }
 
 function playSuccess(final = false) { sounds.play(final ? 'finish' : 'success', state.sound); }
-function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}">${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${!ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0">0</button><button class="submit-number" data-action="submit-number" ${!ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
+function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${ui.retry ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${!ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${ui.retry ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${!ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
 function keyFeedback(key) {
   sounds.play('key', state.sound);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -247,7 +392,7 @@ function keyFeedback(key) {
   button?.animate?.([{ transform: 'translateY(2px)', boxShadow: '0 1px 0 #dce5db' }, { transform: 'translateY(0)', boxShadow: '0 3px 0 #dce5db' }], { duration: 120, easing: 'ease-out' });
   document.querySelector('#input-value')?.animate?.([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 120, easing: 'ease-out' });
 }
-function canEnter() { return view === 'round' && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input'; }
+function canEnter() { return view === 'round' && !ui.retry && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input'; }
 function enterDigit(digit) {
   if (!canEnter() || !/^[0-9]$/.test(digit) || ui.entry.length >= 3) return;
   ui.entry = ui.entry === '0' ? digit : ui.entry + digit;
@@ -296,6 +441,8 @@ function adultView() {
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label><p class="adult-note">Én fullført runde gir én ny kloss eller litt plantevekst. Dere kan bytte uten å miste framgangen i noen av delene. En ferdig figur starter et nytt bygg ved neste nye runde.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
     <label class="sound-setting"><input type="checkbox" id="visual-setting" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
+    <label class="sound-setting"><input type="checkbox" id="focus-break-setting" ${state.focusBreaks ? 'checked' : ''}>Kims lek mellom øvingsrundene</label>
+    <p class="adult-note">Når det er slått på, kommer en kort huskelek etter hver tredje fullførte runde. Barnet ser på bildene i eget tempo.</p>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan figurene bli valgfrie. Senere kan én eller to oppgaver få talltastatur. «Vis meg» er alltid tilgjengelig.</p>
     <div class="adult-stats"><div class="stat"><strong>${state.roundsCompleted}</strong><span>fullførte runder</span></div><div class="stat"><strong>${days}</strong><span>${days === 1 ? 'øvingsdag' : 'øvingsdager'} i siste historikk</span></div></div>
     <p class="adult-section-title">Øvd på · ${LEVELS[state.level].label}</p>${topics || '<p class="history-empty">Emnene vises når dere har fullført noen oppgaver.</p>'}<p class="adult-note">Siste tolv runder på valgt nivå. En oppgavetype er ikke nødvendigvis mestret selv om svaret er riktig.</p>
@@ -309,23 +456,68 @@ function adultView() {
         if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); save(); }
         if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
         if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
+        if (e.target.id === 'focus-break-setting') {
+          state.focusBreaks = e.target.checked;
+          if (!state.focusBreaks) {
+            state.focusBreakPending = false;
+            focusGame = null;
+            if (view === 'focus-break') view = 'home';
+          }
+          save();
+        }
       });
     });
 }
 
 function submitAnswer(value) {
-  if (!state.active || state.active.solved) return;
-    state.active = answerRound(state.active, value);
-    const r = state.active, t = r.tasks[r.index];
-    if (r.solved) {
-      save(); render(); playSuccess(); say(`Riktig. ${equationText(t)} Neste oppgave er klar.`);
-      root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
-      root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
-    } else {
-      ui.wrong.push(value); state.active = noteHelp(r); ui.entry = ''; save(); render(); sounds.play('retry', state.sound);
-      say(`Vi prøver sammen. ${hintText(t)}`);
-      root.querySelector('.answer:not(:disabled)')?.focus({ preventScroll: true });
-    }
+  if (view !== 'round' || ui.retry) return;
+  const currentTask = state.active?.tasks[state.active.index];
+  if (currentTask?.mode === 'choice' && ui.wrong.includes(value)) return;
+  const answered = answerRound(state.active, value);
+  if (answered === state.active) return;
+  state.active = answered;
+  const task = answered.tasks[answered.index];
+  if (answered.solved) {
+    save(); render(); playSuccess();
+    flashAnswer(task, value, true);
+    say(`Riktig. ${equationText(task)} Neste oppgave er klar.`);
+    root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
+    root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    return;
+  }
+  ui.wrong.push(value);
+  ui.retry = true;
+  ui.retryUntil = Date.now() + 1100;
+  ui.entry = '';
+  state.active = noteHelp(answered);
+  save(); render(); sounds.play('retry', state.sound);
+  flashAnswer(task, value, false);
+  say(`Nesten. ${hintText(task)} Trykk på Prøv igjen når du er klar.`);
+  root.querySelector('.retry-note')?.focus({ preventScroll: true });
+  root.querySelector('.feedback-area')?.scrollIntoView({ block:'nearest' });
+  const attempt = ui;
+  const enableRetry = () => {
+    if (ui !== attempt || !ui.retry || view !== 'round') return;
+    const remaining = ui.retryUntil - Date.now();
+    if (remaining > 0) { setTimeout(enableRetry, remaining); return; }
+    const retry = root.querySelector('[data-action="retry"]');
+    if (retry) retry.disabled = false;
+  };
+  setTimeout(enableRetry, 1100);
+}
+
+function flashAnswer(task, value, correct) {
+  const selector = task.mode === 'choice' ? `[data-answer="${value}"]`
+    : correct ? '.entered-correct' : '.submit-number';
+  root.querySelector(selector)?.classList.add(correct ? 'answer-spark' : 'answer-miss');
+}
+
+function retryAnswer() {
+  if (view !== 'round' || !ui.retry || Date.now() < ui.retryUntil) return;
+  ui.retry = false;
+  render();
+  const first = root.querySelector('.answer:not(:disabled), [data-digit]:not(:disabled)');
+  (first || root.querySelector('h1'))?.focus({ preventScroll: true });
 }
 
 document.addEventListener('click', e => {
@@ -357,6 +549,21 @@ document.addEventListener('click', e => {
   }
   const action = e.target.closest('[data-action]')?.dataset.action;
   if (action === 'start' || action === 'again') startRound();
+  if (action === 'retry') retryAnswer();
+  if (action === 'collection') showCollection();
+  if (action === 'collectible') {
+    const { kind, id } = e.target.closest('[data-action="collectible"]').dataset;
+    showCollectible(kind, id);
+  }
+  if (action === 'focus-hide' && view === 'focus-break' && focusGame.phase === 'study') {
+    focusGame.phase = 'guess';
+    render(); focusHeading();
+  }
+  if (action === 'focus-answer') answerFocusBreak(Number(e.target.closest('[data-action="focus-answer"]').dataset.choice));
+  if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'solved') {
+    focusGame = null;
+    startRound();
+  }
   if (action === 'help' && state.active) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
   if (action === 'erase') eraseDigit();
@@ -370,6 +577,7 @@ document.addEventListener('click', e => {
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
         const awarded = awardPractice(state, summary.id); state = awarded.state; completedReward = awarded.reward;
+        state.focusBreakPending = state.focusBreaks && state.roundsCompleted % 3 === 0;
       }
       state.active = null; view = 'complete'; celebrateOnRender = true; playSuccess(true);
     }
@@ -381,12 +589,13 @@ document.addEventListener('click', e => {
   if (action === 'pause') showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Stjerner, plantevekst, bygg og en påbegynt runde blir slettet på denne enheten.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode } = state; state = selectRewardMode({ ...freshState(), level, sound }, rewardMode); completedReward = null; save(); view = 'home'; render(); focusHeading(); }
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode, focusBreaks } = state; state = selectRewardMode({ ...freshState(), level, sound, focusBreaks }, rewardMode); completedReward = null; focusGame = null; save(); view = 'home'; render(); focusHeading(); }
 });
 
 document.addEventListener('keydown', e => {
+  if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); return; }
   if (e.key === 'Escape' && view === 'round' && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
-  if (view === 'round' && !document.querySelector('dialog') && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input') {
+  if (canEnter() && !document.querySelector('dialog')) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) { e.preventDefault(); enterDigit(e.key); }
     if (e.key === 'Backspace') { e.preventDefault(); eraseDigit(); }
