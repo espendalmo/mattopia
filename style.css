@@ -86,6 +86,18 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 }
 .beta-mark svg { width: 16px; height: 16px; }
 .beta-mark strong { letter-spacing: .08em; }
+.brand-mark .brand-friend { width: 27px; height: 27px; }
+.beta-test-links {
+  margin: 0 0 24px;
+  padding: 15px;
+  border: 1px solid #d2c4ea;
+  border-radius: 16px;
+  background: #f3edf9;
+}
+.beta-test-links h3 { margin: 0 0 5px; font-size: 1rem; }
+.beta-test-links p { color: var(--muted); font-size: .85rem; line-height: 1.5; }
+.beta-test-links > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.beta-test-links a { display: inline-flex; align-items: center; color: var(--ink); text-decoration: none; }
 .collection-shelf, .badge-shelf { margin-top: 18px; }
 .collection-shelf > .secondary { margin-top: 12px; }
 .collection-dialog h3 { margin: 16px 0 8px; font-size: 1rem; }
@@ -186,6 +198,90 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
   line-height: 1;
 }
 dialog h2[tabindex="-1"]:focus { outline: none; }
+.focus-game h1[tabindex="-1"]:focus, .onboarding h1[tabindex="-1"]:focus { outline: none; }
+.onboarding { width: min(100%, 390px); margin: 35px auto 0; text-align: center; }
+.onboarding h1 { margin: 6px 0 12px; font-size: clamp(2rem, 8vw, 2.6rem); }
+.onboarding > p { color: var(--muted); line-height: 1.5; }
+.onboarding > .home-eyebrow { color: var(--green); }
+.profile-form { display: grid; gap: 16px; text-align: left; }
+.onboarding .profile-form {
+  margin: 20px 0 14px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: #fff;
+}
+.profile-field { display: grid; gap: 7px; font-size: .93rem; font-weight: 700; }
+.profile-field input, .profile-field select {
+  width: 100%;
+  min-height: 45px;
+  padding: 8px 12px;
+  border: 1px solid #becdba;
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 500;
+}
+.profile-field select:focus-visible, .avatar-option input:focus-visible + .player-avatar { outline: 3px solid #285ed2; outline-offset: 3px; }
+.avatar-options { min-width: 0; margin: 0; padding: 0; border: 0; }
+.avatar-options legend { margin-bottom: 8px; padding: 0; font-size: .93rem; font-weight: 700; }
+.avatar-options > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.avatar-option { display: grid; justify-items: center; gap: 2px; padding: 3px; border-radius: 10px; cursor: pointer; }
+.player-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: #eaf2e3;
+  font-size: 1.38rem;
+  line-height: 1;
+}
+.avatar-option input:checked + .player-avatar { border-color: var(--green); background: #d9edcc; }
+.avatar-name { font-size: .69rem; line-height: 1.25; }
+.profile-form > .primary { justify-self: center; }
+.profile-switch {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  max-width: 100%;
+  margin: 0 auto 10px;
+  padding: 3px 11px 3px 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: .84rem;
+}
+.profile-switch strong { overflow-wrap: anywhere; }
+.profile-switch > span:last-child { color: var(--green); white-space: nowrap; }
+.profile-switch .player-avatar { width: 34px; height: 34px; border-radius: 50%; font-size: 1.17rem; }
+.player-list { display: grid; gap: 8px; }
+.player-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 62px;
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+  text-align: left;
+}
+.player-row[aria-current="true"] { border-color: #8eb281; background: #f0f6eb; }
+.player-row strong { display: block; overflow-wrap: anywhere; }
+.player-row small { color: var(--muted); font-size: .75rem; }
+.player-row svg { width: 20px; }
+.profile-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.adult-profile { margin-bottom: 22px; padding: 15px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.adult-profile h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: 1rem; overflow-wrap: anywhere; }
+.adult-profile > button { margin-top: 12px; }
 .described-setting { margin-bottom: 22px; }
 .described-setting .sound-setting { margin-bottom: 0; }
 .described-setting .adult-note { margin: 0 0 0 34px; line-height: 1.55; }

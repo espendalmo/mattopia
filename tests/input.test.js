@@ -6,11 +6,12 @@ import * as core from '../core.js';
 import * as rewards from '../rewards.js';
 import * as plants from '../plants.js';
 import * as breaks from '../breaks.js';
+import * as profiles from '../profiles.js';
 import {hintFor} from '../learning.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
-function harness({sound=true,reduced=false}={}){
-  const events={},plays=[],animations=[],timers=[],stored=new Map();
+function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=new Map(),roundFixture=!hash}={}){
+  const events={},plays=[],animations=[],timers=[];
   const document={activeElement:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events[name]=fn;}};
   const heading={focus(){document.activeElement=heading;}};
   const count={textContent:''},check={disabled:true};
@@ -19,16 +20,18 @@ function harness({sound=true,reduced=false}={}){
   const submit={disabled:true},erase={disabled:true,animate:(...args)=>animations.push(args)};
   const digits=Object.fromEntries(Array.from({length:10},(_,i)=>[i,{animate:(...args)=>animations.push(args)}]));
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
-  const context=vm.createContext({...core,...rewards,...plants,...breaks,hintFor,document,navigator:{},window:{addEventListener(){},scrollTo(){}},
+  const location={pathname:'/tallvenn-beta/',search:'',hash};
+  const window={location,history:{replaceState(){location.hash='';}},addEventListener:(name,fn)=>{events[name]=fn;},scrollTo(){}};
+  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,hintFor,document,navigator:{},window,
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
     requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),matchMedia:()=>({matches:reduced}),
-    createUpdater:()=>({}),createSoundPlayer:()=>({play:(...args)=>plays.push(args),unlock(){}}),
+    createUpdater:()=>({}),createSoundPlayer:()=>({play:(...args)=>plays.push(args),unlock(){},stop(){}}),
   });
   const run=code=>vm.runInContext(code,context);run(source);
-  run(`state.sound=${sound}; state.active=createRound(1,42,true); state.active.tasks[0].mode='input'; view='round'; render();`);
+  if (roundFixture) run(`state.sound=${sound}; state.active=createRound(1,42,true); state.active.tasks[0].mode='input'; view='round'; render();`);
   function click(digit){const button={disabled:false,dataset:{digit},closest:s=>s==='[data-digit]'?button:null};events.click({target:button});}
   function key(value,mods={}){events.keydown({key:value,...mods,preventDefault(){},target:{closest:()=>null}});}
-  return {run,click,key,events,plays,animations,timers,output,submit,erase,root,heading,document,count,check};
+  return {run,click,key,events,plays,animations,timers,output,submit,erase,root,heading,document,count,check,location};
 }
 
 test('Touch and physical keys update the same entry, click once per accepted digit and enforce the limit',()=>{
@@ -169,6 +172,77 @@ test('The floor break uses an empty or partially laid grid and respects reduced 
   assert.match(h.root.innerHTML,/floor-new/);
   assert.doesNotMatch(h.root.innerHTML,/class="confetti"/);
   assert.deepEqual(h.plays,[['retry',false],['memory',false]]);
+});
+
+test('Beta links open each break directly and are absent from the regular app', () => {
+  const links = {memory:'#pauselek=kims-lek',build:'#pauselek=klossebygget',floor:'#pauselek=klossegulvet'};
+  for (const [kind, hash] of Object.entries(links)) {
+    const beta = harness({channel:'preview',hash});
+    assert.equal(beta.run('view'),'focus-break');
+    assert.equal(beta.run('focusGame.kind'),kind);
+    assert.match(beta.root.innerHTML,/Test av pauselek/);
+    assert.equal(beta.run('state.focusBreaks'),false);
+    assert.equal(beta.run('state.active'),null);
+  }
+  const regular = harness({channel:'stable',hash:links.memory});
+  assert.equal(regular.run('view'),'onboarding');
+  assert.equal(regular.events.hashchange,undefined);
+  regular.run('let adultHtml; showDialog=html=>{adultHtml=html}; adultView();');
+  assert.doesNotMatch(regular.run('adultHtml'),/Test pauseleker|#pauselek=/);
+});
+
+test('Completing a beta test keeps the scheduled break and its selections in place', () => {
+  const h = harness({channel:'preview'});
+  h.run(`state.active=null; state.roundsCompleted=3; state.focusBreaks=true;
+    state.focusBreakPending=true; startRound(); focusGame.phase='guess'; focusGame.selected.add(1);
+    const scheduled = focusGame;
+    let adultHtml; showDialog=html=>{adultHtml=html};`);
+  h.location.hash='#pauselek=klossegulvet';
+  h.events.hashchange();
+  h.run('focusGame.selected=focusGame.answer; checkFocusBreak();');
+  assert.match(h.root.innerHTML,/Til testlenkene/);
+  assert.equal(h.run('state.focusBreakPending'),true);
+  assert.equal(h.run('state.roundsCompleted'),3);
+  assert.equal(h.run('state.active'),null);
+  h.run('exitTestBreak();');
+  assert.equal(h.location.hash,'');
+  assert.equal(h.run('focusGame === scheduled && scheduled.selected.has(1)'),true);
+  assert.match(h.run('adultHtml'),/Test pauseleker/);
+  assert.match(h.run('adultHtml'),/#pauselek=kims-lek/);
+});
+
+test('First setup imports existing practice and later profiles get independent settings and progress', () => {
+  const round = core.createRound(2, 70);
+  const active = core.advanceRound(core.answerRound(round, round.tasks[0].answer));
+  let legacy = rewards.selectRewardMode({...core.freshState(), level:2, roundsCompleted:4, active}, 'bricks', () => .3);
+  legacy = rewards.awardPractice(legacy, 'legacy-round').state;
+  const stored = new Map([[core.STORAGE_KEY, JSON.stringify(legacy)]]);
+  const h = harness({stored,roundFixture:false});
+  assert.match(h.root.innerHTML, /Øvingen du har fra før, følger med/);
+  h.run(`submitProfile('first',{name:'  Ada  ',grade:'3',avatar:'fox'});`);
+  assert.match(h.root.innerHTML,/Ada/);
+  assert.equal(h.run('state.active.id'),active.id);
+  assert.equal(h.run('state.active.index'),1);
+  assert.equal(h.run('state.brickBuild.pieces'),1);
+  assert.equal(h.run('profile.grade'),3);
+  assert.equal(h.run('state.level'),2);
+  h.run(`const firstId=profile.id; submitProfile('new',{name:'<Lillebror>',grade:'1',avatar:'frog'});`);
+  assert.match(h.root.innerHTML,/&lt;Lillebror&gt;/);
+  assert.doesNotMatch(h.root.innerHTML,/<Lillebror>/);
+  assert.equal(h.run('state.roundsCompleted'),0);
+  assert.equal(h.run('state.active'),null);
+  h.run(`state.level=4; save(); submitProfile('edit',{name:'Leo',grade:'2',avatar:'owl'}); selectProfile(firstId);`);
+  assert.equal(h.run('state.active.id'),active.id);
+  assert.equal(h.run('state.roundsCompleted'),4);
+  assert.equal(h.run('state.level'),2);
+  const reopened = harness({stored,roundFixture:false});
+  assert.match(reopened.root.innerHTML,/Ada/);
+  assert.equal(reopened.run('state.active.index'),1);
+  reopened.run(`selectProfile(profileStore.profiles.find(item=>item.name==='Leo').id);`);
+  assert.equal(reopened.run('profile.grade'),2);
+  assert.equal(reopened.run('state.level'),4);
+  assert.equal(reopened.run('state.roundsCompleted'),0);
+  assert.equal(JSON.parse(stored.get(core.STORAGE_KEY)).roundsCompleted,4);
 });
 
 test('The welcome appears once after a longer break and leaves a round in place', () => {

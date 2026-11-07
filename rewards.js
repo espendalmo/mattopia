@@ -297,35 +297,44 @@ function printOn(p) {
   if(p.print==='hero-mask')return `<g class="hero-mask"><path d="M${x+5} ${y+7}h${w-10}v17l-13-3-14 3-13-3-14 3Z" fill="#284f80"/><ellipse cx="${cx-13}" cy="${y+15}" rx="6" ry="4" fill="white"/><ellipse cx="${cx+13}" cy="${y+15}" rx="6" ry="4" fill="white"/><circle cx="${cx-12}" cy="${y+15}" r="2.4" fill="#20374b"/><circle cx="${cx+12}" cy="${y+15}" r="2.4" fill="#20374b"/><path d="M${cx-7} ${y+29}q7 6 14 0" fill="none" stroke="#7d5a37" stroke-width="2.6" stroke-linecap="round"/></g>`;
   return '';
 }
-function brick(p,ghost=false,newPiece=false) {
+function brick(p,ghost=false,newPiece=false,outline=false) {
   const {x,y,w,h}=p,front=ghost?'#d6dfcf':PALETTE[p.color],top=tint(front,20),side=tint(front,-24);
   const edge=tint(front,-38),faceTransform='matrix(.866 .5 0 1 0 0)';
+  const paint=(fill,stroke,width)=>outline?'':` fill="${fill}" stroke="${stroke}" stroke-width="${width}"`;
   let surface,face,studs='';
   if(p.shape==='roof'){
-    surface=`<polygon class="brick-side" points="${points([[x+w/2,y],[x+w/2,y,DEPTH],[x+w,y+h,DEPTH],[x+w,y+h]])}" fill="${top}" stroke="${edge}" stroke-width=".7"/>`;
+    surface=`<polygon class="brick-side" points="${points([[x+w/2,y],[x+w/2,y,DEPTH],[x+w,y+h,DEPTH],[x+w,y+h]])}"${paint(top,edge,.7)}/>`;
     face=`<path d="M${x} ${y+h} ${x+w/2} ${y} ${x+w} ${y+h}Z"/>`;
   }else{
     const inset = p.shape === 'cape' ? 22 : 0;
     const left = x + inset, right = x + w - inset;
     const baseInset = p.shape === 'hull' ? 16 : 0;
-    surface=`<polygon class="brick-top" points="${points([[left,y],[right,y],[right,y,DEPTH],[left,y,DEPTH]])}" fill="${top}" stroke="${edge}" stroke-width=".7"/><polygon class="brick-side" points="${points([[right,y],[right,y,DEPTH],[x+w-baseInset,y+h,DEPTH],[x+w-baseInset,y+h]])}" fill="${side}" stroke="${edge}" stroke-width=".7"/>`;
+    surface=`<polygon class="brick-top" points="${points([[left,y],[right,y],[right,y,DEPTH],[left,y,DEPTH]])}"${paint(top,edge,.7)}/><polygon class="brick-side" points="${points([[right,y],[right,y,DEPTH],[x+w-baseInset,y+h,DEPTH],[x+w-baseInset,y+h]])}"${paint(side,edge,.7)}/>`;
     face=(inset||baseInset)?`<path d="M${left} ${y}H${right}L${x+w-baseInset} ${y+h}H${x+baseInset}Z"/>`:`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2"/>`;
     const columns=Math.max(1,Math.round((right-left)/32));
     studs=Array.from({length:2},(_,row)=>Array.from({length:columns},(_,col)=>{
       const [sx,sy]=project(left+(col+.5)*(right-left)/columns,y,(row+.5)*DEPTH/2);
-      return `<g class="brick-stud"><path d="M${sx-8.5} ${sy-8}v8a8.5 4.8 0 0 0 17 0v-8Z" fill="${front}" stroke="${edge}" stroke-width=".6"/><ellipse cx="${sx}" cy="${sy-8}" rx="8.5" ry="4.8" fill="${top}" stroke="${side}" stroke-width=".8"/><path d="M${sx-5} ${sy-9}q4-2 8 0" fill="none" stroke="white" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/></g>`;
+      return `<g class="brick-stud"><path d="M${sx-8.5} ${sy-8}v8a8.5 4.8 0 0 0 17 0v-8Z"${paint(front,edge,.6)}/><ellipse cx="${sx}" cy="${sy-8}" rx="8.5" ry="4.8"${paint(top,side,.8)}/>${outline?'':`<path d="M${sx-5} ${sy-9}q4-2 8 0" fill="none" stroke="white" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/>`}</g>`;
     }).join('')).join('');
   }
-  return `<g class="brick-piece ${ghost?'unbuilt-piece':''} ${newPiece?'new-brick':''}">${surface}<g class="brick-front" transform="${faceTransform}" fill="${front}" stroke="${edge}" stroke-width=".7">${face}</g><g transform="${faceTransform}">${ghost?'':printOn(p)}</g>${studs}</g>`;
+  const geometry=`${surface}<g class="brick-front" transform="${faceTransform}"${paint(front,edge,.7)}>${face}</g>`;
+  if (outline) return geometry+studs;
+  return `<g class="brick-piece ${ghost?'unbuilt-piece':''} ${newPiece?'new-brick':''}">${geometry}<g transform="${faceTransform}">${ghost?'':printOn(p)}</g>${studs}</g>`;
 }
 export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}) {
   const model=modelById(build?.model);if(!model)return '';
-  const pieces=preview ? model.pieces.length : Math.max(0,Math.min(model.pieces.length,build.pieces));
-  const label=preview ? `Slik blir ${model.name}` : `${model.name}, ${pieces} av ${model.pieces.length} klosser på plass`;
+  const pieces=Math.max(0,Math.min(model.pieces.length,build.pieces));
+  const label=preview ? 'Omrisset av neste bygg' : `${model.name}, ${pieces} av ${model.pieces.length} klosser på plass`;
   const left=Math.min(...model.pieces.map(p=>p.x)),right=Math.max(...model.pieces.map(p=>p.x+p.w)),floor=Math.max(...model.pieces.map(p=>p.y+p.h))+7;
   const bounds=model.pieces.flatMap(p=>[0,DEPTH].flatMap(z=>[[p.x,p.y-14,z],[p.x+p.w,p.y-14,z],[p.x,p.y+p.h,z],[p.x+p.w,p.y+p.h,z]].map(c=>project(...c))));
   bounds.push(project(left-7,floor),project(right+7,floor),project(left-7,floor,DEPTH),project(right+7,floor,DEPTH));
   const minX=Math.min(...bounds.map(p=>p[0]))-12,minY=Math.min(...bounds.map(p=>p[1]))-8,maxX=Math.max(...bounds.map(p=>p[0]))+12,maxY=Math.max(...bounds.map(p=>p[1]))+8;
   const ordered=model.pieces.map((p,i)=>({p,i})).sort((a,b)=>(b.p.y+b.p.h)-(a.p.y+a.p.h)||a.p.x-b.p.x);
-  return `<svg class="brick-figure ${mini?'mini-build':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${label}"`}><g transform="matrix(.866 .5 .866 -.5 0 ${floor})"><ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2+5}" ry="${DEPTH/2+3}" fill="#dce5db"/></g>${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${ordered.filter(x=>x.i<pieces).map(({p,i})=>brick(p,false,animate&&i===pieces-1)).join('')}</svg>`;
+  const svg=`<svg class="brick-figure${mini?' mini-build':''}${preview?' build-outline':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${label}"`}>`;
+  if (preview) {
+    const silhouette=ordered.map(({p})=>brick(p,false,false,true)).join('');
+    // Fill the shapes again to cover the strokes inside the silhouette.
+    return `${svg}<g fill="#edf1e8" stroke="#778f72" stroke-width="5" stroke-linejoin="round">${silhouette}</g><g fill="#edf1e8" stroke="#edf1e8" stroke-width="1.6" stroke-linejoin="round">${silhouette}</g></svg>`;
+  }
+  return `${svg}<g transform="matrix(.866 .5 .866 -.5 0 ${floor})"><ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2+5}" ry="${DEPTH/2+3}" fill="#dce5db"/></g>${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${ordered.filter(x=>x.i<pieces).map(({p,i})=>brick(p,false,animate&&i===pieces-1)).join('')}</svg>`;
 }

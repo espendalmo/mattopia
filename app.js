@@ -5,22 +5,33 @@ import { createUpdater } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
+import { AVATARS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
 let storageWorks = true;
+let profileStore = { activeId:null, profiles:[] };
+let profile = null;
+let storage;
 let state;
-try { state = restoreState(JSON.parse(localStorage.getItem(STORAGE_KEY))); } catch { state = freshState(); }
+try {
+  storage = localStorage;
+  profileStore = readProfiles(storage);
+  profile = profileStore.profiles.find(item => item.id === profileStore.activeId) || null;
+  state = restoreState(profile ? profile.practice : JSON.parse(storage.getItem(STORAGE_KEY)));
+} catch { state = freshState(); }
 if (state.rewardMode === 'bricks') state = selectRewardMode(state, 'bricks');
-let view = 'home';
+let view = profile ? 'home' : 'onboarding';
 let completedReward = null;
 let focusGame = null;
+let testBreakReturn = null;
 let brickDrag = null;
 let ignoredBrickClick = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
 const AWAY_KEY = `${STORAGE_KEY}-away`;
 const WELCOME_AFTER = 15 * 60 * 1000;
+const TEST_BREAK_LINKS = { memory:'#pauselek=kims-lek', build:'#pauselek=klossebygget', floor:'#pauselek=klossegulvet' };
 let celebrateOnRender = false;
 let updateStatus = { ready: false, checking: false, applying: false, message: 'Se etter en nyere versjon når du er på nett.' };
 const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { const saved = save(); if (saved) sounds.stop(); return saved; }, onStatus: next => {
@@ -29,12 +40,19 @@ const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { c
   document.querySelectorAll('[data-update-status]').forEach(el => { el.textContent = next.message; });
   document.querySelectorAll('[data-action="check-update"]').forEach(el => { el.disabled = next.checking || next.applying; });
   document.querySelectorAll('[data-action="apply-update"]').forEach(el => { el.hidden = !next.ready; el.disabled = next.applying; el.textContent = next.applying ? 'Oppdaterer …' : el.closest('.update-banner') ? 'Oppdater' : 'Oppdater nå'; });
-  if (changed && view !== 'round' && !document.querySelector('dialog')) render();
+  if (changed && view !== 'round' && view !== 'onboarding' && !document.querySelector('dialog')) render();
 } });
 
 function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '', retry: false, retryUntil: 0, retryStage: 0 }; }
-function save() {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); storageWorks = true; }
+function save({ select=false, edit=false } = {}) {
+  if (profile) {
+    const result = saveProfile(storage, profileStore, { ...profile, practice:state }, { select, edit, recover:!storageWorks });
+    profileStore = result.store;
+    profile = profileStore.profiles.find(item => item.id === profile.id);
+    storageWorks = result.saved;
+    return storageWorks;
+  }
+  try { storage.setItem(STORAGE_KEY, JSON.stringify(state)); storageWorks = true; }
   catch { storageWorks = false; }
   return storageWorks;
 }
@@ -48,6 +66,7 @@ function icon(name, css = '') {
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/>',
     settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/>',
     sprout: '<path d="M12 20v-9M12 14C5 14 4 9 4 6c6 0 8 3 8 8ZM12 11c0-6 4-8 8-8 0 5-2 8-8 8Z"/>',
+    'brand-friend': '<path d="M11.5 7.6c0-3.6 2.5-5.5 5.5-5.1-.3 2.9-2.1 4.5-5.5 5.1Z" fill="#81c77f" stroke="none"/><path d="M11.3 8c6.1-2.1 8.5 1.4 8.5 6.2 0 4.5-3 7.2-8 7.2s-8-2.5-8-7 2.4-7.6 7.5-6.4Z" fill="#d4edb7" stroke="none"/><ellipse cx="8.8" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><ellipse cx="14.6" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><path d="M10.4 16.3q1.3 1.7 2.6 0" stroke="#203c34" stroke-width="1.05"/><path d="M20.1 3.7l.7 1.9 1.8.7-1.8.6-.7 1.9-.7-1.9-1.8-.6 1.8-.7Z" fill="#f6cd6e" stroke="none"/>',
     star: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L2.9 9.4l6.3-.9Z"/>',
     sound: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     muted: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>',
@@ -60,14 +79,99 @@ function icon(name, css = '') {
 function buddy(happy = false, surprised = false) {
   return `<div class="buddy ${happy ? 'happy' : surprised ? 'surprised' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
-function brand() { return `<div class="brand"><span class="brand-mark">${icon('sprout')}</span><span>tallvenn</span></div>`; }
+function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}</span><span>tallvenn</span></div>`; }
 function betaMark() { return CHANNEL === 'preview' ? `<p class="beta-mark">${icon('flask')}<strong>BETA</strong><span>Testversjon</span></p>` : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
-function header() { return `${betaMark()}<header class="site-header">${brand()}<div class="header-controls">${soundButton()}<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button></div></header>`; }
+function header(showAdult = true, showSound = true) { return `${betaMark()}<header class="site-header">${brand()}<div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button>` : ''}</div></header>`; }
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
 function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { announcer.textContent = text; }); }
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
 function goTop() { window.scrollTo({ top: 0, behavior: 'instant' }); }
+
+function escapeHtml(value) {
+  const escaped = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
+  return value.replace(/[&<>"']/g, character => escaped[character]);
+}
+
+function avatarArt(key) {
+  return `<span class="player-avatar" aria-hidden="true">${AVATARS[key].icon}</span>`;
+}
+
+function gradeOptions(selected) {
+  return `<option value="">Velg senere</option>${GRADES.map(grade => `<option value="${grade}" ${grade === selected ? 'selected' : ''}>${grade}. trinn</option>`).join('')}`;
+}
+
+function profileForm(mode, person = profileDetails()) {
+  const submit = { first:'Kom i gang', new:'Legg til spiller', edit:'Lagre profilen' }[mode];
+  return `<form class="profile-form" data-profile-form="${mode}">
+    <label class="profile-field"><span>Fornavn eller kallenavn</span><input type="text" name="name" maxlength="${NAME_LIMIT}" value="${escapeHtml(person.name)}" autocomplete="off" placeholder="Valgfritt"></label>
+    <label class="profile-field"><span>Klassetrinn</span><select name="grade">${gradeOptions(person.grade)}</select></label>
+    <fieldset class="avatar-options"><legend>Velg en avatar</legend><div>${Object.entries(AVATARS).map(([key, avatar]) => `<label class="avatar-option">
+      <input class="sr-only" type="radio" name="avatar" value="${key}" ${key === person.avatar ? 'checked' : ''}>
+      ${avatarArt(key)}<span class="avatar-name">${avatar.label}</span></label>`).join('')}</div></fieldset>
+    <button type="submit" class="primary">${submit} ${icon('arrow')}</button>
+  </form>`;
+}
+
+function renderOnboarding() {
+  const carry = state.roundsCompleted || state.active;
+  root.innerHTML = `<div class="app-shell">${header(CHANNEL === 'preview', false)}${updateBanner()}<main class="onboarding">
+    <p class="home-eyebrow">Hei fra Tallvenn!</p><h1 tabindex="-1">Hvem skal øve?</h1>
+    <p>${carry ? 'Øvingen du har fra før, følger med denne profilen.' : 'Lag en spiller og velg en figur som kan heie på deg.'}</p>
+    ${profileForm('first')}<p class="adult-note">Profilen lagres på denne enheten.</p>
+    ${!storageWorks ? '<p class="storage-warning">Framgangen kan forsvinne hvis nettleseren blokkerer lagring.</p>' : ''}
+  </main></div>`;
+}
+
+function showProfiles() {
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>Hvem skal øve?</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk profilvalget">${icon('close')}</button></div>
+    <div class="player-list">${profileStore.profiles.map(person => `<button class="player-row" data-action="select-profile" data-profile-id="${person.id}" ${person.id === profile.id ? 'aria-current="true"' : ''}>
+      ${avatarArt(person.avatar)}<span><strong>${escapeHtml(person.name)}</strong>${person.grade ? `<small>${person.grade}. trinn</small>` : ''}</span>
+      ${person.id === profile.id ? '<small class="current-player">Spiller nå</small>' : icon('arrow')}</button>`).join('')}</div>
+    <div class="profile-actions"><button class="secondary" data-action="new-profile">Ny spiller</button><button class="secondary" data-action="edit-profile">Rediger min profil</button></div>`, 'profile-dialog');
+}
+
+function showProfileForm(mode) {
+  const title = mode === 'edit' ? 'Rediger profilen' : 'Ny spiller';
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2><button class="icon-button" data-action="show-profiles" aria-label="Tilbake til spillerne">${icon('close')}</button></div>
+    ${profileForm(mode, mode === 'edit' ? profile : undefined)}`, 'profile-dialog');
+}
+
+function openProfile(person, practice, edit = false) {
+  profile = person;
+  state = restoreState(practice);
+  if (state.rewardMode === 'bricks') state = selectRewardMode(state, 'bricks');
+  save({ select:true, edit });
+  sounds.stop();
+  completedReward = null;
+  focusGame = null;
+  ui = makeUI();
+  view = 'home';
+  closeDialog();
+  render(); goTop(); focusHeading();
+}
+
+function selectProfile(id) {
+  if (id === profile?.id) { closeDialog(); return; }
+  save();
+  const person = profileStore.profiles.find(item => item.id === id);
+  if (person) openProfile(person, person.practice);
+}
+
+function submitProfile(mode, details) {
+  const person = profileDetails(details);
+  if (mode === 'edit' && profile) {
+    profile = { ...profile, ...person, name:person.name || profile.name };
+    save({ edit:true });
+    closeDialog(); render(); focusHeading();
+    return;
+  }
+  if (mode !== (profile ? 'new' : 'first')) return;
+  if (profile) save();
+  const id = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const name = person.name || `Spiller ${profileStore.profiles.length + 1}`;
+  openProfile({ ...person, name, id }, profile ? freshState() : state, true);
+}
 
 function rewardDetails(reward = null) {
   const mode = reward?.mode || state.rewardMode;
@@ -80,7 +184,8 @@ function rewardDetails(reward = null) {
   }
   const build = reward?.build || state.brickBuild;
   const model = modelById(build.model), full = build.pieces === model.pieces.length;
-  return {mode,build,model,full,label:full ? model.done : `Vi bygger ${model.name}!`};
+  const label = full ? model.done : build.pieces ? `Vi bygger ${model.name}!` : 'Neste bygg';
+  return {mode,build,model,full,label};
 }
 function rewardArt(happy = false, reward = null) {
   const info = rewardDetails(reward);
@@ -199,7 +304,8 @@ function renderHome() {
     ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.`
     : `${g.garden.stage} av 5 vekststeg.`;
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
-    ${rewardArt(false, next)}<p class="home-eyebrow">${next ? `Neste bygg · ${g.model.name}` : g.label}</p>
+    ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
+    ${rewardArt(false, next)}<p class="home-eyebrow">${g.label}</p>
     <h1 tabindex="-1">Klar for en<br>liten runde?</h1>
     <p class="home-description">8 oppgaver. I ditt tempo.</p>
     <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Start runden'}${icon('arrow')}</button>
@@ -228,6 +334,30 @@ function openFocusBreak() {
   focusGame ||= createBreakGame(breakKind(state.roundsCompleted));
   view = 'focus-break';
   render(); goTop(); focusHeading();
+}
+
+function syncTestBreak() {
+  const kind = Object.keys(TEST_BREAK_LINKS).find(key => TEST_BREAK_LINKS[key] === window.location.hash);
+  if (!kind && !testBreakReturn) return;
+  const dialog = document.querySelector('dialog');
+  if (dialog) { dialog.close(); dialog.remove(); }
+  if (kind) {
+    testBreakReturn ||= { view, game:focusGame };
+    focusGame = createBreakGame(kind);
+    view = 'focus-break';
+  } else {
+    ({ view, game:focusGame } = testBreakReturn);
+    testBreakReturn = null;
+  }
+  render(); goTop(); focusHeading();
+  if (view === 'round' && ui.retry) showRetry(state.active.tasks[state.active.index]);
+}
+
+function exitTestBreak() {
+  const { pathname, search } = window.location;
+  window.history.replaceState(window.history.state, '', pathname + search);
+  syncTestBreak();
+  if (view !== 'round') adultView();
 }
 
 function breakReadyButton() {
@@ -319,11 +449,12 @@ function breakResult(game) {
   if (kind === 'memory') detail = `<strong>${score} av ${game.study.length} riktig</strong>`;
   if (kind === 'build') detail = retry ? `<strong>${score} av ${game.colors.length} på riktig plass</strong>` : brickBoard(game);
   if (kind === 'floor' && !retry) detail = `<strong>${game.answer} ${game.answer === 1 ? 'kloss' : 'klosser'} fylte de tomme rutene.</strong>${floorBoard(game, true)}`;
+  const continueLabel = testBreakReturn ? testBreakReturn.view === 'round' ? 'Avslutt testen' : 'Til testlenkene' : 'Til oppgavene';
   return {
     title:matched ? praise : retry ? 'Godt forsøk!' : 'Bra at du prøvde!',
-    description:matched ? 'Klar for en runde med tall?' : retry ? invitation : 'Du får en ny pauselek senere.',
+    description:retry ? invitation : testBreakReturn ? 'Du kan prøve en annen pauselek fra testmenyen.' : matched ? 'Klar for en runde med tall?' : 'Du får en ny pauselek senere.',
     content:`<div class="focus-result">${buddy(matched, retry)}${detail}</div>
-      ${retry ? `<button class="primary" data-action="focus-retry">${retryLabel}</button>` : `<button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`}`,
+      ${retry ? `<button class="primary" data-action="focus-retry">${retryLabel}</button>` : `<button class="primary" data-action="focus-continue">${continueLabel} ${icon('arrow')}</button>`}`,
   };
 }
 
@@ -333,10 +464,13 @@ function renderFocusBreak() {
   const { title, description, content } = phase === 'study' || phase === 'guess' ? renderGame(focusGame) : breakResult(focusGame);
   const party = matched && celebrateOnRender ? confetti() : '';
   celebrateOnRender = false;
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="focus-game">
-    <p class="home-eyebrow">Pauselek · ${BREAK_TITLES[kind]}</p>
+  const exit = testBreakReturn
+    ? phase === 'done' ? '' : '<button class="text-button" data-action="test-break-exit">Avslutt testen</button>'
+    : '<button class="text-button" data-action="home">Ferdig for nå</button>';
+  root.innerHTML = `<div class="app-shell">${header(!testBreakReturn)}${updateBanner()}<main class="focus-game">
+    <p class="home-eyebrow">${testBreakReturn ? 'Test av pauselek' : 'Pauselek'} · ${BREAK_TITLES[kind]}</p>
     <h1 tabindex="-1">${title}</h1><p>${description}</p>${content}
-    <button class="text-button" data-action="home">Ferdig for nå</button>
+    ${exit}
   </main></div>${party}`;
 }
 
@@ -360,7 +494,7 @@ function checkFocusBreak() {
   focusGame.matched = result.score === result.total;
   const done = focusGame.matched || focusGame.checks >= BREAK_ATTEMPTS;
   focusGame.phase = done ? 'done' : 'retry';
-  if (done) {
+  if (done && !testBreakReturn) {
     state.focusBreakPending = false;
     save();
   }
@@ -595,7 +729,7 @@ function renderComplete() {
   const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Nytt merke <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
-  const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>${modelById(next.model).name}</strong></div></div>` : '';
+  const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
 }
 
@@ -603,6 +737,7 @@ function render() {
   if (view === 'round') renderRound();
   else if (view === 'complete') renderComplete();
   else if (view === 'focus-break') renderFocusBreak();
+  else if (view === 'onboarding') renderOnboarding();
   else renderHome();
 }
 
@@ -640,9 +775,10 @@ function showDialog(content, css = '', afterOpen) {
   d.innerHTML = content;
   document.body.append(d);
   d.addEventListener('close', () => {
+    if (!d.isConnected) return;
     const wasAdult = Boolean(d.querySelector('#sound-setting'));
     d.remove();
-    if (wasAdult && view !== 'round') { render(); root.querySelector('[data-action="adult"]')?.focus({ preventScroll: true }); }
+    if (wasAdult && view !== 'round' && view !== 'onboarding') { render(); root.querySelector('[data-action="adult"]')?.focus({ preventScroll: true }); }
     else if (lastFocus?.isConnected) lastFocus.focus({ preventScroll: true });
   });
   d.showModal();
@@ -655,15 +791,17 @@ function showPause() {
 
 function markAway() {
   save();
-  try { localStorage.setItem(AWAY_KEY, String(Date.now())); } catch {}
+  const key = profile ? `${AWAY_KEY}-${profile.id}` : AWAY_KEY;
+  try { storage.setItem(key, String(Date.now())); } catch {}
 }
 
 function welcomeBack() {
-  if (document.hidden) return;
+  if (document.hidden || view === 'onboarding') return;
+  const key = profile ? `${AWAY_KEY}-${profile.id}` : AWAY_KEY;
   let away;
   try {
-    away = Number(localStorage.getItem(AWAY_KEY));
-    if (away) localStorage.removeItem(AWAY_KEY);
+    away = Number(storage.getItem(key));
+    if (away) storage.removeItem(key);
   } catch { return; }
   if (!away || Date.now() - away < WELCOME_AFTER) return;
   if (document.querySelector('dialog[open]') || ui.retry || view === 'focus-break') return;
@@ -684,9 +822,22 @@ function adultView() {
   const topics = Object.entries(TOPICS).filter(([key]) => stats[key].total).map(([key, label]) => `<div class="topic-stat"><strong>${label}</strong><span>${stats[key].total} oppgaver · hjelp i ${stats[key].helped}</span></div>`).join('');
   const days = new Set(state.history.map(r => new Date(r.date).toLocaleDateString('nb-NO'))).size;
   const history = recent.length ? recent.map(r => `<div class="history-item"><div>${new Date(r.date).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}<small>${LEVELS[r.level].label}</small></div><div class="history-numbers">${r.firstTry}/8 på første forsøk<small>Hjelp åpnet i ${r.helped} ${r.helped === 1 ? 'oppgave' : 'oppgaver'}</small></div></div>`).join('') : '<p class="history-empty">Her vises de siste rundene når barnet har øvd.</p>';
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title">For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Én runde har åtte oppgaver. Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
+  const testLinks = CHANNEL === 'preview' ? `<nav class="beta-test-links" aria-labelledby="test-links-title">
+    <h3 id="test-links-title">Test pauseleker</h3><p>Prøv en lek direkte, uten å endre øvingsframgangen.</p>
+    <div>${Object.entries(TEST_BREAK_LINKS).map(([kind, href]) => `<a class="secondary" href="${href}">${BREAK_TITLES[kind]}</a>`).join('')}</div></nav>` : '';
+  const playerSettings = profile ? `<section class="adult-profile">
+    <h3>${avatarArt(profile.avatar)}${escapeHtml(profile.name)}</h3>
+    <label class="profile-field"><span>Klassetrinn</span><select id="player-grade" aria-describedby="grade-note">${gradeOptions(profile.grade)}</select></label>
+    <p class="adult-note" id="grade-note">Klassetrinnet lagres i profilen. Du velger øvingsnivå separat nedenfor.</p>
+    <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
+  </section>` : '';
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Én runde har åtte oppgaver. Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
+    ${testLinks}
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
-    <fieldset class="adult-group"><legend>Hva skal dere øve på?</legend>${Object.entries(LEVELS).map(([n, l]) => `<label class="level-option"><input type="radio" name="level" value="${n}" ${state.level === Number(n) ? 'checked' : ''}><span><strong>${l.label}</strong><small>${l.description}</small></span></label>`).join('')}<p class="adult-note">Gjelder fra neste nye runde. Begynn gjerne med tall til 20. Nivået økes når dere velger det sammen.</p></fieldset>
+    ${playerSettings}
+    <fieldset class="adult-group"><legend>Hva skal dere øve på?</legend>${Object.entries(LEVELS).map(([n, l]) => `<label class="level-option"><input type="radio" name="level" value="${n}" ${state.level === Number(n) ? 'checked' : ''}><span><strong>${l.label}</strong><small>${l.description}</small></span></label>`).join('')}
+    <p class="adult-note"><strong>Ganging og deling.</strong> Grunnoppsettet har tre gangeoppgaver, to deleoppgaver, én plussoppgave, én minusoppgave og én oppgave med et manglende tall. Fordelingen kan endres etter hva barnet trenger hjelp med.</p>
+    <p class="adult-note">Valget gjelder fra neste nye runde. Begynn gjerne med tall til 20.</p></fieldset>
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label><p class="adult-note">Én fullført runde gir én ny kloss eller litt plantevekst. Dere kan bytte uten å miste framgangen i noen av delene. En ferdig figur starter et nytt bygg ved neste nye runde.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
@@ -699,10 +850,14 @@ function adultView() {
     <p class="adult-section-title history-title">Siste runder</p>${history}<p class="adult-note">Tallene beskriver øvingen, ikke barnets samlede forståelse. Hjelp kan også åpnes automatisk etter et feil svar. Snakk gjerne om hvordan barnet tenkte.</p>
     <div class="update-section"><p class="adult-section-title">Appversjon ${VERSION}</p><p class="adult-note" data-update-status role="status">${updateStatus.message}</p><div class="update-actions"><button class="secondary" data-action="check-update" ${updateStatus.checking || updateStatus.applying ? 'disabled' : ''}>Se etter oppdatering</button><button class="secondary update-apply" data-action="apply-update" ${updateStatus.ready ? '' : 'hidden'} ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater nå'}</button></div></div>
     <details class="adult-details"><summary>Tips til en god økt</summary><p>La barnet tenke ferdig. Spør av og til «Hvordan fant du det ut?». Bruk gjerne klosser ved siden av. Avslutt når overskuddet er brukt opp; en halv runde kan fortsettes senere.</p><p>Appen gir øving og erstatter ikke lærerens kartlegging eller oppfølging.</p></details>
-    <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Alt lagres bare i denne nettleseren eller den installerte appen på denne enheten. Framgang synkroniseres ikke mellom enheter. Det er ingen konto, sporing eller eksterne ressurser. Safari og en installert app kan ha hver sin framgang.</p></details>
-    <button class="delete-button" data-action="reset">Slett øvingshistorikken</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Tallvenn ${VERSION}</p>`, '', d => {
+    <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
+    <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Tallvenn ${VERSION}</p>`, '', d => {
       d.addEventListener('change', e => {
         if (e.target.name === 'level') { state.level = Number(e.target.value); save(); }
+        if (e.target.id === 'player-grade' && profile) {
+          profile = { ...profile, grade:profileDetails({ grade:e.target.value }).grade };
+          save({ edit:true });
+        }
         if (e.target.name === 'reward-mode') { state = selectRewardMode(state, e.target.value); save(); }
         if (e.target.id === 'sound-setting') { state.sound = e.target.checked; save(); state.sound ? playSuccess() : sounds.stop(); }
         if (e.target.id === 'visual-setting') { state.alwaysShowVisuals = e.target.checked; save(); }
@@ -857,9 +1012,10 @@ document.addEventListener('click', e => {
     render(); goTop(); focusHeading();
   }
   if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'done') {
-    focusGame = null;
-    startRound();
+    if (testBreakReturn) exitTestBreak();
+    else { focusGame = null; startRound(); }
   }
+  if (action === 'test-break-exit' && testBreakReturn) exitTestBreak();
   if (action === 'help' && state.active && !ui.retry) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
   if (action === 'erase') eraseDigit();
@@ -881,11 +1037,22 @@ document.addEventListener('click', e => {
   }
   if (action === 'home') { view = 'home'; render(); goTop(); focusHeading(); }
   if (action === 'adult') adultView();
+  if (action === 'show-profiles' && profile) showProfiles();
+  if (action === 'new-profile' && profile) showProfileForm('new');
+  if (action === 'edit-profile' && profile) showProfileForm('edit');
+  if (action === 'select-profile' && profile) selectProfile(e.target.closest('[data-profile-id]').dataset.profileId);
   if (action === 'close-dialog') closeDialog();
   if (action === 'pause' && !ui.retry) showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
-  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Stjerner, plantevekst, bygg og en påbegynt runde blir slettet på denne enheten.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode, focusBreaks } = state; state = selectRewardMode({ ...freshState(), level, sound, focusBreaks }, rewardMode); completedReward = null; focusGame = null; save(); view = 'home'; render(); focusHeading(); }
+  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode, focusBreaks, alwaysShowVisuals } = state; state = selectRewardMode({ ...freshState(), level, sound, focusBreaks, alwaysShowVisuals }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
+});
+
+document.addEventListener('submit', event => {
+  const form = event.target;
+  if (!form.matches('[data-profile-form]')) return;
+  event.preventDefault();
+  submitProfile(form.dataset.profileForm, Object.fromEntries(new FormData(form)));
 });
 
 document.addEventListener('keydown', e => {
@@ -905,6 +1072,10 @@ document.addEventListener('visibilitychange', () => {
   else { welcomeBack(); if (view !== 'round') updates.check(); }
 });
 render();
+if (CHANNEL === 'preview') {
+  window.addEventListener('hashchange', syncTestBreak);
+  syncTestBreak();
+}
 welcomeBack();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => updates.init());

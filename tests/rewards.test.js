@@ -58,8 +58,12 @@ test('An old finished build reserves a stable preview before giving a brick to t
   assert.equal(s.brickBuild.pieces,5);
   assert.notEqual(next.model,'duck');
   assert.equal(next.pieces,0);
-  assert.match(renderBuildSvg(next,{preview:true}), /Slik blir/);
-  assert.doesNotMatch(renderBuildSvg(next,{preview:true}), /unbuilt-piece/);
+  const outline = renderBuildSvg(next,{preview:true});
+  assert.match(outline, /build-outline/);
+  assert.match(outline, /aria-label="Omrisset av neste bygg"/);
+  assert.ok(!outline.includes(modelById(next.model).name));
+  assert.doesNotMatch(outline, /unbuilt-piece|new-brick|stroke="white"/);
+  assert.deepEqual([...new Set([...outline.matchAll(/fill="([^"]+)"/g)].map(match=>match[1]))], ['#edf1e8']);
   s = restoreState(JSON.parse(JSON.stringify(s)));
   assert.deepEqual(upcomingBuild(s.brickBuild),next);
   const firstBrick=earn(prepareReward(s,()=>.99),'next-1').state;

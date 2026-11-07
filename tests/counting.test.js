@@ -6,6 +6,7 @@ import * as core from '../core.js';
 import * as rewards from '../rewards.js';
 import * as plants from '../plants.js';
 import * as breaks from '../breaks.js';
+import * as profiles from '../profiles.js';
 import {hintFor} from '../learning.js';
 
 test('Counting covers upward and downward transitions within each selected number range', () => {
@@ -59,7 +60,7 @@ test('The task, accessible text, help sequence and feedback all follow the same 
   const source = (await fs.readFile(new URL('../app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const root = {innerHTML:''};
   const context = vm.createContext({
-    ...core, ...rewards, ...plants, ...breaks, hintFor,
+    ...core, ...rewards, ...plants, ...breaks, ...profiles, hintFor,
     document:{querySelector:s => s === '#app' ? root : s === '#announcer' ? {textContent:''} : null, querySelectorAll:() => [], addEventListener(){}},
     localStorage:{getItem:() => null, setItem(){}},
     window:{addEventListener(){}}, navigator:{},

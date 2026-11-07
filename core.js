@@ -1,5 +1,5 @@
 import {restoreRewards} from './rewards.js';
-export const VERSION='1.6.0';
+export const VERSION='1.7.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 export const STORAGE_KEY = CHANNEL === 'preview' ? 'tallvenn-preview-v1' : 'tallvenn-v1';

@@ -1,4 +1,4 @@
-# Tallvenn 1.6.0
+# Tallvenn 1.7.0
 
 En liten norsk matteapp for mobil og iPad. Åtte oppgaver i en rolig runde, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`tallvenn-beta/`** er den ferdige prøvepakken. **`ta
 
 1. Publiser innholdet i `tallvenn-beta/` til en egen GitHub Pages-side, for eksempel fra et eget repository kalt `tallvenn-beta`. Behold dagens produksjonspublisering mens du tester.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Tallvenn Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `tallvenn/` på den vanlige adressen. Først da kan vanlige installasjoner oppdage versjon 1.6.0.
+3. Når du har godkjent testen, publiserer du innholdet i `tallvenn/` på den vanlige adressen. Først da kan vanlige installasjoner oppdage versjon 1.7.0.
 
 For vanlige GitHub Pages-prosjekter kan `/tallvenn/` og `/tallvenn-beta/` ligge ved siden av hverandre. Ligger betaen under en adresse som allerede har Tallvenn 1.4.0 eller eldre, kan en gammel service worker åpne den vanlige appen på betaadressen. Bruk en adresse utenfor den gamle appens område til testen. Bruk HTTPS for å teste installasjon, offline og oppdateringer.
 
@@ -19,19 +19,19 @@ En vanlig offentlig Pages-adresse gir adskilte utrullinger, men er tilgjengelig 
 Fra kildemappen `tallvenn/` kan du bygge nye statiske pakker uten å installere avhengigheter:
 
 ```sh
-node tools/release.mjs preview ../tallvenn-beta-1.6.1 1.6.1
-node tools/release.mjs stable ../tallvenn-utgave-1.6.1 1.6.1
+node tools/release.mjs preview ../tallvenn-beta-1.7.1 1.7.1
+node tools/release.mjs stable ../tallvenn-utgave-1.7.1 1.7.1
 ```
 
 Publiser testpakken på den samme testadressen ved hver ny test. Bruk et høyere nummer enn det som allerede er publisert på den adressen. Da kan du prøve selve oppdateringsknappen. For produksjon skal nummeret også være høyere enn den sist publiserte produksjonsversjonen.
 
-Hvis en test feiler, lar du produksjonspakken ligge. Hvis en feil først oppdages etter publisering, bygg den siste fungerende koden med et **høyere** versjonsnummer og publiser den på produksjonsadressen. Slik kan 1.5.0 gjenbrukes etter at 1.6.0 er publisert.
+Hvis en test feiler, lar du produksjonspakken ligge. Hvis en feil først oppdages etter publisering, bygg den siste fungerende koden med et **høyere** versjonsnummer og publiser den på produksjonsadressen. Slik kan 1.6.1 gjenbrukes etter at 1.7.0 er publisert.
 
 ```sh
-node tools/release.mjs stable ../tallvenn-tilbake-1.6.1 1.6.1 ../utpakket-1.5.0/tallvenn
+node tools/release.mjs stable ../tallvenn-tilbake-1.7.1 1.7.1 ../utpakket-1.6.1/tallvenn
 ```
 
-Behold et Git-merke eller en ZIP av hver godkjente kildeutgave. Erstatt hele den publiserte pakken samlet. Den gamle koden forstår tidligere framgang, men kan miste nye figurer og plantevalg når den lagrer. Bruk en fremoverrettet feilretting hvis den nye utgaven allerede er i bruk og de nye samlingene må bevares. Testdataene berører produksjon først hvis man selv flytter dem.
+Behold et Git-merke eller en ZIP av hver godkjente kildeutgave. Erstatt hele den publiserte pakken samlet. Utgaver før 1.7.0 viser øvingen slik den var før profiler ble innført. Profilene blir tilgjengelige igjen i en utgave som støtter dem. Øving gjort i den eldre utgaven i mellomtiden legges ikke inn i eksisterende profiler.
 
 ## Legg på GitHub Pages
 
@@ -48,6 +48,19 @@ GitHubs veiledning: https://docs.github.com/en/pages/getting-started-with-github
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.7.0
+
+- Første gang kan barnet velge fornavn eller kallenavn, klassetrinn og avatar. Øving fra tidligere versjoner følger med den første profilen.
+- **Bytt spiller** på forsiden åpner spillerlisten. Søsken kan legge til en egen profil med separat framgang, stjerner, samling, øvingsnivå og påbegynt runde.
+- Klassetrinn fra 1. til 10. trinn kan endres i profilen eller under **For voksne**. Øvingsnivå velges separat.
+- Voksenpanelet forklarer hvilke oppgavetyper **Ganging og deling** blander, og hvordan fordelingen kan endre seg.
+
+## Nytt i 1.6.1
+
+- Neste bygg vises som et omriss uten navn på forsiden, i velkomsten og på resultatskjermen.
+- **For voksne → Test pauseleker** i betaen åpner hver lek direkte. Legg til `#pauselek=kims-lek`, `#pauselek=klossebygget` eller `#pauselek=klossegulvet` på slutten av betaadressen for å bokmerke en lek. Testene gir ingen stjerner eller klosser og bruker ikke opp en planlagt pauselek.
+- Et lite eple med en stjerne pryder appnavnet i toppteksten. Ikonet på enhetens hjemskjerm er beholdt.
 
 ## Nytt i 1.6.0
 
@@ -133,7 +146,7 @@ Bruk gjerne noen økter sammen med barnet. Spør hvordan det tenkte, og tilpass 
 
 ## Data og personvern
 
-Framgang lagres i `localStorage` på enheten, uten navn eller personopplysninger. Det er ingen analyseverktøy, annonser, konto, tredjepartsressurser eller synkronisering. Vanlig nettverkslogging hos vertstjenesten styres av vertstjenesten. Hvis nettleseren blokkerer lagring, fungerer oppgavene likevel mens appen er åpen. Voksenvisningen opplyser om dette.
+Framgang, valgfritt navn, avatar og klassetrinn lagres i `localStorage` i nettleseren eller hjemskjermappen. Det er ingen analyseverktøy, annonser, konto, tredjepartsressurser eller synkronisering. Vanlig nettverkslogging hos vertstjenesten styres av vertstjenesten. Hvis nettleseren blokkerer lagring, fungerer oppgavene likevel mens appen er åpen. Voksenvisningen opplyser om dette.
 
 Sletting av nettleserdata sletter også framgangen. Historikken kan slettes i voksenvisningen med bekreftelse. Appen er beregnet på én elev per nettleser/installasjon.
 
@@ -156,7 +169,7 @@ Ved utvikling kan en eldre service worker holde på filene. Fjern registreringen
 
 ## Oppdateringer fra GitHub Pages
 
-**Oppdater til 1.6.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.6.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
+**Oppdater til 1.7.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.7.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
 
 **Hvis iPad åpner en eldre versjon:** Vent til publiseringen på GitHub Pages er ferdig. Åpne appen på nett og velg «Se etter oppdatering». Lukk deretter appen helt fra appveksleren (eller lukk alle Tallvenn-faner hvis du bruker Safari) og åpne den igjen på samme adresse. Dette lukker bare appen; ikke slett den eller nettleserdataene. Kontroller versjonen i voksenvisningen. En installert app og Safari kan ha separat framgang, så prøv i den samme du vanligvis bruker.
 
@@ -164,7 +177,7 @@ Last opp og erstatt appfilene på **samme adresse og sti** som før. Behold `ass
 
 Appen sjekker etter ny service worker ved åpning og kan sjekke igjen når den kommer tilbake fra bakgrunnen utenfor en øvingsrunde. Du kan også velge **For voksne → Se etter oppdatering**. Når en ny, komplett appversjon er lastet ned, vises **Ny versjon klar → Oppdater** på forsiden eller etter runden. Oppgavene blir aldri automatisk avbrutt av en sidelasting. Knappen lagrer framgangen før den laster siden på nytt. Hvis lagring feiler, venter oppdateringen.
 
-**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.6.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
+**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.7.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
 
 Framgang lagres separat fra filcachen og beholdes på samme nettadresse og nettleser/installasjon. Å flytte appen til et annet domene eller en annen enhet gir ikke automatisk synkronisering. En serveroppdatering uten nett kan ikke oppdages før appen får nett igjen.
 
