@@ -239,9 +239,29 @@ function render() {
 }
 
 function playSuccess(final = false) { sounds.play(final ? 'finish' : 'success', state.sound); }
-function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}">${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer">${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0">0</button><button class="submit-number" data-action="submit-number" ${!ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
-function enterDigit(digit) { if (ui.entry.length < 3) ui.entry = ui.entry === '0' ? digit : ui.entry + digit; updateEntry(); }
-function updateEntry() { const output = document.querySelector('#input-value'); if (output) output.textContent = ui.entry || '?'; const submit = document.querySelector('[data-action="submit-number"]'); if (submit) submit.disabled = !ui.entry; }
+function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}">${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${!ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0">0</button><button class="submit-number" data-action="submit-number" ${!ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
+function keyFeedback(key) {
+  sounds.play('key', state.sound);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const button = document.querySelector(key === 'erase' ? '[data-action="erase"]' : `[data-digit="${key}"]`);
+  button?.animate?.([{ transform: 'translateY(2px)', boxShadow: '0 1px 0 #dce5db' }, { transform: 'translateY(0)', boxShadow: '0 3px 0 #dce5db' }], { duration: 120, easing: 'ease-out' });
+  document.querySelector('#input-value')?.animate?.([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 120, easing: 'ease-out' });
+}
+function canEnter() { return view === 'round' && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input'; }
+function enterDigit(digit) {
+  if (!canEnter() || !/^[0-9]$/.test(digit) || ui.entry.length >= 3) return;
+  ui.entry = ui.entry === '0' ? digit : ui.entry + digit;
+  updateEntry(); keyFeedback(digit);
+}
+function eraseDigit() {
+  if (!canEnter() || !ui.entry) return;
+  ui.entry = ui.entry.slice(0, -1); updateEntry(); keyFeedback('erase');
+}
+function updateEntry() {
+  const output = document.querySelector('#input-value'); if (output) output.textContent = ui.entry || '?';
+  const submit = document.querySelector('[data-action="submit-number"]'); if (submit) submit.disabled = !ui.entry;
+  const erase = document.querySelector('[data-action="erase"]'); if (erase) erase.disabled = !ui.entry;
+}
 
 function showDialog(content, css = '', afterOpen) {
   document.querySelector('dialog')?.close(); document.querySelector('dialog')?.remove();
@@ -339,7 +359,7 @@ document.addEventListener('click', e => {
   if (action === 'start' || action === 'again') startRound();
   if (action === 'help' && state.active) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
-  if (action === 'erase') { ui.entry = ui.entry.slice(0, -1); updateEntry(); }
+  if (action === 'erase') eraseDigit();
   if (action === 'submit-number' && ui.entry) submitAnswer(Number(ui.entry));
   if (action === 'check-update') updates.check();
   if (action === 'apply-update') updates.apply();
@@ -367,8 +387,9 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && view === 'round' && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
   if (view === 'round' && !document.querySelector('dialog') && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input') {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) { e.preventDefault(); enterDigit(e.key); }
-    if (e.key === 'Backspace') { e.preventDefault(); ui.entry = ui.entry.slice(0, -1); updateEntry(); }
+    if (e.key === 'Backspace') { e.preventDefault(); eraseDigit(); }
     if (e.key === 'Enter' && ui.entry && !e.target.closest('[data-action="help"], [data-action="sound"], [data-action="pause"]')) { e.preventDefault(); submitAnswer(Number(ui.entry)); }
   }
 });

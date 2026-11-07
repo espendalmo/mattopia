@@ -1,4 +1,4 @@
-# Tallvenn 1.2.2
+# Tallvenn 1.3.0
 
 En liten norsk matteapp for mobil og iPad. Åtte oppgaver i en rolig runde, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -17,6 +17,14 @@ GitHubs veiledning: https://docs.github.com/en/pages/getting-started-with-github
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.3.0
+
+- Svaralternativer og talltaster får ikke lenger grønn hover-farge som kan bli hengende etter berøring. Før et svar er valgt er de tre alternativene hvite. Et riktig svar blir fortsatt grønt. Tastaturfokus beholdes synlig for dem som bruker fysisk tastatur.
+- Svarfeltet i regnestykkene har mer padding og automatisk høyde, også ved tresifrede svar. Luft og innramming beholdes på små skjermer.
+- Talltastaturet har et kort, dempet knepp ved siffer og sletting, sammen med en liten trykkeffekt og bevegelse i tallfeltet. Lyden følger lydinnstillingen og avbryter ikke «prøv igjen»-melodien. Bevegelse slås av ved redusert bevegelse. Slettetasten er inaktiv når feltet er tomt; fysisk tastatur og Enter virker fortsatt.
+- Klossene tegnes isometrisk med tydelig topp, front og side, to rader med knotter og lys/skygge. De tidligere figurene er beholdt.
+- En superhelt med maske, kappe og lynmerke er lagt til. Nå veksler appen mellom **seks figurer**, fortsatt med **fem klosser per figur**. Ett fullført bygg starter et nytt tilfeldig byggeprosjekt ved neste nye runde. Et påbegynt bygg og samlingen beholdes, og superhelten legges til blant de kommende figurene ved oppgradering.
 
 ## Nytt i 1.2.2
 
@@ -92,15 +100,15 @@ Ved utvikling kan en eldre service worker holde på filene. Fjern registreringen
 
 ## Oppdateringer fra GitHub Pages
 
-**Oppdater til 1.2.2:** Erstatt filene med innholdet fra pakken, også `sw.js` og alle JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.2.2**. Eksisterende planteframgang, bygg, stjerner, historikk, lydvalg og påbegynt runde beholdes.
+**Oppdater til 1.3.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.3.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
 
-**Hvis iPad fortsatt åpner en eldre versjon:** Vent til publiseringen på GitHub Pages er ferdig. Åpne appen på nett og velg «Se etter oppdatering». Lukk deretter appen helt fra appveksleren (eller lukk alle Tallvenn-faner hvis du bruker Safari) og åpne den igjen på samme adresse. Dette lukker bare appen; ikke slett den eller nettleserdataene. Kontroller versjonen i voksenvisningen. En installert app og Safari kan ha separat framgang, så prøv i den samme du vanligvis bruker. Den konkrete iPad-feilen må fortsatt bekreftes på enheten.
+**Hvis iPad åpner en eldre versjon:** Vent til publiseringen på GitHub Pages er ferdig. Åpne appen på nett og velg «Se etter oppdatering». Lukk deretter appen helt fra appveksleren (eller lukk alle Tallvenn-faner hvis du bruker Safari) og åpne den igjen på samme adresse. Dette lukker bare appen; ikke slett den eller nettleserdataene. Kontroller versjonen i voksenvisningen. En installert app og Safari kan ha separat framgang, så prøv i den samme du vanligvis bruker.
 
 Last opp og erstatt appfilene på **samme adresse og sti** som før. Behold `assets/` og alle JavaScript-filene, inkludert `learning.js`, `sound.js`, `update.js` og den nye `rewards.js`.
 
 Appen sjekker etter ny service worker ved åpning og kan sjekke igjen når den kommer tilbake fra bakgrunnen utenfor en øvingsrunde. Du kan også velge **For voksne → Se etter oppdatering**. Når en ny, komplett appversjon er lastet ned, vises **Ny versjon klar → Oppdater** på forsiden eller etter runden. Oppgavene blir aldri automatisk avbrutt av en sidelasting. Knappen lagrer framgangen før den laster siden på nytt. Hvis lagring feiler, venter oppdateringen.
 
-**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.2.2** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
+**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.3.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
 
 Framgang lagres separat fra filcachen og beholdes på samme nettadresse og nettleser/installasjon. Å flytte appen til et annet domene eller en annen enhet gir ikke automatisk synkronisering. En serveroppdatering uten nett kan ikke oppdages før appen får nett igjen.
 
@@ -110,7 +118,7 @@ Teknisk bakgrunn: https://developer.mozilla.org/en-US/docs/Web/API/ServiceWorker
 
 ## Filer og lokal kontroll
 
-`index.html` er inngangspunktet. `app.js` er grensesnittet, `core.js` er oppgaver, progresjon og lagring, `learning.js` er hjelpetekstene, `sound.js` er de lokale melodiene, `update.js` håndterer oppdateringsvarsling, og `rewards.js` inneholder de fem klossemodellene, tegningen og den separate belønningsframgangen. `style.css`, manifestet, service workeren og `assets/` følger med.
+`index.html` er inngangspunktet. `app.js` er grensesnittet, `core.js` er oppgaver, progresjon og lagring, `learning.js` er hjelpetekstene, `sound.js` er de lokale melodiene og tastelyden, `update.js` håndterer oppdateringsvarsling, og `rewards.js` inneholder de seks klossemodellene, den isometriske tegningen og den separate belønningsframgangen. `style.css`, manifestet, service workeren og `assets/` følger med.
 
 Ingen bygging eller avhengigheter er nødvendig. For lokal utvikling: `python3 -m http.server 8000`, og åpne http://localhost:8000. For automatiske tester: `node --test tests/*.test.js`.
 
@@ -118,4 +126,4 @@ Ingen bygging eller avhengigheter er nødvendig. For lokal utvikling: `python3 -
 
 Dette er en app for utprøving, med én elev per nettleser/installasjon. Det er ingen skylagring, flere profiler, innlest tale eller tidsbaserte prøver. Appen kan ikke avgjøre om et riktig svar skyldes forståelse eller gjetting.
 
-46 automatiske tester dekker blant annet telling begge veier, plassering av svarfeltet, hjelpetallrekke, hint og skjermlesertekst, de fem byggene, én kloss per runde, tilfeldig rekkefølge, lagring, modusbytte og migrering, samt oppgavegenerator, runder, feil/hjelp, repetisjon, forsiktig nedtrapping av støtte, talltastatur, migrering fra 1.0 og lydav/på. Oppdateringstestene dekker blant annet gammel HTTP-cache, forsinket aktivering, ventende service worker, manglende controllerchange-hendelse, dobbelttrykk, tidsavbrudd og lagring før ny sidelasting. Offlinefiler og cacheprinsipper testes ved både rotadresse og GitHub-prosjektsti. Grensesnittet er tidligere kontrollert i Chrome i mobil- og nettbrettbredder. Safari, lydnivå, installert PWA og den faktiske oppgraderingen på GitHub Pages bør prøves på enheten.
+53 automatiske tester dekker blant annet telling begge veier, plassering av svarfeltet, hjelpetallrekke, hint og skjermlesertekst, de seks byggene, isometriske flater, én kloss per runde, tilfeldig rekkefølge, lagring, modusbytte og migrering, samt oppgavegenerator, runder, feil/hjelp, repetisjon, forsiktig nedtrapping av støtte, talltastatur, nye runder uten gammel markering, tastelyd, redusert bevegelse, migrering fra 1.0 og lydav/på. Oppdateringstestene dekker blant annet gammel HTTP-cache, forsinket aktivering, ventende service worker, manglende controllerchange-hendelse, dobbelttrykk, tidsavbrudd og lagring før ny sidelasting. Offlinefiler og cacheprinsipper testes ved både rotadresse og GitHub-prosjektsti. Figurer, hvite taster og luftige svarfelt er kontrollert i Chrome, inkludert mobil- og nettbrettbredder. Lydnivå, installert PWA og den faktiske oppgraderingen på GitHub Pages bør prøves på enheten.
