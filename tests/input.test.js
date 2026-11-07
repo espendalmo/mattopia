@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import * as core from '../core.js';
 import * as rewards from '../rewards.js';
 import * as plants from '../plants.js';
-import { BREAK_ATTEMPTS, createFocusBreak } from '../breaks.js';
+import * as breaks from '../breaks.js';
 import {hintFor} from '../learning.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
@@ -19,7 +19,7 @@ function harness({sound=true,reduced=false}={}){
   const submit={disabled:true},erase={disabled:true,animate:(...args)=>animations.push(args)};
   const digits=Object.fromEntries(Array.from({length:10},(_,i)=>[i,{animate:(...args)=>animations.push(args)}]));
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
-  const context=vm.createContext({...core,...rewards,...plants,BREAK_ATTEMPTS,createFocusBreak,hintFor,document,navigator:{},window:{addEventListener(){},scrollTo(){}},
+  const context=vm.createContext({...core,...rewards,...plants,...breaks,hintFor,document,navigator:{},window:{addEventListener(){},scrollTo(){}},
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
     requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({play:(...args)=>plays.push(args),unlock(){}}),
@@ -92,11 +92,16 @@ test('A pending memory game can be retried and completed without awarding anothe
   h.run("focusGame.phase='guess'; focusGame.selected=new Set([0,1,2,3]); if ([...focusGame.selected].every(i=>focusGame.study.includes(focusGame.choices[i]))) focusGame.selected=new Set([4,5,6,7]); checkFocusBreak();");
   assert.equal(h.run('focusGame.phase'), 'retry');
   assert.equal(h.run('state.focusBreakPending'), true);
+  assert.match(h.root.innerHTML, /buddy surprised/);
+  assert.doesNotMatch(h.root.innerHTML, /class="confetti"/);
   h.run("focusGame.phase='guess'; focusGame.selected=new Set(focusGame.study.map(item=>focusGame.choices.indexOf(item))); checkFocusBreak();");
   assert.equal(h.run('state.focusBreakPending'), false);
   assert.equal(h.run('state.roundsCompleted'), 3);
   assert.match(h.root.innerHTML, /Til oppgavene/);
-  assert.deepEqual(h.plays,[['memory',true]]);
+  assert.match(h.root.innerHTML, /class="confetti"/);
+  assert.deepEqual(h.plays,[['retry',true],['memory',true]]);
+  h.run('render()');
+  assert.doesNotMatch(h.root.innerHTML, /class="confetti"/);
 });
 
 test('Memory choices toggle without grading and stop after three checks', () => {
@@ -129,7 +134,41 @@ test('Memory choices toggle without grading and stop after three checks', () => 
   assert.equal(h.run('state.focusBreakPending'),false);
   assert.match(h.root.innerHTML,/Til oppgavene/);
   assert.doesNotMatch(h.root.innerHTML,/Se bildene igjen/);
+  assert.deepEqual(h.plays,[['retry',true],['retry',true]]);
+});
+
+test('The scheduled brick game hides colors and checks a complete arrangement together', () => {
+  const h = harness();
+  h.run("state.active=null;state.roundsCompleted=6;state.focusBreakPending=true;startRound();");
+  assert.match(h.root.innerHTML,/Husk klossebygget/);
+  assert.match(h.root.innerHTML,/class="puzzle-brick ".*--brick:/);
+  h.run("focusGame.phase='guess';render();checkFocusBreak();");
+  assert.equal(h.run('focusGame.checks'),0);
+  assert.equal((h.root.innerHTML.match(/class="puzzle-brick puzzle-shadow"/g) || []).length,4);
+  h.run("for (let i=0;i<4;i++) placeBrick(focusGame.colors[(i+1)%4],i);");
+  assert.equal(h.run('focusGame.checks'),0);
   assert.deepEqual(h.plays,[]);
+  h.run("checkFocusBreak();");
+  assert.match(h.root.innerHTML,/0 av 4 på riktig plass/);
+  h.run("retryBreak(focusGame); focusGame.phase='guess'; for (let i=0;i<4;i++) placeBrick(focusGame.colors[i],i); checkFocusBreak();");
+  assert.match(h.root.innerHTML,/Du bygde den!/);
+  assert.match(h.root.innerHTML,/class="confetti"/);
+  assert.equal(h.run('state.roundsCompleted'),6);
+  assert.equal(h.run('state.focusBreakPending'),false);
+});
+
+test('The floor break uses an empty or partially laid grid and respects reduced motion and mute', () => {
+  const h = harness({sound:false,reduced:true});
+  h.run("state.active=null;state.roundsCompleted=9;state.focusBreakPending=true;startRound();");
+  assert.equal(h.run('focusGame.kind'),'floor');
+  assert.match(h.root.innerHTML,/Sjekk svaret/);
+  h.run("focusGame.selected=focusGame.choices.find(n=>n!==focusGame.answer); checkFocusBreak();");
+  assert.match(h.root.innerHTML,/Prøv igjen/);
+  h.run("retryBreak(focusGame); focusGame.selected=focusGame.answer; checkFocusBreak();");
+  assert.match(h.root.innerHTML,/Gulvet er ferdig!/);
+  assert.match(h.root.innerHTML,/floor-new/);
+  assert.doesNotMatch(h.root.innerHTML,/class="confetti"/);
+  assert.deepEqual(h.plays,[['retry',false],['memory',false]]);
 });
 
 test('The welcome appears once after a longer break and leaves a round in place', () => {

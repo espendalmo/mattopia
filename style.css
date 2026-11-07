@@ -186,9 +186,9 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
   line-height: 1;
 }
 dialog h2[tabindex="-1"]:focus { outline: none; }
-.focus-setting { margin-bottom: 22px; }
-.focus-setting .sound-setting { margin-bottom: 0; }
-.focus-setting .adult-note { margin: 0 0 0 34px; line-height: 1.55; }
+.described-setting { margin-bottom: 22px; }
+.described-setting .sound-setting { margin-bottom: 0; }
+.described-setting .adult-note { margin: 0 0 0 34px; line-height: 1.55; }
 .adaptation-note { margin: 0 0 24px; }
 .keypad [data-action="erase"] { padding: 8px 12px; }
 .keypad [data-action="erase"] svg { width: 31px; height: 31px; }
@@ -366,6 +366,140 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .focus-count { color: var(--muted); font-size: .9rem; }
 .focus-game .primary:disabled { opacity: .5; }
 .focus-game .text-button { margin-top: 12px; }
+
+.next-build-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: min(100%, 285px);
+  margin: 0 auto 18px;
+  padding: 9px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--muted);
+  font-size: .81rem;
+  text-align: left;
+}
+.next-build-card .brick-figure { width: 76px; height: 61px; flex: none; }
+.next-build-card strong { display: block; margin-top: 3px; font-size: 1rem; color: var(--ink); }
+
+.brick-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 54px;
+  gap: 4px;
+  width: min(100%, 270px);
+  margin: 15px auto;
+}
+.brick-board > *, .brick-tray button {
+  padding: 7px 3px 3px;
+  border-radius: 10px;
+  background: transparent;
+}
+.brick-board button[data-brick-color], .brick-tray button {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.brick-board button.brick-drop-target { background: #e8defa; outline: 2px dashed #855cb0; }
+.puzzle-brick {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid #203c3450;
+  background: linear-gradient(#fff4 0 21%, transparent 21%) var(--brick);
+  box-shadow: inset 0 -6px #15232138, inset 3px 0 #fff2;
+  color: #fff;
+  font-size: 1.15rem;
+  text-shadow: 0 1px 2px #182924, 0 -1px 2px #182924;
+}
+.puzzle-brick::before {
+  content: '';
+  position: absolute;
+  inset: -6px 6px auto;
+  height: 9px;
+  border-radius: 6px 6px 0 0;
+  background: radial-gradient(ellipse 7px 5px at 50% 75%, #fff6 45%, var(--brick) 61%, transparent 75%) center / 20px 9px repeat-x;
+}
+.puzzle-shadow {
+  --brick: #d8e2d4;
+  border: 2px dashed #a6b8a3;
+  box-shadow: none;
+  background: #eaf0e7;
+}
+.brick-tray {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  width: min(100%, 300px);
+  margin: 0 auto;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.brick-tray button { min-height: 53px; }
+.brick-tray button:disabled { opacity: .22; cursor: default; }
+.brick-tray button[aria-pressed="true"] { background: #eeeafa; box-shadow: 0 0 0 2px #855cb0; }
+.brick-drag {
+  position: fixed;
+  z-index: 20;
+  width: 56px;
+  height: 38px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 5px 4px #203c3460);
+}
+.focus-game .focus-count { margin: 8px 0 12px; }
+.focus-result .brick-board { margin: 0; }
+
+.floor-board {
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  gap: 4px;
+  width: min(100%, calc(var(--columns) * 47px + 24px));
+  margin: 15px auto;
+  padding: 9px;
+  border: 3px solid #a7835b;
+  border-radius: 8px;
+  background: #dcc6a6;
+  box-shadow: 0 4px 0 #99754f;
+}
+.floor-tile {
+  aspect-ratio: 1;
+  border: 2px dashed #b3926a;
+  background: #f8edda;
+}
+.floor-laid, .floor-new {
+  border: 2px solid #44684b;
+  background: linear-gradient(90deg, #ffffff35 0 18%, transparent 18% 76%, #203c341e 76%), #7eab6c;
+  box-shadow: inset 0 -4px #36553b50, inset 0 3px #ffffff55;
+}
+.floor-new { border-color: #4d706c; background-color: #89b6a9; }
+.floor-answers { display: flex; justify-content: center; gap: 9px; margin: 18px 0 12px; }
+.floor-answers button {
+  width: min(28%, 82px);
+  min-height: 54px;
+  padding: 6px;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 0 var(--line);
+  font-size: 1.4rem;
+  font-weight: 750;
+}
+.floor-answers button[aria-pressed="true"] {
+  border-color: #8c86c3;
+  background: #eeeafa;
+  box-shadow: 0 3px 0 #bbb1dc;
+}
+.focus-result .floor-board { margin: 4px auto 8px; }
+
 @media (max-width: 380px) {
   .focus-options button { font-size: .68rem; }
   .group-model .unit-group { grid-template-columns: repeat(3, 11px); gap: 3px; padding: 4px; }

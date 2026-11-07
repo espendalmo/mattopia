@@ -148,7 +148,9 @@ export function restoreBuild(raw) {
   const model=modelById(raw?.model);
   if(!model||!count(raw.pieces)||raw.pieces>model.pieces.length)return null;
   const collection=Array.isArray(raw.collection)?raw.collection.filter(id=>ids.includes(id)).slice(-20):[];
-  const bag=Array.isArray(raw.bag)?[...new Set(raw.bag.filter(id=>ids.includes(id)&&id!==raw.model))]:[];
+  // A queue reserved at the end of a complete set can include the finished model later on.
+  const reserved = raw.pieces === model.pieces.length && raw.bag?.[0] !== raw.model;
+  const bag=Array.isArray(raw.bag)?[...new Set(raw.bag.filter(id=>ids.includes(id)&&(reserved||id!==raw.model)))]:[];
   // Add the new model to an old shuffled set without changing the current build.
   if((raw.catalogVersion || 0)<2&&raw.model!=='superhero'&&!bag.includes('superhero'))bag.push('superhero');
   if ((raw.catalogVersion || 0) < 3) {
@@ -167,7 +169,19 @@ function nextBuild(previous,rng) {
   const model=bag.shift();
   return {model,pieces:0,bag,collection:[...(previous?.collection||[])],unlocked:[...(previous?.unlocked||[])],completed:previous?.completed||0,catalogVersion:CATALOG_VERSION};
 }
-export function ensureBuild(build,rng=Math.random) { return restoreBuild(build)||nextBuild(null,rng); }
+function reserveNextBuild(build, rng) {
+  if (build.pieces !== modelById(build.model).pieces.length || build.bag.length) return build;
+  const next = nextBuild(build, rng);
+  return { ...build, bag:[next.model, ...next.bag] };
+}
+export function ensureBuild(build,rng=Math.random) {
+  const restored = restoreBuild(build);
+  return restored ? reserveNextBuild(restored, rng) : nextBuild(null,rng);
+}
+export function upcomingBuild(build) {
+  if (!build?.bag?.length || build.pieces !== modelById(build.model)?.pieces.length) return null;
+  return {model:build.bag[0],pieces:0};
+}
 function restoreGarden(raw, rounds) {
   const stage = rounds === 0 ? 0 : (rounds - 1) % 5 + 1;
   if (!plantById(raw?.plant) || !count(raw.stage) || raw.stage > 5) {
@@ -230,7 +244,7 @@ export function awardPractice(state,roundId,rng=Math.random) {
   if(build.pieces===model.pieces.length)build=nextBuild(build,rng);
   build={...build,pieces:build.pieces+1};
   const complete=build.pieces===modelById(build.model).pieces.length;
-  if(complete)build={...build,collection:[...build.collection,build.model].slice(-20),unlocked:[...new Set([...build.unlocked,build.model])],completed:build.completed+1};
+  if(complete)build=reserveNextBuild({...build,collection:[...build.collection,build.model].slice(-20),unlocked:[...new Set([...build.unlocked,build.model])],completed:build.completed+1},rng);
   return {state:{...state,brickBuild:build,lastRewardRoundId:roundId},reward:{mode:'bricks',build,complete}};
 }
 
@@ -304,13 +318,14 @@ function brick(p,ghost=false,newPiece=false) {
   }
   return `<g class="brick-piece ${ghost?'unbuilt-piece':''} ${newPiece?'new-brick':''}">${surface}<g class="brick-front" transform="${faceTransform}" fill="${front}" stroke="${edge}" stroke-width=".7">${face}</g><g transform="${faceTransform}">${ghost?'':printOn(p)}</g>${studs}</g>`;
 }
-export function renderBuildSvg(build,{animate=false,mini=false}={}) {
+export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}) {
   const model=modelById(build?.model);if(!model)return '';
-  const pieces=Math.max(0,Math.min(model.pieces.length,build.pieces));
+  const pieces=preview ? model.pieces.length : Math.max(0,Math.min(model.pieces.length,build.pieces));
+  const label=preview ? `Slik blir ${model.name}` : `${model.name}, ${pieces} av ${model.pieces.length} klosser på plass`;
   const left=Math.min(...model.pieces.map(p=>p.x)),right=Math.max(...model.pieces.map(p=>p.x+p.w)),floor=Math.max(...model.pieces.map(p=>p.y+p.h))+7;
   const bounds=model.pieces.flatMap(p=>[0,DEPTH].flatMap(z=>[[p.x,p.y-14,z],[p.x+p.w,p.y-14,z],[p.x,p.y+p.h,z],[p.x+p.w,p.y+p.h,z]].map(c=>project(...c))));
   bounds.push(project(left-7,floor),project(right+7,floor),project(left-7,floor,DEPTH),project(right+7,floor,DEPTH));
   const minX=Math.min(...bounds.map(p=>p[0]))-12,minY=Math.min(...bounds.map(p=>p[1]))-8,maxX=Math.max(...bounds.map(p=>p[0]))+12,maxY=Math.max(...bounds.map(p=>p[1]))+8;
   const ordered=model.pieces.map((p,i)=>({p,i})).sort((a,b)=>(b.p.y+b.p.h)-(a.p.y+a.p.h)||a.p.x-b.p.x);
-  return `<svg class="brick-figure ${mini?'mini-build':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${model.name}, ${pieces} av ${model.pieces.length} klosser på plass"`}><g transform="matrix(.866 .5 .866 -.5 0 ${floor})"><ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2+5}" ry="${DEPTH/2+3}" fill="#dce5db"/></g>${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${ordered.filter(x=>x.i<pieces).map(({p,i})=>brick(p,false,animate&&i===pieces-1)).join('')}</svg>`;
+  return `<svg class="brick-figure ${mini?'mini-build':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${label}"`}><g transform="matrix(.866 .5 .866 -.5 0 ${floor})"><ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2+5}" ry="${DEPTH/2+3}" fill="#dce5db"/></g>${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${ordered.filter(x=>x.i<pieces).map(({p,i})=>brick(p,false,animate&&i===pieces-1)).join('')}</svg>`;
 }

@@ -2,9 +2,9 @@ import { VERSION, CHANNEL, ROUND_LENGTH, STORAGE_KEY, LEVELS, TOPICS, topicOf, t
 import { hintFor } from './learning.js';
 import { createSoundPlayer } from './sound.js';
 import { createUpdater } from './update.js';
-import { modelById, selectRewardMode, prepareReward, awardPractice, renderBuildSvg } from './rewards.js';
+import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
-import { BREAK_ATTEMPTS, createFocusBreak } from './breaks.js';
+import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
@@ -15,6 +15,8 @@ if (state.rewardMode === 'bricks') state = selectRewardMode(state, 'bricks');
 let view = 'home';
 let completedReward = null;
 let focusGame = null;
+let brickDrag = null;
+let ignoredBrickClick = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
 const AWAY_KEY = `${STORAGE_KEY}-away`;
@@ -83,9 +85,18 @@ function rewardDetails(reward = null) {
 function rewardArt(happy = false, reward = null) {
   const info = rewardDetails(reward);
   const art = info.mode === 'bricks'
-    ? renderBuildSvg(info.build, {animate:happy})
+    ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
     : renderPlant(info.garden.plant, info.garden.stage);
   return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}"><div class="garden-friend">${buddy(happy)}</div>${art}</div>`;
+}
+
+function nextBuildReward() {
+  const build = state.rewardMode === 'bricks' && upcomingBuild(state.brickBuild);
+  return build ? { mode:'bricks', build } : null;
+}
+
+function breakButtonLabel() {
+  return breakKind(state.roundsCompleted) === 'memory' ? 'Spill Kims lek' : 'Spill pauseleken';
 }
 
 const BADGES = [
@@ -182,15 +193,16 @@ function confetti() {
 function renderHome() {
   const total = state.roundsCompleted;
   const stars = Array.from({ length: 5 }, (_, i) => icon('star', i < Math.min(total, 5) ? '' : 'empty-star')).join('');
-  const g = rewardDetails();
+  const next = nextBuildReward();
+  const g = rewardDetails(next);
   const shelf = g.mode === 'bricks'
     ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.`
     : `${g.garden.stage} av 5 vekststeg.`;
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
-    ${rewardArt()}<p class="home-eyebrow">${g.label}</p>
+    ${rewardArt(false, next)}<p class="home-eyebrow">${next ? `Neste bygg · ${g.model.name}` : g.label}</p>
     <h1 tabindex="-1">Klar for en<br>liten runde?</h1>
     <p class="home-description">8 oppgaver. I ditt tempo.</p>
-    <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : state.focusBreakPending ? 'Spill Kims lek' : 'Start runden'}${icon('arrow')}</button>
+    <button class="primary" data-action="start">${state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Start runden'}${icon('arrow')}</button>
     <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av 8 oppgaver.` : 'Vi ser, teller og finner ut sammen.'}</p>
     <div class="star-shelf"><p class="shelf-label">Dine små steg</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}</div>
   </main></div>`;
@@ -213,37 +225,119 @@ function startRound() {
 }
 
 function openFocusBreak() {
-  focusGame ||= { ...createFocusBreak(), phase:'study', selected:new Set(), checks:0, score:0 };
+  focusGame ||= createBreakGame(breakKind(state.roundsCompleted));
   view = 'focus-break';
   render(); goTop(); focusHeading();
 }
 
-function renderFocusBreak() {
-  const { phase, study, choices, selected, score, checks } = focusGame;
-  const count = study.length;
-  const matched = score === count;
+function breakReadyButton() {
+  return `<button class="primary" data-action="focus-hide">Jeg er klar ${icon('arrow')}</button>`;
+}
+
+function breakCheckButton(label) {
+  return `<button class="primary" data-action="focus-check" ${scoreBreak(focusGame) ? '' : 'disabled'}>${label}</button>`;
+}
+
+function memoryBreak(game) {
+  const { phase, study, choices, selected, checks } = game;
   const item = ({ icon, label }) => `<span class="focus-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
-  let title, description, content;
-  if (phase === 'study') {
-    title = 'Husk de fire bildene';
-    description = checks ? 'Se godt på bildene en gang til. Ta den tiden du trenger.' : 'Se på bildene så lenge du vil. Gå videre når du er klar.';
-    content = `<ul class="focus-cards" aria-label="Bilder å huske">${study.map(image => `<li>${item(image)}</li>`).join('')}</ul><button class="primary" data-action="focus-hide">Jeg er klar ${icon('arrow')}</button>`;
-  } else if (phase === 'guess') {
-    title = 'Hvilke bilder så du?';
-    description = 'Velg de fire bildene du husker.';
-    content = `<div class="focus-options" role="group" aria-label="Velg fire bilder">${choices.map((image, i) => `<button data-action="focus-answer" data-choice="${i}" aria-pressed="${selected.has(i)}">${item(image)}<span class="focus-check">${icon('check')}</span></button>`).join('')}</div>
-      <p class="focus-count" aria-live="polite">${selected.size} av ${count} valgt</p><button class="primary" data-action="focus-check" ${selected.size !== count ? 'disabled' : ''}>Sjekk svarene</button>`;
-  } else {
-    title = matched ? 'Du husket alle fire!' : phase === 'retry' ? 'Godt forsøk!' : 'Bra at du prøvde!';
-    description = matched ? 'Klar for en runde med tall?' : phase === 'retry' ? 'Vil du se på bildene igjen?' : 'Neste gang får du nye bilder å øve på.';
-    content = `<div class="focus-result">${buddy(matched)}<strong>${score} av ${count} riktig</strong></div>
-      ${phase === 'retry' ? '<button class="primary" data-action="focus-retry">Se bildene igjen</button>' : `<button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`}`;
-  }
-  root.innerHTML = `<div class="app-shell">${header()}<main class="focus-game">
-    <p class="home-eyebrow">Mellomspill · Kims lek</p>
+  if (phase === 'study') return {
+    title:'Husk de fire bildene',
+    description:checks ? 'Se godt på bildene en gang til. Ta den tiden du trenger.' : 'Se på bildene så lenge du vil. Gå videre når du er klar.',
+    content:`<ul class="focus-cards" aria-label="Bilder å huske">${study.map(image => `<li>${item(image)}</li>`).join('')}</ul>${breakReadyButton()}`,
+  };
+  return {
+    title:'Hvilke bilder så du?',
+    description:'Velg de fire bildene du husker.',
+    content:`<div class="focus-options" role="group" aria-label="Velg fire bilder">${choices.map((image, i) => `<button data-action="focus-answer" data-choice="${i}" aria-pressed="${selected.has(i)}">${item(image)}<span class="focus-check">${icon('check')}</span></button>`).join('')}</div>
+      <p class="focus-count" aria-live="polite">${selected.size} av ${study.length} valgt</p>${breakCheckButton('Sjekk svarene')}`,
+  };
+}
+
+function brickTile(color) {
+  const swatch = BRICK_COLORS[color];
+  return `<span class="puzzle-brick ${swatch ? '' : 'puzzle-shadow'}" aria-hidden="true" ${swatch ? `style="--brick:${swatch.color}"` : ''}>${swatch?.mark || ''}</span>`;
+}
+
+function brickBoard(game, interactive = false) {
+  const colors = interactive ? game.placed : game.colors;
+  const slots = game.pattern.slots.map(([row, column, width], i) => {
+    const color = colors[i];
+    const position = `Rad ${row}, plass ${column}`;
+    const label = color ? `${position}: ${BRICK_COLORS[color].label.toLowerCase()} kloss` : `${position}: tom`;
+    const style = `style="grid-row:${row};grid-column:${column} / span ${width}"`;
+    if (!interactive) return `<div ${style}>${brickTile(color)}</div>`;
+    return `<button type="button" data-action="break-slot" data-slot="${i}" ${color ? `data-brick-color="${color}"` : ''} aria-label="${label}" ${style}>${brickTile(color)}</button>`;
+  }).join('');
+  const label = interactive ? 'Plasser klossene' : `${game.pattern.name}. ${game.pattern.slots.map(([row, column], i) => `Rad ${row}, plass ${column}: ${BRICK_COLORS[colors[i]].label.toLowerCase()}`).join('. ')}`;
+  return `<div class="brick-board" role="${interactive ? 'group' : 'img'}" aria-label="${label}">${slots}</div>`;
+}
+
+function buildBreak(game) {
+  if (game.phase === 'study') return {
+    title:'Husk klossebygget',
+    description:'Se hvor fargene er. Ta den tiden du trenger.',
+    content:`${brickBoard(game)}${breakReadyButton()}`,
+  };
+  const placed = game.placed.filter(Boolean).length;
+  return {
+    title:'Hvor skal fargene være?',
+    description:'Dra en kloss til en skygge. Du kan også trykke på klossen og så på plassen.',
+    content:`${brickBoard(game, true)}<div class="brick-tray" role="group" aria-label="Klosser å velge mellom">${game.tray.map(color => {
+      const used = game.placed.includes(color);
+      return `<button type="button" data-action="break-pick" data-brick-color="${color}" aria-label="${BRICK_COLORS[color].label} kloss" aria-pressed="${color === game.picked}" ${used ? 'disabled' : ''}>${brickTile(color)}</button>`;
+    }).join('')}</div>
+      <p class="focus-count" aria-live="polite">${placed} av ${game.colors.length} plassert${game.picked ? ` · ${BRICK_COLORS[game.picked].label} valgt` : ''}</p>${breakCheckButton('Sjekk bygget')}`,
+  };
+}
+
+function floorBoard(game, completed = false) {
+  const { rows, columns, tiles } = game;
+  const labels = Array.from({length:rows}, (_, row) => {
+    const cells = tiles.slice(row * columns, (row + 1) * columns);
+    return `Rad ${row + 1}: ${cells.map(filled => filled ? 'fylt' : 'tom').join(', ')}.`;
+  });
+  const label = completed ? `Ferdig gulv med ${rows * columns} klosser` : `${rows} rader med ${columns} ruter. ${labels.join(' ')}`;
+  return `<div class="floor-board" style="--columns:${columns}" role="img" aria-label="${label}">${tiles.map(filled => `<span class="floor-tile ${filled ? 'floor-laid' : completed ? 'floor-new' : ''}" aria-hidden="true"></span>`).join('')}</div>`;
+}
+
+function floorBreak(game) {
+  return {
+    title:game.tiles.some(Boolean) ? 'Hvor mange klosser mangler?' : 'Hvor mange klosser trenger du?',
+    description:game.checks ? 'Prøv å telle de tomme rutene én rad om gangen.' : 'Legg én kloss i hver tomme rute. Hvor mange trenger du for å gjøre gulvet ferdig?',
+    content:`${floorBoard(game)}<div class="floor-answers" role="group" aria-label="Velg antall klosser">${game.choices.map(n => `<button type="button" data-action="floor-answer" data-choice="${n}" aria-label="${n} klosser" aria-pressed="${game.selected === n}">${n}</button>`).join('')}</div>${breakCheckButton('Sjekk svaret')}`,
+  };
+}
+
+function breakResult(game) {
+  const { kind, matched, phase, score } = game;
+  const retry = phase === 'retry';
+  const retryLabel = { memory:'Se bildene igjen', build:'Se bygget igjen', floor:'Prøv igjen' }[kind];
+  const praise = { memory:'Du husket alle fire!', build:'Du bygde den!', floor:'Gulvet er ferdig!' }[kind];
+  const invitation = { memory:'Vil du se på bildene igjen?', build:'Se på fargene en gang til.', floor:'Se på de tomme rutene en gang til.' }[kind];
+  let detail = '';
+  if (kind === 'memory') detail = `<strong>${score} av ${game.study.length} riktig</strong>`;
+  if (kind === 'build') detail = retry ? `<strong>${score} av ${game.colors.length} på riktig plass</strong>` : brickBoard(game);
+  if (kind === 'floor' && !retry) detail = `<strong>${game.answer} ${game.answer === 1 ? 'kloss' : 'klosser'} fylte de tomme rutene.</strong>${floorBoard(game, true)}`;
+  return {
+    title:matched ? praise : retry ? 'Godt forsøk!' : 'Bra at du prøvde!',
+    description:matched ? 'Klar for en runde med tall?' : retry ? invitation : 'Du får en ny pauselek senere.',
+    content:`<div class="focus-result">${buddy(matched, retry)}${detail}</div>
+      ${retry ? `<button class="primary" data-action="focus-retry">${retryLabel}</button>` : `<button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`}`,
+  };
+}
+
+function renderFocusBreak() {
+  const { kind, phase, matched } = focusGame;
+  const renderGame = { memory:memoryBreak, build:buildBreak, floor:floorBreak }[kind];
+  const { title, description, content } = phase === 'study' || phase === 'guess' ? renderGame(focusGame) : breakResult(focusGame);
+  const party = matched && celebrateOnRender ? confetti() : '';
+  celebrateOnRender = false;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="focus-game">
+    <p class="home-eyebrow">Pauselek · ${BREAK_TITLES[kind]}</p>
     <h1 tabindex="-1">${title}</h1><p>${description}</p>${content}
     <button class="text-button" data-action="home">Ferdig for nå</button>
-  </main></div>`;
+  </main></div>${party}`;
 }
 
 function selectFocusImage(button) {
@@ -259,20 +353,95 @@ function selectFocusImage(button) {
 }
 
 function checkFocusBreak() {
-  const { study, selected, choices } = focusGame;
-  if (selected.size !== study.length) return;
+  const result = scoreBreak(focusGame);
+  if (!result) return;
   focusGame.checks++;
-  focusGame.score = [...selected].filter(i => study.includes(choices[i])).length;
-  const matched = focusGame.score === study.length;
-  const done = matched || focusGame.checks >= BREAK_ATTEMPTS;
+  focusGame.score = result.score;
+  focusGame.matched = result.score === result.total;
+  const done = focusGame.matched || focusGame.checks >= BREAK_ATTEMPTS;
   focusGame.phase = done ? 'done' : 'retry';
   if (done) {
     state.focusBreakPending = false;
     save();
   }
-  if (matched) sounds.play('memory', state.sound);
-  render(); focusHeading();
+  if (focusGame.matched) {
+    celebrateOnRender = true;
+    sounds.play('memory', state.sound);
+  } else if (!done) sounds.play('retry', state.sound);
+  render(); goTop(); focusHeading();
 }
+
+function renderBreakChoice(selector) {
+  render();
+  root.querySelector(selector)?.focus({ preventScroll:true });
+}
+
+function placeBrick(color, slot) {
+  if (placeBreakBrick(focusGame, color, slot)) renderBreakChoice(`[data-slot="${slot}"]`);
+}
+
+function selectBuildSlot(slot) {
+  const { picked, placed } = focusGame;
+  if (picked) placeBrick(picked, slot);
+  else if (placed[slot]) {
+    placed[slot] = null;
+    renderBreakChoice(`[data-slot="${slot}"]`);
+  }
+}
+
+function canBuild() {
+  return view === 'focus-break' && focusGame.kind === 'build' && focusGame.phase === 'guess';
+}
+
+function brickDropTarget(event) {
+  return document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-action="break-slot"]');
+}
+
+document.addEventListener('pointerdown', event => {
+  if (!canBuild() || !event.isPrimary || event.button !== 0) return;
+  ignoredBrickClick = null;
+  const source = event.target.closest('[data-brick-color]:not(:disabled)');
+  if (!source) return;
+  brickDrag = { source, id:event.pointerId, x:event.clientX, y:event.clientY, ghost:null, target:null };
+  source.setPointerCapture(event.pointerId);
+});
+
+document.addEventListener('pointermove', event => {
+  const drag = brickDrag;
+  if (!drag || drag.id !== event.pointerId || !canBuild()) return;
+  if (!drag.ghost) {
+    if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 8) return;
+    drag.ghost = document.createElement('div');
+    drag.ghost.className = 'brick-drag';
+    drag.ghost.setAttribute('aria-hidden', 'true');
+    drag.ghost.innerHTML = brickTile(drag.source.dataset.brickColor);
+    document.body.append(drag.ghost);
+  }
+  drag.ghost.style.left = `${event.clientX}px`;
+  drag.ghost.style.top = `${event.clientY}px`;
+  const target = brickDropTarget(event);
+  if (target !== drag.target) {
+    drag.target?.classList.remove('brick-drop-target');
+    target?.classList.add('brick-drop-target');
+    drag.target = target;
+  }
+});
+
+function endBrickDrag(event) {
+  const drag = brickDrag;
+  if (!drag || drag.id !== event.pointerId) return;
+  brickDrag = null;
+  if (!drag.ghost) return;
+  drag.ghost.remove();
+  drag.target?.classList.remove('brick-drop-target');
+  ignoredBrickClick = drag.source;
+  if (event.type !== 'pointerup' || !canBuild()) return;
+  const target = brickDropTarget(event);
+  if (target) placeBrick(drag.source.dataset.brickColor, Number(target.dataset.slot));
+}
+document.addEventListener('pointerup', endBrickDrag);
+document.addEventListener('pointercancel', endBrickDrag);
+document.addEventListener('lostpointercapture', endBrickDrag);
 
 function taskTitle(t) {
   if (t.type === 'remove' || t.type === 'subtract') return `Ta bort ${t.b}`;
@@ -425,7 +594,9 @@ function renderComplete() {
   const party = celebrateOnRender ? confetti() : ''; celebrateOnRender = false;
   const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Nytt merke <strong>${newBadge.name}</strong></span></div>` : '';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? 'Spill Kims lek' : 'En runde til'}</button></main></div>${party}`;
+  const next = g.mode === 'bricks' && upcomingBuild(g.build);
+  const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>${modelById(next.model).name}</strong></div></div>` : '';
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}<span class="earned-star" aria-label="${g.mode === 'bricks' ? 'En ny kloss' : 'En ny stjerne'}">${icon(g.mode === 'bricks' ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">Du klarte runden!</h1><p>${message}</p><div class="completion-steps" aria-label="8 oppgaver fullført">${Array.from({ length: 8 }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="home">Ferdig for nå${icon('check')}</button><button class="text-button" data-action="again">${state.focusBreakPending ? breakButtonLabel() : 'En runde til'}</button></main></div>${party}`;
 }
 
 function render() {
@@ -496,13 +667,15 @@ function welcomeBack() {
   } catch { return; }
   if (!away || Date.now() - away < WELCOME_AFTER) return;
   if (document.querySelector('dialog[open]') || ui.retry || view === 'focus-break') return;
-  const g = rewardDetails();
+  const next = nextBuildReward();
+  const g = rewardDetails(next);
   const note = state.active
     ? 'Vi kan fortsette der du slapp.'
-    : g.full ? g.mode === 'bricks' ? 'Neste runde starter et nytt bygg!' : 'Neste runde får du et nytt frø!'
+    : next ? 'Én runde gir deg den første klossen.'
+    : g.full ? 'Neste runde får du et nytt frø!'
     : g.mode === 'bricks' ? 'Én runde gir deg neste kloss.' : 'Én runde gir planten litt mer vekst.';
-  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? 'Spill Kims lek' : 'Ta en runde';
-  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt()}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog');
+  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
+  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt(false, next)}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog');
 }
 
 function adultView() {
@@ -516,10 +689,11 @@ function adultView() {
     <fieldset class="adult-group"><legend>Hva skal dere øve på?</legend>${Object.entries(LEVELS).map(([n, l]) => `<label class="level-option"><input type="radio" name="level" value="${n}" ${state.level === Number(n) ? 'checked' : ''}><span><strong>${l.label}</strong><small>${l.description}</small></span></label>`).join('')}<p class="adult-note">Gjelder fra neste nye runde. Begynn gjerne med tall til 20. Nivået økes når dere velger det sammen.</p></fieldset>
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label><p class="adult-note">Én fullført runde gir én ny kloss eller litt plantevekst. Dere kan bytte uten å miste framgangen i noen av delene. En ferdig figur starter et nytt bygg ved neste nye runde.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
-    <label class="sound-setting"><input type="checkbox" id="visual-setting" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
-    <div class="focus-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Kims lek mellom øvingsrundene</label>
-    <p class="adult-note" id="focus-break-note">En kort huskelek etter hver tredje runde. Barnet får se på fire bilder i sitt eget tempo.</p></div>
-    <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan figurene bli valgfrie. Senere kan én eller to oppgaver få talltastatur. «Vis meg» er alltid tilgjengelig.</p>
+    <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
+    <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Vis meg».</p></div>
+    <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
+    <p class="adult-note" id="focus-break-note">En kort lek etter hver tredje runde. Appen veksler mellom Kims lek, klossebygging etter hukommelsen og å telle klosser til et gulv.</p></div>
+    <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan én eller to oppgaver få talltastatur.</p>
     <div class="adult-stats"><div class="stat"><strong>${state.roundsCompleted}</strong><span>fullførte runder</span></div><div class="stat"><strong>${days}</strong><span>${days === 1 ? 'øvingsdag' : 'øvingsdager'} i siste historikk</span></div></div>
     <p class="adult-section-title">Øvd på · ${LEVELS[state.level].label}</p>${topics || '<p class="history-empty">Emnene vises når dere har fullført noen oppgaver.</p>'}<p class="adult-note">Siste tolv runder på valgt nivå. En oppgavetype er ikke nødvendigvis mestret selv om svaret er riktig.</p>
     <p class="adult-section-title history-title">Siste runder</p>${history}<p class="adult-note">Tallene beskriver øvingen, ikke barnets samlede forståelse. Hjelp kan også åpnes automatisk etter et feil svar. Snakk gjerne om hvordan barnet tenkte.</p>
@@ -618,6 +792,7 @@ function retryAnswer() {
 }
 
 document.addEventListener('click', e => {
+  if (e.detail && ignoredBrickClick?.contains(e.target)) { ignoredBrickClick = null; return; }
   const answer = e.target.closest('[data-answer]');
   if (answer && view === 'round' && !answer.disabled) { submitAnswer(Number(answer.dataset.answer)); return; }
   const digit = e.target.closest('[data-digit]');
@@ -661,10 +836,24 @@ document.addEventListener('click', e => {
     render(); focusHeading();
   }
   if (action === 'focus-answer' && view === 'focus-break' && focusGame.phase === 'guess') selectFocusImage(e.target.closest('[data-action="focus-answer"]'));
+  if (action === 'break-pick' && canBuild()) {
+    const { brickColor } = e.target.closest('[data-brick-color]').dataset;
+    if (!focusGame.placed.includes(brickColor)) {
+      focusGame.picked = focusGame.picked === brickColor ? null : brickColor;
+      renderBreakChoice(`[data-action="break-pick"][data-brick-color="${brickColor}"]`);
+    }
+  }
+  if (action === 'break-slot' && canBuild()) selectBuildSlot(Number(e.target.closest('[data-slot]').dataset.slot));
+  if (action === 'floor-answer' && view === 'focus-break' && focusGame.kind === 'floor' && focusGame.phase === 'guess') {
+    const n = Number(e.target.closest('[data-choice]').dataset.choice);
+    if (focusGame.choices.includes(n)) {
+      focusGame.selected = n;
+      renderBreakChoice(`[data-action="floor-answer"][data-choice="${n}"]`);
+    }
+  }
   if (action === 'focus-check' && view === 'focus-break' && focusGame.phase === 'guess') checkFocusBreak();
   if (action === 'focus-retry' && view === 'focus-break' && focusGame.phase === 'retry') {
-    focusGame.selected.clear();
-    focusGame.phase = 'study';
+    retryBreak(focusGame);
     render(); goTop(); focusHeading();
   }
   if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'done') {
@@ -684,7 +873,7 @@ document.addEventListener('click', e => {
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
         const awarded = awardPractice(state, summary.id); state = awarded.state; completedReward = awarded.reward;
-        state.focusBreakPending = state.focusBreaks && state.roundsCompleted % 3 === 0;
+        state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
       state.active = null; view = 'complete'; celebrateOnRender = true; playSuccess(true);
     }

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {freshState,restoreState,createRound} from '../core.js';
-import {BUILD_MODELS,modelById,selectRewardMode,prepareReward,awardPractice,restoreBuild,renderBuildSvg} from '../rewards.js';
+import {BUILD_MODELS,modelById,selectRewardMode,prepareReward,awardPractice,restoreBuild,upcomingBuild,renderBuildSvg} from '../rewards.js';
 const rng=()=>.41;
 function earn(state,id){state={...state,roundsCompleted:state.roundsCompleted+1};return awardPractice(state,id,rng);}
 
@@ -40,12 +40,32 @@ test('Mode switching pauses both projects independently and preserves the select
   s=restoreState(JSON.parse(JSON.stringify(s)));assert.equal(s.rewardMode,'bricks');assert.equal(s.brickBuild.model,chosen);assert.equal(s.brickBuild.pieces,1);assert.equal(s.plantRounds,2);assert.equal(s.roundsCompleted,3);
 });
 test('All figures appear before a shuffled set repeats, and neighbouring sets do not repeat immediately',()=>{
-  let s=selectRewardMode(freshState(),'bricks',rng),last=null;const firstSet=[];
+  let s=selectRewardMode(freshState(),'bricks',rng),last=null;const sets=[[],[]];
   for(let model=0;model<36;model++){
-    s=prepareReward(s,rng);assert.notEqual(s.brickBuild.model,last);if(model<18)firstSet.push(s.brickBuild.model);last=s.brickBuild.model;
+    const preview=upcomingBuild(s.brickBuild);
+    s=restoreState(JSON.parse(JSON.stringify(s)));
+    s=prepareReward(s,rng);assert.notEqual(s.brickBuild.model,last);sets[Math.floor(model/18)].push(s.brickBuild.model);last=s.brickBuild.model;
+    if (preview) assert.equal(s.brickBuild.model, preview.model);
     for(let part=0;part<5;part++)s=earn(s,`${model}-${part}`).state;
   }
-  assert.equal(new Set(firstSet).size,18);assert.equal(s.brickBuild.completed,36);assert.equal(s.brickBuild.unlocked.length,18);
+  assert.ok(sets.every(set => new Set(set).size===18));assert.equal(s.brickBuild.completed,36);assert.equal(s.brickBuild.unlocked.length,18);
+});
+
+test('An old finished build reserves a stable preview before giving a brick to the next model', () => {
+  const old = {model:'duck',pieces:5,bag:[],collection:['duck'],completed:1,catalogVersion:3};
+  let s = selectRewardMode({...freshState(),brickBuild:old},'bricks',rng);
+  const next = upcomingBuild(s.brickBuild);
+  assert.equal(s.brickBuild.pieces,5);
+  assert.notEqual(next.model,'duck');
+  assert.equal(next.pieces,0);
+  assert.match(renderBuildSvg(next,{preview:true}), /Slik blir/);
+  assert.doesNotMatch(renderBuildSvg(next,{preview:true}), /unbuilt-piece/);
+  s = restoreState(JSON.parse(JSON.stringify(s)));
+  assert.deepEqual(upcomingBuild(s.brickBuild),next);
+  const firstBrick=earn(prepareReward(s,()=>.99),'next-1').state;
+  assert.equal(firstBrick.brickBuild.model,next.model);
+  assert.equal(firstBrick.brickBuild.pieces,1);
+  assert.deepEqual(firstBrick.brickBuild.collection,['duck']);
 });
 
 test('An existing build gains the new models without losing pieces or collection',()=>{
