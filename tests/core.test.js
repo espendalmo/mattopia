@@ -1,23 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRound, answerRound, advanceRound, noteHelp, roundSummary, restoreState, freshState } from '../core.js';
+import { LEVELS, createRound, answerRound, advanceRound, noteHelp, roundSummary, restoreState, freshState } from '../core.js';
 
-test('All three levels generate bounded, mathematically correct rounds with unique choices', () => {
-  for (const level of [1, 2, 3]) {
+test('All levels generate bounded, mathematically correct rounds with unique choices', () => {
+  const answers = {
+    ten:t => 10 - t.a, place:t => t.n, count:t => t.n + Math.sign(t.answer - t.n),
+    add:t => t.a + t.b, shift:t => t.n + t.b, subtract:t => t.n - t.b, remove:t => t.n - t.b,
+    missing:t => t.n - t.a, multiply:t => t.a * t.b, divide:t => t.n / t.b,
+  };
+  for (const level of Object.keys(LEVELS)) {
     for (let seed = 0; seed < 1200; seed++) {
       const r = createRound(level, seed);
       assert.equal(r.tasks.length, 8);
       for (const t of r.tasks) {
-        const expected = t.type === 'ten' ? 10 - t.a : t.type === 'place' ? t.n : t.type === 'count' ? t.n + (t.answer < t.n ? -1 : 1) : t.type === 'add' ? t.a + t.b : t.type === 'shift' ? t.n + t.b : t.n - t.b;
+        const expected = answers[t.type](t);
         assert.equal(t.answer, expected);
         assert.equal(t.choices.length, 3);
         assert.equal(new Set(t.choices).size, 3);
         assert.ok(t.choices.includes(expected));
-        assert.ok(t.choices.every(c => c >= 0 && c <= (level === 1 ? 20 : level === 2 ? 100 : 999)));
+        assert.ok(t.choices.every(c => c >= 0 && c <= LEVELS[level].max));
         if (t.type === 'remove') assert.equal(t.answer % 10, 0);
       }
     }
   }
+});
+
+test('Mixed arithmetic crosses tens in both directions and includes differences such as 39 minus 7', () => {
+  for (const level of [1, 2, 3]) {
+    const tasks = Array.from({length:5000}, (_, seed) => createRound(level, seed).tasks).flat();
+    const minus = tasks.filter(t => t.type === 'subtract');
+    assert.ok(minus.some(t => t.b > t.n % 10));
+    assert.ok(minus.some(t => t.b < t.n % 10));
+    assert.ok(minus.some(t => t.b === t.n % 10));
+    const plus = tasks.filter(t => t.type === 'add');
+    assert.ok(plus.some(t => t.a % 10 + t.b > 10));
+    assert.ok(plus.some(t => t.a % 10 + t.b < 10));
+    if (level === 2) assert.ok(minus.some(t => t.n === 39 && t.b === 7 && t.answer === 32));
+    assert.ok(tasks.some(t => t.type === 'missing'));
+    assert.ok(tasks.every(t => t.type !== 'multiply' && t.type !== 'divide'));
+  }
+  const state = { ...freshState(), level:4, active:createRound(4, 12) };
+  assert.deepEqual(restoreState(JSON.parse(JSON.stringify(state))), state);
 });
 
 test('First session introduces 17 minus 7 and remains reproducible', () => {

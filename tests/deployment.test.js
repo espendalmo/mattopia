@@ -66,6 +66,13 @@ test('A cache update preserves other apps on the same GitHub Pages origin', asyn
   assert.ok(h.stores.has('tallvenn:/another-app/:0.9.0'));
 });
 
+test('The root app never serves its offline index to a beta page in a subdirectory', async () => {
+  const h = harness('https://example.github.io/');
+  await h.lifecycle('install');
+  await assert.rejects(h.request('tallvenn-beta/', 'navigate'), /Offline/);
+  assert.ok((await h.request('index.html?from=home', 'navigate')).bytes.length > 0);
+});
+
 test('Manifest is portable and all icon declarations resolve to real files', async () => {
   const m = JSON.parse(await fs.readFile(new URL('manifest.webmanifest', root), 'utf8'));
   assert.equal(m.start_url, './');

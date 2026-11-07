@@ -40,12 +40,12 @@ async function makeRelease() {
   const namedWorker = replaceRequired(worker, /const VERSION\s*=\s*'[^']+'/, `const VERSION = '${version}'`, 'sw.js');
   const preview = channel === 'preview';
   if (preview) {
-    manifest.name = 'Tallvenn Test';
-    manifest.short_name = 'Tallvenn Test';
+    manifest.name = 'Tallvenn Beta';
+    manifest.short_name = 'Tallvenn Beta';
   }
   const namedHtml = preview
-    ? html.replace('<head>', '<head>\n  <meta name="robots" content="noindex">')
-          .replace('<title>Tallvenn', '<title>Tallvenn Test')
+    ? html.replace('<head>', '<head>\n  <meta name="robots" content="noindex">\n  <meta name="apple-mobile-web-app-title" content="Tallvenn Beta">')
+          .replace('<title>Tallvenn', '<title>Tallvenn Beta')
     : html;
 
   const files = await readdir(source, { withFileTypes:true });

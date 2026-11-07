@@ -5,7 +5,7 @@ import {createUpdater} from '../update.js';
 
 test('Sound off creates no audio context; rapid new feedback replaces previous notes',async()=>{
   let created=0,stopped=0,started=0;
-  const context={currentTime:0,resume:()=>Promise.resolve(),destination:{},createOscillator:()=>({frequency:{setValueAtTime(){}},connect(){},disconnect(){},start(){started++;},stop(){stopped++;}}),createGain:()=>({gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}})};
+  const context={currentTime:0,resume:()=>Promise.resolve(),destination:{},createOscillator:()=>({frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){started++;},stop(){stopped++;}}),createGain:()=>({gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}})};
   const p=createSoundPlayer(()=>{created++;return context;});p.play('success',false);assert.equal(created,0);
   p.play('success');await Promise.resolve();assert.equal(started,SOUND_PATTERNS.success.length);const previous=stopped;
   p.play('retry');await Promise.resolve();assert.ok(stopped>previous);assert.equal(started,SOUND_PATTERNS.success.length+SOUND_PATTERNS.retry.length);p.stop();
@@ -13,11 +13,11 @@ test('Sound off creates no audio context; rapid new feedback replaces previous n
 test('The encouraging retry melody and completion fanfare are distinct and bounded',()=>{
   assert.notDeepEqual(SOUND_PATTERNS.success,SOUND_PATTERNS.retry);
   for(const notes of Object.values(SOUND_PATTERNS))for(const[midi,start,duration,gain]of notes){assert.ok(midi>=48&&midi<=96);assert.ok(start>=0&&duration>0&&start+duration<2);assert.ok(gain>0&&gain<=.08);}
-  assert.ok(SOUND_PATTERNS.retry.at(-1)[0]>SOUND_PATTERNS.retry[1][0]);
+  assert.ok(SOUND_PATTERNS.retry.at(-1)[4]>SOUND_PATTERNS.retry.at(-1)[0]);
 });
 test('Key clicks are short and quiet, respect mute, and do not cut off an encouraging melody',async()=>{
   let created=0,stopped=0,started=0;
-  const context={currentTime:0,resume:()=>Promise.resolve(),destination:{},createOscillator:()=>({frequency:{setValueAtTime(){}},connect(){},disconnect(){},start(){started++;},stop(){stopped++;}}),createGain:()=>({gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}})};
+  const context={currentTime:0,resume:()=>Promise.resolve(),destination:{},createOscillator:()=>({frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){started++;},stop(){stopped++;}}),createGain:()=>({gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}})};
   const p=createSoundPlayer(()=>{created++;return context;});
   p.play('key',false);assert.equal(created,0);
   p.play('retry');await Promise.resolve();const previous=stopped;

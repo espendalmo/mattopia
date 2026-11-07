@@ -1,5 +1,7 @@
-const PREFIX = `tallvenn:${new URL('./', self.location.href).pathname}:`;
-const VERSION = '1.4.0';
+const SCOPE = new URL('./', self.location.href);
+const INDEX = new URL('index.html', SCOPE);
+const PREFIX = `tallvenn:${SCOPE.pathname}:`;
+const VERSION = '1.5.0';
 const CACHE = `${PREFIX}${VERSION}`;
 const ASSETS = ['./', './index.html', './style.css', './app.js', './core.js', './learning.js', './sound.js', './update.js', './rewards.js', './plants.js', './breaks.js', './manifest.webmanifest', './assets/icon.svg', './assets/apple-touch-icon.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png'];
 let activationReady = Promise.resolve();
@@ -31,11 +33,11 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin || !url.pathname.startsWith(new URL('./', self.location.href).pathname)) return;
+  if (url.origin !== SCOPE.origin || !url.pathname.startsWith(SCOPE.pathname)) return;
   event.respondWith(caches.open(CACHE).then(async cache => {
     const cached = await cache.match(event.request);
     if (cached) return cached;
-    if (event.request.mode === 'navigate') return cache.match('./index.html');
+    if (event.request.mode === 'navigate' && (url.pathname === SCOPE.pathname || url.pathname === INDEX.pathname)) return cache.match(INDEX.href);
     return fetch(event.request);
   }));
 });

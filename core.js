@@ -1,13 +1,21 @@
 import {restoreRewards} from './rewards.js';
-export const VERSION='1.4.0';
+export const VERSION='1.5.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 export const STORAGE_KEY = CHANNEL === 'preview' ? 'tallvenn-preview-v1' : 'tallvenn-v1';
-export const LEVELS={1:{label:'Tall til 20',description:'Små tall, tiervenner, pluss og minus.'},2:{label:'Tall til 100',description:'Tiere, enere og overganger mellom tiere.'},3:{label:'Tall til 999',description:'Hundrere, tiere, enere og tall med null.'}};
-export const TOPICS={place:'Tall og plassverdi',ten:'Tiervenner',count:'Tallrekka',add:'Pluss',subtract:'Minus'};
-const POOLS={1:['remove','ten','count','add','place','subtract'],2:['remove','ten','count','place','shift','add'],3:['place','ten','count','shift','remove']};
-const PATTERNS={1:['remove','ten','count','add','place','ten','subtract','add'],2:['remove','ten','count','place','shift','add','shift','count'],3:['place','ten','count','shift','remove','place','shift','count']};
-const validLevel=x=>[1,2,3].includes(Number(x));
+export const LEVELS = {
+  1:{label:'Tall til 20', description:'Tiervenner, pluss, minus og tall som mangler.', max:20,
+    pattern:['remove','ten','count','add','place','ten','subtract','missing']},
+  2:{label:'Tall til 100', description:'Tiere, enere og regning med tierovergang.', max:100,
+    pattern:['remove','ten','count','place','shift','add','subtract','missing']},
+  3:{label:'Tall til 999', description:'Hundrere, tiere og enere, med pluss og minus.', max:999,
+    pattern:['place','ten','count','shift','remove','add','subtract','missing']},
+  4:{label:'Ganging og deling', description:'Små tall og brikker i like store grupper.', max:100,
+    pattern:['add','subtract','multiply','divide','multiply','divide','missing','multiply']},
+};
+export const TOPICS={place:'Tall og plassverdi',ten:'Tiervenner',count:'Tallrekka',add:'Pluss',subtract:'Minus',missing:'Tall som mangler',multiply:'Ganging',divide:'Deling'};
+const taskTypes = new Set(Object.values(LEVELS).flatMap(level => level.pattern));
+const validLevel = x => Object.hasOwn(LEVELS, Number(x));
 export const topicOf=t=>['place','remove','shift'].includes(typeof t==='string'?t:t.type)?'place':(typeof t==='string'?t:t.type);
 export const countStep=t=>t.answer<t.n?-1:1;
 export const factKey=t=>[t.type,t.n??'',t.a??'',t.b??'',...(t.type==='count'?[t.answer]:[])].join(':');
@@ -32,6 +40,7 @@ function supportFor(type,stats,always){
 }
 function generateTask(type,level,rng,index,first=false){
   const int=(a,b)=>a+Math.floor(rng()*(b-a+1)),pick=a=>a[int(0,a.length-1)];let n,a,b,answer;
+  const {max} = LEVELS[level];
   if(type==='remove'){n=level===1?first&&index===0?17:int(11,19):level===2?int(2,9)*10+int(1,9):int(1,9)*100+int(0,9)*10+int(1,9);b=n%10;answer=n-b;}
   else if(type==='ten'){a=int(3,9);answer=10-a;}
   else if(type==='count'){
@@ -41,17 +50,43 @@ function generateTask(type,level,rng,index,first=false){
     else n=step>0?int(1,9)*100-1:int(1,9)*100;
     answer=n+step;
   }
-  else if(type==='place'){n=level===1?int(11,19):level===2?int(2,9)*10+int(0,9):index%2?int(1,9)*100+int(1,9):int(1,9)*100+int(1,9)*10+int(0,9);answer=n;}
+  else if(type==='place'){n=level===1?int(11,19):level===2?int(2,9)*10+int(0,9):rng()<.5?int(1,9)*100+int(1,9):int(1,9)*100+int(1,9)*10+int(0,9);answer=n;}
   else if(type==='shift'){n=level===2?int(2,8)*10+int(0,9):int(2,7)*100+int(0,9)*10+int(0,9);b=level===3&&index%2===0?pick([-100,100]):pick([-10,10]);answer=n+b;}
-  else if(type==='subtract'){n=int(11,18);b=int(1,Math.min(5,n-10));answer=n-b;}
-  else{a=int(5,9);b=index===3?int(1,10-a):int(11-a,8);answer=a+b;}
-  const max=level===1?20:level===2?100:999,choices=[answer];
+  else if (type === 'subtract') {
+    const crosses = rng() < .5;
+    const ones = int(1, crosses ? 8 : 9);
+    n = int(1, Math.floor((max - 1) / 10)) * 10 + ones;
+    b = crosses ? int(ones + 1, 9) : int(1, ones);
+    answer = n - b;
+  } else if (type === 'missing') {
+    a = int(3, max - 9);
+    answer = int(1, 9);
+    n = a + answer;
+  } else if (type === 'multiply' || type === 'divide') {
+    a = int(2, 4);
+    b = int(2, 6);
+    if (type === 'multiply') answer = a * b;
+    else { n = a * b; answer = b; b = a; a = undefined; }
+  } else if (max === 20) {
+    a = int(5, 9);
+    b = rng() < .5 ? int(1, 10 - a) : int(11 - a, 8);
+    answer = a + b;
+  } else {
+    const crosses = rng() < .5;
+    const ones = int(crosses ? 2 : 1, 9);
+    a = int(1, Math.floor((max - (crosses ? 11 : 10)) / 10)) * 10 + ones;
+    b = crosses ? int(11 - ones, 9) : int(1, 10 - ones);
+    answer = a + b;
+  }
+  const choices=[answer];
   for(const c of [...shuffle([answer-1,answer+1,answer-2,answer+2],rng),...shuffle([n,b,a,answer-10,answer+10],rng)]){if(Number.isInteger(c)&&c>=0&&c<=max&&!choices.includes(c))choices.push(c);if(choices.length===3)break;}
   return{id:`${index}-${type}`,type,...(n!==undefined&&{n}),...(a!==undefined&&{a}),...(b!==undefined&&{b}),answer,choices:shuffle(choices,rng),support:'visible',mode:'choice'};
 }
 export function createRound(level=1,seed=Date.now(),first=false,options={}){
   level=validLevel(level)?Number(level):1;
-  const rng=randomGenerator(seed),history=options.history||[],stats=topicStats(history,level),pool=POOLS[level];let focus=null,pattern=[...PATTERNS[level]];
+  const rng=randomGenerator(seed),history=options.history||[],stats=topicStats(history,level);
+  let focus=null, pattern=[...LEVELS[level].pattern];
+  const pool=[...new Set(pattern)];
   if(!first&&history.some(r=>r.level===level&&r.results?.length)){
     const recent=history.filter(r=>r.level===level).slice(-3).flatMap(r=>r.results||[]).filter(r=>r&&pool.includes(r.type)),needs=recent.filter(r=>!r.firstTry||r.helped);
     focus=needs.length?needs[needs.length-1].type:shuffle(pool,rng).sort((a,b)=>stats[topicOf(a)].total-stats[topicOf(b)].total)[0];
@@ -88,7 +123,13 @@ export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>typeof r?.id==='string'&&validLevel(r.level)&&typeof r.date==='string'&&Number.isInteger(r.firstTry)&&r.firstTry>=0&&r.firstTry<=8&&Number.isInteger(r.helped)&&r.helped>=0&&r.helped<=8).slice(-40):[];
   const r=raw.active;
-  const validTask=t=>t&&POOLS[1].concat('shift').includes(t.type)&&Number.isInteger(t.answer)&&t.answer>=0&&t.answer<=999&&Array.isArray(t.choices)&&t.choices.length===3&&new Set(t.choices).size===3&&t.choices.includes(t.answer)&&t.choices.every(x=>Number.isInteger(x)&&x>=0&&x<=999)&&(['remove','count','place','shift','subtract'].includes(t.type)?Number.isInteger(t.n)&&t.n>=1&&t.n<=999:Number.isInteger(t.a)&&t.a>=0&&t.a<=9)&&(['remove','shift','subtract','add'].includes(t.type)?Number.isInteger(t.b):true);
+  const validNumber=x=>Number.isInteger(x)&&x>=0&&x<=999;
+  const validTask=t=>t&&taskTypes.has(t.type)&&validNumber(t.answer)&&Array.isArray(t.choices)&&t.choices.length===3&&new Set(t.choices).size===3&&t.choices.includes(t.answer)&&t.choices.every(validNumber)
+    && (!['remove','count','place','shift','subtract','missing','divide'].includes(t.type)||validNumber(t.n)&&t.n>0)
+    && (!['ten','add','missing','multiply'].includes(t.type)||validNumber(t.a))
+    && (!['remove','shift','subtract','add','multiply','divide'].includes(t.type)||Number.isInteger(t.b)&&Math.abs(t.b)<=999)
+    && (t.type!=='multiply'||t.a>=2&&t.a<=4&&t.b>=2&&t.b<=6)
+    && (t.type!=='divide'||t.b>=2&&t.b<=4&&t.answer>=2&&t.answer<=6&&t.n===t.b*t.answer);
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&r.tasks.length===8&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<8&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===8)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'?'optional':'visible',mode:t.mode==='input'?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===8?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;

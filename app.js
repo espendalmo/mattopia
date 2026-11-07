@@ -4,7 +4,7 @@ import { createSoundPlayer } from './sound.js';
 import { createUpdater } from './update.js';
 import { modelById, selectRewardMode, prepareReward, awardPractice, renderBuildSvg } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
-import { createFocusBreak } from './breaks.js';
+import { BREAK_ATTEMPTS, createFocusBreak } from './breaks.js';
 
 const root = document.querySelector('#app');
 const announcer = document.querySelector('#announcer');
@@ -17,6 +17,8 @@ let completedReward = null;
 let focusGame = null;
 let ui = makeUI();
 const sounds = createSoundPlayer();
+const AWAY_KEY = `${STORAGE_KEY}-away`;
+const WELCOME_AFTER = 15 * 60 * 1000;
 let celebrateOnRender = false;
 let updateStatus = { ready: false, checking: false, applying: false, message: 'Se etter en nyere versjon når du er på nett.' };
 const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { const saved = save(); if (saved) sounds.stop(); return saved; }, onStatus: next => {
@@ -28,7 +30,7 @@ const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { c
   if (changed && view !== 'round' && !document.querySelector('dialog')) render();
 } });
 
-function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '', retry: false, retryUntil: 0 }; }
+function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '', retry: false, retryUntil: 0, retryStage: 0 }; }
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); storageWorks = true; }
   catch { storageWorks = false; }
@@ -47,17 +49,19 @@ function icon(name, css = '') {
     star: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L2.9 9.4l6.3-.9Z"/>',
     sound: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     muted: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>',
-    backspace: '<path d="M9 5h12v14H9L2 12l7-7Z"/><path d="m12 9 6 6m0-6-6 6"/>',
+    backspace: '<path d="M10 5h10a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 20 19H10a2 2 0 0 1-1.5-.7L3 12l5.5-6.3A2 2 0 0 1 10 5Z"/><path d="m11.5 9.5 5 5m0-5-5 5"/>',
     brick: '<rect x="3" y="8" width="18" height="12" rx="2"/><path d="M6 8V4h4v4m4 0V4h4v4M3 12h18"/>',
+    flask: '<path d="M9 3h6m-5 0v7l-5 8a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-8V3M8 15h8"/>',
   };
   return `<svg class="${css}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
 }
-function buddy(happy = false) {
-  return `<div class="buddy ${happy ? 'happy' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
+function buddy(happy = false, surprised = false) {
+  return `<div class="buddy ${happy ? 'happy' : surprised ? 'surprised' : ''}" aria-hidden="true"><div class="buddy-shadow"></div><div class="buddy-leaf"></div><div class="buddy-body"><i class="buddy-eye left"></i><i class="buddy-eye right"></i><i class="buddy-smile"></i><i class="buddy-cheek left"></i><i class="buddy-cheek right"></i></div><span class="buddy-spark">✦</span><span class="buddy-spark right">✦</span></div>`;
 }
-function brand() { return `<div class="brand"><span class="brand-mark">${icon('sprout')}</span><span>tallvenn</span>${CHANNEL === 'preview' ? '<small class="preview-label">Test</small>' : ''}</div>`; }
+function brand() { return `<div class="brand"><span class="brand-mark">${icon('sprout')}</span><span>tallvenn</span></div>`; }
+function betaMark() { return CHANNEL === 'preview' ? `<p class="beta-mark">${icon('flask')}<strong>BETA</strong><span>Testversjon</span></p>` : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
-function header() { return `<header class="site-header">${brand()}<div class="header-controls">${soundButton()}<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button></div></header>`; }
+function header() { return `${betaMark()}<header class="site-header">${brand()}<div class="header-controls">${soundButton()}<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button></div></header>`; }
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
 function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { announcer.textContent = text; }); }
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
@@ -209,27 +213,32 @@ function startRound() {
 }
 
 function openFocusBreak() {
-  focusGame ||= { ...createFocusBreak(), phase:'study', retry:false };
+  focusGame ||= { ...createFocusBreak(), phase:'study', selected:new Set(), checks:0, score:0 };
   view = 'focus-break';
   render(); goTop(); focusHeading();
 }
 
 function renderFocusBreak() {
-  const studying = focusGame.phase === 'study';
-  const solved = focusGame.phase === 'solved';
-  const title = studying ? 'Husk de fire bildene' : solved ? 'Du fant det!' : 'Hvilket bilde mangler?';
+  const { phase, study, choices, selected, score, checks } = focusGame;
+  const count = study.length;
+  const matched = score === count;
   const item = ({ icon, label }) => `<span class="focus-icon" aria-hidden="true">${icon}</span><span>${label}</span>`;
-  const study = studying ? focusGame.study : focusGame.study.filter(image => image !== focusGame.missing);
-  const cards = study.map(image => `<li>${item(image)}</li>`).join('');
-  const content = solved
-    ? `<p class="focus-winner">${item(focusGame.missing)}</p><button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`
-    : `<ul class="focus-cards" aria-label="${studying ? 'Bilder å huske' : 'Bilder som er igjen'}">${cards}</ul>
-       ${studying
-         ? '<button class="primary" data-action="focus-hide">Skjul ett bilde</button>'
-         : `<div class="focus-options" aria-label="Velg bildet som mangler">${focusGame.choices.map((image, i) => `<button data-action="focus-answer" data-choice="${i}">${item(image)}</button>`).join('')}</div>`}`;
-  const description = studying
-    ? focusGame.retry ? 'Nesten! Se på alle bildene en gang til.' : 'Se på bildene så lenge du vil. Ett av dem skal bort.'
-    : solved ? 'Godt husket. Klar for en ny runde?' : 'Tre bilder er igjen. Velg det fjerde.';
+  let title, description, content;
+  if (phase === 'study') {
+    title = 'Husk de fire bildene';
+    description = checks ? 'Se godt på bildene en gang til. Ta den tiden du trenger.' : 'Se på bildene så lenge du vil. Gå videre når du er klar.';
+    content = `<ul class="focus-cards" aria-label="Bilder å huske">${study.map(image => `<li>${item(image)}</li>`).join('')}</ul><button class="primary" data-action="focus-hide">Jeg er klar ${icon('arrow')}</button>`;
+  } else if (phase === 'guess') {
+    title = 'Hvilke bilder så du?';
+    description = 'Velg de fire bildene du husker.';
+    content = `<div class="focus-options" role="group" aria-label="Velg fire bilder">${choices.map((image, i) => `<button data-action="focus-answer" data-choice="${i}" aria-pressed="${selected.has(i)}">${item(image)}<span class="focus-check">${icon('check')}</span></button>`).join('')}</div>
+      <p class="focus-count" aria-live="polite">${selected.size} av ${count} valgt</p><button class="primary" data-action="focus-check" ${selected.size !== count ? 'disabled' : ''}>Sjekk svarene</button>`;
+  } else {
+    title = matched ? 'Du husket alle fire!' : phase === 'retry' ? 'Godt forsøk!' : 'Bra at du prøvde!';
+    description = matched ? 'Klar for en runde med tall?' : phase === 'retry' ? 'Vil du se på bildene igjen?' : 'Neste gang får du nye bilder å øve på.';
+    content = `<div class="focus-result">${buddy(matched)}<strong>${score} av ${count} riktig</strong></div>
+      ${phase === 'retry' ? '<button class="primary" data-action="focus-retry">Se bildene igjen</button>' : `<button class="primary" data-action="focus-continue">Til oppgavene ${icon('arrow')}</button>`}`;
+  }
   root.innerHTML = `<div class="app-shell">${header()}<main class="focus-game">
     <p class="home-eyebrow">Mellomspill · Kims lek</p>
     <h1 tabindex="-1">${title}</h1><p>${description}</p>${content}
@@ -237,24 +246,40 @@ function renderFocusBreak() {
   </main></div>`;
 }
 
-function answerFocusBreak(index) {
-  if (view !== 'focus-break' || focusGame.phase !== 'guess' || !focusGame.choices[index]) return;
-  if (focusGame.choices[index] === focusGame.missing) {
-    focusGame.phase = 'solved';
+function selectFocusImage(button) {
+  const index = Number(button.dataset.choice);
+  const { selected, study, choices } = focusGame;
+  if (!choices[index]) return;
+  if (selected.has(index)) selected.delete(index);
+  else if (selected.size < study.length) selected.add(index);
+  else return;
+  button.setAttribute('aria-pressed', String(selected.has(index)));
+  root.querySelector('.focus-count').textContent = `${selected.size} av ${study.length} valgt`;
+  root.querySelector('[data-action="focus-check"]').disabled = selected.size !== study.length;
+}
+
+function checkFocusBreak() {
+  const { study, selected, choices } = focusGame;
+  if (selected.size !== study.length) return;
+  focusGame.checks++;
+  focusGame.score = [...selected].filter(i => study.includes(choices[i])).length;
+  const matched = focusGame.score === study.length;
+  const done = matched || focusGame.checks >= BREAK_ATTEMPTS;
+  focusGame.phase = done ? 'done' : 'retry';
+  if (done) {
     state.focusBreakPending = false;
     save();
-    playSuccess();
-  } else {
-    focusGame.phase = 'study';
-    focusGame.retry = true;
-    sounds.play('retry', state.sound);
   }
+  if (matched) sounds.play('memory', state.sound);
   render(); focusHeading();
 }
 
 function taskTitle(t) {
   if (t.type === 'remove' || t.type === 'subtract') return `Ta bort ${t.b}`;
   if (t.type === 'ten') return 'Hvor mange mangler?';
+  if (t.type === 'missing') return 'Hvilket tall mangler?';
+  if (t.type === 'multiply') return 'Hvor mange til sammen?';
+  if (t.type === 'divide') return 'Hvor mange i hver gruppe?';
   if (t.type === 'count') return countStep(t) < 0 ? 'Hvilket tall mangler?' : 'Hvilket tall kommer nå?';
   if (t.type === 'place') return 'Hvilket tall er dette?';
   if (t.type === 'shift') return t.b > 0 ? `Legg til ${t.b === 100 ? 'én hundrer' : 'én tier'}` : `Ta bort ${t.b === -100 ? 'én hundrer' : 'én tier'}`;
@@ -262,6 +287,9 @@ function taskTitle(t) {
 }
 function equationText(t) {
   if (t.type === 'ten') return `${t.a} + ${t.answer} = 10`;
+  if (t.type === 'missing') return `${t.a} + ${t.answer} = ${t.n}`;
+  if (t.type === 'multiply') return `${t.a} × ${t.b} = ${t.answer}`;
+  if (t.type === 'divide') return `${t.n} ÷ ${t.b} = ${t.answer}`;
   if (t.type === 'add') return `${t.a} + ${t.b} = ${t.answer}`;
   if (t.type === 'count') return `${countStep(t) < 0 ? 'Før' : 'Etter'} ${t.n} kommer ${t.answer}.`;
   if (t.type === 'place') return `${partsText(t.n)} er ${t.answer}.`;
@@ -272,10 +300,20 @@ function equation(t, solved) {
   if (t.type === 'place') return '<div class="place-equation"></div>';
   let content;
   if (t.type === 'count') content = countStep(t) < 0 ? `${blank}<span class="sequence-number">${t.n}</span><span class="sequence-number">${t.n + 1}</span>` : `<span class="sequence-number">${t.n - 1}</span><span class="sequence-number">${t.n}</span>${blank}`;
-  else if (t.type === 'ten') content = `<span>${t.a}</span><span>+</span>${blank}<span>=</span><span>10</span>`;
-  else if (t.type === 'add') content = `<span>${t.a}</span><span>+</span><span>${t.b}</span><span>=</span>${blank}`;
-  else content = `<span>${t.n}</span><span>${t.type === 'shift' && t.b > 0 ? '+' : '−'}</span><span>${Math.abs(t.b)}</span><span>=</span>${blank}`;
-  const accessible = solved ? equationText(t) : t.type === 'count' ? countStep(t) < 0 ? `Hvilket tall mangler? Ukjent tall, ${t.n}, ${t.n + 1}.` : `${t.n - 1}, ${t.n}, hvilket tall kommer nå?` : t.type === 'ten' ? `${t.a} pluss hvor mange er ti` : `${t.a ?? t.n} ${t.type === 'add' || t.type === 'shift' && t.b > 0 ? 'pluss' : 'minus'} ${Math.abs(t.b)} er hvor mye?`;
+  else if (t.type === 'ten' || t.type === 'missing') content = `<span>${t.a}</span><span>+</span>${blank}<span>=</span><span>${t.n ?? 10}</span>`;
+  else {
+    const operator = { add:'+', multiply:'×', divide:'÷', shift:t.b > 0 ? '+' : '−' }[t.type] || '−';
+    content = `<span>${t.a ?? t.n}</span><span>${operator}</span><span>${Math.abs(t.b)}</span><span>=</span>${blank}`;
+  }
+  let accessible = equationText(t);
+  if (!solved) {
+    if (t.type === 'count') accessible = countStep(t) < 0 ? `Hvilket tall mangler? Ukjent tall, ${t.n}, ${t.n + 1}.` : `${t.n - 1}, ${t.n}, hvilket tall kommer nå?`;
+    else if (t.type === 'ten' || t.type === 'missing') accessible = `${t.a} pluss hvor mange er ${t.n ?? 'ti'}?`;
+    else {
+      const operator = { add:'pluss', multiply:'ganger', divide:'delt på', shift:t.b > 0 ? 'pluss' : 'minus' }[t.type] || 'minus';
+      accessible = `${t.a ?? t.n} ${operator} ${Math.abs(t.b)} er hvor mye?`;
+    }
+  }
   return `<div class="equation ${t.type === 'count' ? 'sequence' : ''}" role="img" aria-label="${accessible}"><span class="sr-only"></span>${content.replaceAll('<span', '<span aria-hidden="true"')}</div>`;
 }
 
@@ -310,11 +348,22 @@ function tenFrame(t, solved) {
   }).join('')}</div>`;
 }
 
+function equalGroups(t, solved) {
+  const dividing = t.type === 'divide';
+  const groups = dividing ? t.b : t.a;
+  const size = dividing ? (solved ? t.answer : 0) : t.b;
+  const loose = dividing && !solved ? `<div class="loose-dots" aria-hidden="true">${dotGroup(t.n, 0, false, true)}</div>` : '';
+  const label = dividing
+    ? solved ? `${groups} grupper med ${size} brikker i hver` : `${t.n} brikker og ${groups} tomme grupper`
+    : `${groups} grupper med ${size} brikker i hver`;
+  return `<div class="group-model" role="img" aria-label="${label}">${loose}<div class="group-trays" aria-hidden="true">${Array.from({ length:groups }, () => `<div>${size ? dotGroup(size, 0, false, true) : '?'}</div>`).join('')}</div></div>`;
+}
+
 function hintStage() { return state.active?.hintStages?.[state.active.index] || 0; }
 function hintText(t) { return hintFor(t, hintStage() || 1); }
 
 function renderVisual(t, solved) {
-  const stage = hintStage();
+  const stage = ui.retry ? ui.retryStage : hintStage();
   if (t.support === 'optional' && !stage && !solved && !state.alwaysShowVisuals) return '<p class="mental-note">Prøv gjerne i hodet.<br>Brikkene er her hvis du trenger dem.</p>';
   let html = '', caption = '';
   if (t.type === 'ten') {
@@ -328,14 +377,21 @@ function renderVisual(t, solved) {
     html = stage || solved ? `<div class="number-line" role="img" aria-label="${shown.map(n => n === '?' ? 'hvilket tall' : n).join(', ')}">${shown.map((n, i) => `<span aria-hidden="true" class="${i === target ? 'line-target' : ''}">${n}</span>`).join('')}</div>` : `<p class="count-visual-note">Ett steg ${step < 0 ? 'bakover' : 'videre'}.<br>Hva kommer ${step < 0 ? 'før' : 'etterpå'}?</p>`;
     caption = stage || solved ? step < 0 ? 'Én mindre enn før.' : 'Én mer enn før.' : '';
   } else if (t.type === 'add') {
-    const bridge = stage >= 2 && t.answer > 10 && !solved;
-    html = bridge ? `<div class="bridge-layout">${tenFrame(t, false)}<div class="bridge-extra" role="img" aria-label="${t.b - ui.added.size} nye brikker ved siden av">${dotGroup(t.b - ui.added.size, 20, false, true)}</div></div>` : solved ? quantity(t.answer) : `<div class="add-visual" role="img" aria-label="${t.a} brikker og ${t.b} brikker">${dotGroup(t.a, 0, false, true)}<span class="add-sign" aria-hidden="true">+</span>${dotGroup(t.b, 20, false, true)}</div>`;
+    const bridge = t.a < 10 && stage >= 2 && t.answer > 10 && !solved;
+    html = bridge ? `<div class="bridge-layout">${tenFrame(t, false)}<div class="bridge-extra" role="img" aria-label="${t.b - ui.added.size} nye brikker ved siden av">${dotGroup(t.b - ui.added.size, 20, false, true)}</div></div>` : solved ? quantity(t.answer) : `<div class="add-visual" role="img" aria-label="${t.a} brikker og ${t.b} brikker">${t.a < 10 ? dotGroup(t.a, 0, false, true) : quantity(t.a)}<span class="add-sign" aria-hidden="true">+</span>${dotGroup(t.b, 20, false, true)}</div>`;
     caption = bridge ? 'Trykk i de tomme rutene for å flytte brikker.' : solved ? `${t.answer} til sammen.` : 'Se på brikkene.';
+  } else if (t.type === 'missing') {
+    html = solved ? quantity(t.n) : `<div class="add-visual">${quantity(t.a)}<span class="add-sign" aria-hidden="true">+</span><span class="missing-part" aria-label="Brikker som mangler">?</span></div>`;
+    caption = solved ? `${t.a} og ${t.answer} blir ${t.n}.` : `Hvor mange flere trengs for å få ${t.n}?`;
+  } else if (t.type === 'multiply' || t.type === 'divide') {
+    html = equalGroups(t, solved);
+    caption = t.type === 'divide' ? solved ? `${t.answer} i hver gruppe.` : 'Del brikkene likt mellom gruppene.' : solved ? `${t.answer} til sammen.` : 'Gruppene er like store.';
   } else {
-    const interactive = ['remove', 'subtract'].includes(t.type) && !solved;
+    const interactive = ['remove', 'subtract'].includes(t.type) && !solved && t.b <= t.n % 10;
     const shown = solved && ['remove', 'subtract', 'shift'].includes(t.type) ? t.answer : t.n;
     html = quantity(shown, interactive);
     if (interactive) caption = ui.removed.size ? `Du har tatt bort ${ui.removed.size}.` : 'Du kan trykke på de løse brikkene.';
+    else if (t.type === 'subtract' && !solved) caption = 'Du må ta bort fra en tier også.';
     else if (t.type === 'place' || t.n > 20) caption = partsText(shown);
     else caption = solved ? `${shown} igjen.` : 'Se på tierne og enerne.';
   }
@@ -347,19 +403,15 @@ function renderRound() {
   if (!r || r.index >= ROUND_LENGTH) { view = 'home'; renderHome(); return; }
   const t = r.tasks[r.index];
   const done = r.index + (r.solved ? 1 : 0);
-  const stage = hintStage();
+  const stage = ui.retry ? ui.retryStage : hintStage();
   const progress = Array.from({ length: 8 }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
-  const labels = { remove: 'Se tallene', ten: 'Bygg ti', count: countStep(t) < 0 ? 'Ett steg bakover' : 'Ett steg videre', place: 'Se tallene', shift: 'Tiere og hundrere', add: 'Legg sammen', subtract: 'Ta bort' };
   let feedback;
   if (r.solved) {
     const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${equationText(t)}</p></div></div><button class="primary" data-action="next">${r.index === 7 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
-  } else if (ui.retry) {
-    feedback = `<div class="retry-note" tabindex="-1"><strong>Nesten!</strong><span>Se på hintet og tenk en gang til.</span></div>
-      <button class="secondary retry-button" data-action="retry" ${Date.now() < ui.retryUntil ? 'disabled' : ''}>Prøv igjen</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
-  root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>Din lille runde</span><strong>Oppgave ${r.index + 1} av 8</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="8" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
-    <main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${taskTitle(t)}</h1>
+  root.innerHTML = `<div class="round-shell">${betaMark()}<header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>Din lille runde</span><strong>Oppgave ${r.index + 1} av 8</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="8" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
+    <main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div><p>${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</p></div><h1 tabindex="-1">${taskTitle(t)}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel">${hintText(t)}</div>` : ''}
@@ -384,7 +436,7 @@ function render() {
 }
 
 function playSuccess(final = false) { sounds.play(final ? 'finish' : 'success', state.sound); }
-function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${ui.retry ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${!ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${ui.retry ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${!ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
+function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${ui.retry ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${ui.retry || !ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${ui.retry ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${ui.retry || !ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
 function keyFeedback(key) {
   sounds.play('key', state.sound);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -427,8 +479,32 @@ function showDialog(content, css = '', afterOpen) {
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
 function showPause() {
-  showDialog(`<h2 id="dialog-title">En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p><button class="primary" data-action="close-dialog" autofocus>Fortsett runden</button><button class="text-button" data-action="pause-home">Ta en pause</button>`, 'pause-dialog');
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2><p>Oppgavene venter på deg.<br>Du kan fortsette senere.</p><button class="primary" data-action="close-dialog">Fortsett runden</button><button class="text-button" data-action="pause-home">Ta en pause</button>`, 'pause-dialog');
 }
+
+function markAway() {
+  save();
+  try { localStorage.setItem(AWAY_KEY, String(Date.now())); } catch {}
+}
+
+function welcomeBack() {
+  if (document.hidden) return;
+  let away;
+  try {
+    away = Number(localStorage.getItem(AWAY_KEY));
+    if (away) localStorage.removeItem(AWAY_KEY);
+  } catch { return; }
+  if (!away || Date.now() - away < WELCOME_AFTER) return;
+  if (document.querySelector('dialog[open]') || ui.retry || view === 'focus-break') return;
+  const g = rewardDetails();
+  const note = state.active
+    ? 'Vi kan fortsette der du slapp.'
+    : g.full ? g.mode === 'bricks' ? 'Neste runde starter et nytt bygg!' : 'Neste runde får du et nytt frø!'
+    : g.mode === 'bricks' ? 'Én runde gir deg neste kloss.' : 'Én runde gir planten litt mer vekst.';
+  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? 'Spill Kims lek' : 'Ta en runde';
+  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>${rewardArt()}<h2 id="dialog-title" tabindex="-1" autofocus>Hei igjen!</h2><p class="welcome-reward">${g.label}</p><p>${note}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog');
+}
+
 function adultView() {
   const recent = state.history.slice(-5).reverse();
   const stats = topicStats(state.history, state.level);
@@ -441,8 +517,8 @@ function adultView() {
     <fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label><p class="adult-note">Én fullført runde gir én ny kloss eller litt plantevekst. Dere kan bytte uten å miste framgangen i noen av delene. En ferdig figur starter et nytt bygg ved neste nye runde.</p></fieldset>
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyder ved svar og fullføring</label>
     <label class="sound-setting"><input type="checkbox" id="visual-setting" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
-    <label class="sound-setting"><input type="checkbox" id="focus-break-setting" ${state.focusBreaks ? 'checked' : ''}>Kims lek mellom øvingsrundene</label>
-    <p class="adult-note">Når det er slått på, kommer en kort huskelek etter hver tredje fullførte runde. Barnet ser på bildene i eget tempo.</p>
+    <div class="focus-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Kims lek mellom øvingsrundene</label>
+    <p class="adult-note" id="focus-break-note">En kort huskelek etter hver tredje runde. Barnet får se på fire bilder i sitt eget tempo.</p></div>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan figurene bli valgfrie. Senere kan én eller to oppgaver få talltastatur. «Vis meg» er alltid tilgjengelig.</p>
     <div class="adult-stats"><div class="stat"><strong>${state.roundsCompleted}</strong><span>fullførte runder</span></div><div class="stat"><strong>${days}</strong><span>${days === 1 ? 'øvingsdag' : 'øvingsdager'} i siste historikk</span></div></div>
     <p class="adult-section-title">Øvd på · ${LEVELS[state.level].label}</p>${topics || '<p class="history-empty">Emnene vises når dere har fullført noen oppgaver.</p>'}<p class="adult-note">Siste tolv runder på valgt nivå. En oppgavetype er ikke nødvendigvis mestret selv om svaret er riktig.</p>
@@ -478,7 +554,8 @@ function submitAnswer(value) {
   state.active = answered;
   const task = answered.tasks[answered.index];
   if (answered.solved) {
-    save(); render(); playSuccess();
+    save(); render();
+    sounds.play(answered.attempts[answered.index] === 1 ? 'success' : 'recover', state.sound);
     flashAnswer(task, value, true);
     say(`Riktig. ${equationText(task)} Neste oppgave er klar.`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
@@ -486,35 +563,55 @@ function submitAnswer(value) {
     return;
   }
   ui.wrong.push(value);
+  ui.retryStage = hintStage();
   ui.retry = true;
   ui.retryUntil = Date.now() + 1100;
-  ui.entry = '';
   state.active = noteHelp(answered);
   save(); render(); sounds.play('retry', state.sound);
   flashAnswer(task, value, false);
-  say(`Nesten. ${hintText(task)} Trykk på Prøv igjen når du er klar.`);
-  root.querySelector('.retry-note')?.focus({ preventScroll: true });
-  root.querySelector('.feedback-area')?.scrollIntoView({ block:'nearest' });
   const attempt = ui;
-  const enableRetry = () => {
-    if (ui !== attempt || !ui.retry || view !== 'round') return;
-    const remaining = ui.retryUntil - Date.now();
-    if (remaining > 0) { setTimeout(enableRetry, remaining); return; }
-    const retry = root.querySelector('[data-action="retry"]');
-    if (retry) retry.disabled = false;
-  };
-  setTimeout(enableRetry, 1100);
+  setTimeout(() => {
+    if (ui === attempt && ui.retry && view === 'round') showRetry(task);
+  }, 320);
+}
+
+function showRetry(task) {
+  const attempt = ui;
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>Nesten!</h2>
+    <p>Se på hintet og tenk en gang til.</p><p class="retry-hint">${hintText(task)}</p>
+    <button class="primary" data-action="retry" disabled>Prøv igjen ${icon('arrow')}</button>`, 'retry-sheet', dialog => {
+    dialog.addEventListener('cancel', event => { event.preventDefault(); retryAnswer(); });
+    const button = dialog.querySelector('[data-action="retry"]');
+    const remaining = Math.max(0, attempt.retryUntil - Date.now());
+    setTimeout(() => { if (dialog.open && ui === attempt) button.disabled = false; }, remaining);
+  });
 }
 
 function flashAnswer(task, value, correct) {
   const selector = task.mode === 'choice' ? `[data-answer="${value}"]`
     : correct ? '.entered-correct' : '.submit-number';
-  root.querySelector(selector)?.classList.add(correct ? 'answer-spark' : 'answer-miss');
+  const target = root.querySelector(selector);
+  if (!target) return;
+  target.classList.add(correct ? 'answer-spark' : 'answer-miss');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#25865b', '#e8b32f', '#66a2d1', '#e68d92', '#76a85a'];
+  const particles = Array.from({ length:correct ? 12 : 6 }, (_, i) => {
+    const angle = i * Math.PI / 6;
+    const reach = 34 + i % 3 * 11;
+    return correct
+      ? `<i style="--x:${Math.round(Math.cos(angle) * reach)}px;--y:${Math.round(Math.sin(angle) * reach)}px;--turn:${60+i*23}deg;background:${colors[i%colors.length]}"></i>`
+      : `<i style="--x:${(i - 2.5) * 12}px;--delay:${i%3 * 55}ms"></i>`;
+  }).join('');
+  target.insertAdjacentHTML('beforeend', `<span class="answer-particles" aria-hidden="true">${particles}</span>`);
+  const effect = target.querySelector('.answer-particles');
+  setTimeout(() => effect?.remove(), 850);
 }
 
 function retryAnswer() {
   if (view !== 'round' || !ui.retry || Date.now() < ui.retryUntil) return;
   ui.retry = false;
+  ui.entry = '';
+  document.querySelector('.retry-sheet')?.close();
   render();
   const first = root.querySelector('.answer:not(:disabled), [data-digit]:not(:disabled)');
   (first || root.querySelector('h1'))?.focus({ preventScroll: true });
@@ -526,7 +623,7 @@ document.addEventListener('click', e => {
   const digit = e.target.closest('[data-digit]');
   if (digit && view === 'round' && !state.active.solved) { enterDigit(digit.dataset.digit); return; }
   const unit = e.target.closest('[data-unit]');
-  if (unit && view === 'round' && !state.active.solved) {
+  if (unit && view === 'round' && !ui.retry && !state.active.solved) {
     const n = Number(unit.dataset.unit);
     ui.removed.has(n) ? ui.removed.delete(n) : ui.removed.add(n);
     unit.classList.toggle('removed', ui.removed.has(n)); unit.setAttribute('aria-pressed', String(ui.removed.has(n))); unit.setAttribute('aria-label', `${ui.removed.has(n) ? 'Legg tilbake' : 'Ta bort'} brikke ${n + 1}`);
@@ -534,7 +631,7 @@ document.addEventListener('click', e => {
     document.querySelector('#visual-caption').textContent = text; say(text); return;
   }
   const cell = e.target.closest('[data-cell]');
-  if (cell && view === 'round' && !state.active.solved) {
+  if (cell && view === 'round' && !ui.retry && !state.active.solved) {
     const n = Number(cell.dataset.cell);
     ui.added.has(n) ? ui.added.delete(n) : ui.added.add(n);
     cell.classList.toggle('added', ui.added.has(n)); cell.setAttribute('aria-pressed', String(ui.added.has(n))); cell.setAttribute('aria-label', `Rute ${n + 1}: ${ui.added.has(n) ? 'ta bort den nye brikken' : 'legg til en brikke'}`); cell.innerHTML = ui.added.has(n) ? '<span class="unit"></span>' : '';
@@ -549,6 +646,10 @@ document.addEventListener('click', e => {
   }
   const action = e.target.closest('[data-action]')?.dataset.action;
   if (action === 'start' || action === 'again') startRound();
+  if (action === 'welcome-start') {
+    closeDialog();
+    if (view !== 'round') startRound();
+  }
   if (action === 'retry') retryAnswer();
   if (action === 'collection') showCollection();
   if (action === 'collectible') {
@@ -559,12 +660,18 @@ document.addEventListener('click', e => {
     focusGame.phase = 'guess';
     render(); focusHeading();
   }
-  if (action === 'focus-answer') answerFocusBreak(Number(e.target.closest('[data-action="focus-answer"]').dataset.choice));
-  if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'solved') {
+  if (action === 'focus-answer' && view === 'focus-break' && focusGame.phase === 'guess') selectFocusImage(e.target.closest('[data-action="focus-answer"]'));
+  if (action === 'focus-check' && view === 'focus-break' && focusGame.phase === 'guess') checkFocusBreak();
+  if (action === 'focus-retry' && view === 'focus-break' && focusGame.phase === 'retry') {
+    focusGame.selected.clear();
+    focusGame.phase = 'study';
+    render(); goTop(); focusHeading();
+  }
+  if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'done') {
     focusGame = null;
     startRound();
   }
-  if (action === 'help' && state.active) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
+  if (action === 'help' && state.active && !ui.retry) { state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index])); }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
   if (action === 'erase') eraseDigit();
   if (action === 'submit-number' && ui.entry) submitAnswer(Number(ui.entry));
@@ -586,7 +693,7 @@ document.addEventListener('click', e => {
   if (action === 'home') { view = 'home'; render(); goTop(); focusHeading(); }
   if (action === 'adult') adultView();
   if (action === 'close-dialog') closeDialog();
-  if (action === 'pause') showPause();
+  if (action === 'pause' && !ui.retry) showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Stjerner, plantevekst, bygg og en påbegynt runde blir slettet på denne enheten.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
   if (action === 'confirm-reset') { closeDialog(); const { level, sound, rewardMode, focusBreaks } = state; state = selectRewardMode({ ...freshState(), level, sound, focusBreaks }, rewardMode); completedReward = null; focusGame = null; save(); view = 'home'; render(); focusHeading(); }
@@ -594,7 +701,7 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
   if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); return; }
-  if (e.key === 'Escape' && view === 'round' && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
+  if (e.key === 'Escape' && view === 'round' && !ui.retry && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
   if (canEnter() && !document.querySelector('dialog')) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) { e.preventDefault(); enterDigit(e.key); }
@@ -602,9 +709,14 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && ui.entry && !e.target.closest('[data-action="help"], [data-action="sound"], [data-action="pause"]')) { e.preventDefault(); submitAnswer(Number(ui.entry)); }
   }
 });
-window.addEventListener('pagehide', save);
-document.addEventListener('visibilitychange', () => { if (document.hidden) { save(); sounds.stop(); } else if (view !== 'round') updates.check(); });
+window.addEventListener('pagehide', markAway);
+window.addEventListener('pageshow', welcomeBack);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { markAway(); sounds.stop(); }
+  else { welcomeBack(); if (view !== 'round') updates.check(); }
+});
 render();
+welcomeBack();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => updates.init());
 }
