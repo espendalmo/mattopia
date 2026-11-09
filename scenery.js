@@ -1,5 +1,6 @@
 import {regionSurface,regionVisibility,roadElevation,riverAt} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
+import {randomGenerator} from './worlds.js';
 
 export const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,y,z,w,d,h,color,studs});
 export const tube = (x,z,w,d,h,color,y=0,axis='y') => ({shape:'tube',x,y,z,w,d,h,color,axis});
@@ -32,6 +33,31 @@ export function placeParts(parts,site) {
 }
 
 // Front-facing plaques use a few simple painted shapes, at the same scale as the buildings.
+// The opening points toward +z. The hillside wraps over and beside the opening.
+export function tunnelLandform(site,theme,{width=1.25,height=2.05,depth=6}={}) {
+  const moon=theme==='moon';
+  const terrain=moon?['#85839e','#a4a0b7','#9291aa']:['#8d9b6d','#a8ae79','#969b78'];
+  const stone=moon?'#c1b9cb':'#d5c4a8',dark=moon?'#37394c':'#3c4349';
+  const outline=[[-width,0],[-width,height*.64],[-width*.73,height*.9],[0,height],
+    [width*.73,height*.9],[width,height*.64],[width,0]];
+  const shell=outline.map(([x,y])=>[x*1.24,y+.32]);
+  const parts=[];
+  for (let i=1;i<outline.length;i++) {
+    const [a,b]=[outline[i-1],outline[i]], [c,d]=[shell[i-1],shell[i]];
+    parts.push(beam([...a,.19],[...b,.19],.28,stone),
+      {shape:'terrain',outline:[[...a,.16],[...b,.16],[...b,-1.9],[...a,-1.9]],x:0,y:0,z:0,h:height,color:dark},
+      {shape:'terrain',outline:[[...c,.05],[...d,.05],[d[0]*1.2,d[1]+.75,-depth],[c[0]*1.2,c[1]+.75,-depth]],
+        x:0,y:0,z:0,h:height+1,color:terrain[i%3]});
+  }
+  for (const side of [-1,1]) {
+    const x=side*width;
+    parts.push({shape:'terrain',outline:[[x*1.15,0,0],[x*1.17,height*.69,.03],
+      [x*1.47,height*.85,-depth],[x*2.35,-.48,-depth],[x*2.2,-.48,1.1]],x:0,y:0,z:0,h:height,color:terrain[1]});
+    parts.push(box(x*1.11,.23,.22,.34,.87,stone,.01));
+  }
+  return placeParts(parts,site);
+}
+
 const cream='#fff2cc', blue='#b4e5ed', apricot='#f5ad6c', rose='#ff9db1', mint='#96dfbc', ink='#324857';
 const marks = {
   bread:[['oval',0,0,1.02,.66,apricot],['line',-.23,0,.1,.35,cream],['line',.04,.015,.1,.35,cream],['line',.31,-.01,.09,.28,cream]],
@@ -277,6 +303,10 @@ export function actorPose(actor, seconds, distanceOverride) {
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
   const y=actor.kind==='coaster'?segment.y+segment.dy*t:
     actor.elevation?.(x,z)??(actor.ground+actor.roadRise*Math.max(0,1-Math.max(0,nearestRoad-.85)/.61));
+  const pitch=actor.elevation&&engineKinds.has(actor.kind)
+    ? Math.atan2(actor.elevation(x+Math.sin(yaw)*.7,z+Math.cos(yaw)*.7)
+        -actor.elevation(x-Math.sin(yaw)*.7,z-Math.cos(yaw)*.7),1.4)
+    : 0;
   const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35
     : ['boat','swimmer','jetski'].includes(actor.kind) ? Math.sin(traveled*2.1)*.045
     : actor.kind==='hover' ? Math.sin(traveled*2.7)*.079
@@ -285,7 +315,7 @@ export function actorPose(actor, seconds, distanceOverride) {
   const sound=engineKinds.has(actor.kind)?Number(cycle%9.5<3.35)
     :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
     :actor.voice?Number(cycle%14.5<2.4)*.8:0;
-  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,sound};
+  return {x,y:y+bob,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,pitch,sound};
 }
 
 const streetKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
@@ -312,6 +342,17 @@ function followsTooClosely(a,b) {
     &&sin*b.pose.sin+cos*b.pose.cos>.72;
 }
 
+function transferDistance(route,pose) {
+  for (const segment of route.segments) {
+    if (Math.abs(segment.yaw-pose.yaw)>1e-6&&Math.cos(segment.yaw-pose.yaw)<.99998) continue;
+    const dx=pose.x-segment.x,dz=pose.z-segment.z;
+    const advance=dx*Math.sin(segment.yaw)+dz*Math.cos(segment.yaw);
+    if (advance<.15||advance>segment.end-segment.start-.15) continue;
+    if (Math.abs(dx*Math.cos(segment.yaw)-dz*Math.sin(segment.yaw))<.085) return segment.start+advance;
+  }
+  return null;
+}
+
 // Advance along each lane in small steps. Each moving vehicle reserves its new
 // footprint before the next vehicle can enter it, including at intersections.
 export function createTraffic(actors) {
@@ -322,7 +363,7 @@ export function createTraffic(actors) {
     const size=vehicleFootprint(actor);
     for (let offset=0;offset<length;offset+=.53) {
       const distance=actor.phase*length+offset;
-      const candidate={actor,index,distance,size,pose:actorPose(actor,0,distance),wait:0};
+      const candidate={actor,index,distance,size,pose:actorPose(actor,0,distance),wait:0,nextTurn:9+index*3,rng:randomGenerator(Math.round(length*200)+index*973)};
       if (vehicles.some(other=>overlaps(candidate,other)||followsTooClosely(candidate,other)||followsTooClosely(other,candidate))) continue;
       vehicles.push(candidate);
       return;
@@ -338,6 +379,17 @@ export function createTraffic(actors) {
       carry-=step;
       const priority=vehicles.slice().sort((a,b)=>b.wait-a.wait);
       for (const vehicle of priority) {
+        const actor=vehicle.actor;
+        if (actor.alternatives?.length&&seconds>=vehicle.nextTurn) {
+          const near=vehicles.some(other=>other!==vehicle&&Math.hypot(other.pose.x-vehicle.pose.x,other.pose.z-vehicle.pose.z)<8);
+          const pick=actor.alternatives[Math.floor(vehicle.rng()*actor.alternatives.length)];
+          const join=pick===actor.route?null:transferDistance(pick,{...vehicle.pose,yaw:Math.atan2(vehicle.pose.sin,vehicle.pose.cos)});
+          if (join!==null) {
+            vehicle.actor={...actor,route:pick};
+            vehicle.distance=join;
+            vehicle.nextTurn=seconds+12+vehicle.rng()*17;
+          } else vehicle.nextTurn=seconds+(near?.45:1.8);
+        }
         const distance=vehicle.distance+vehicle.actor.speed*step;
         const next={size:vehicle.size,pose:actorPose(vehicle.actor,seconds,distance)};
         if (vehicles.some(other=>other!==vehicle&&(overlaps(next,other)||followsTooClosely(next,other)))) {
@@ -348,8 +400,13 @@ export function createTraffic(actors) {
         }
       }
     }
-    return actors.map((actor,i)=>byIndex.get(i)?.pose??(actor.route&&streetKinds.has(actor.kind)
-      ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds)));
+    return actors.map((actor,i)=>{
+      const vehicle=byIndex.get(i);
+      if (!vehicle) return actor.route&&streetKinds.has(actor.kind)
+        ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds);
+      const horn=actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
+      return horn?{...vehicle.pose,cue:'horn',sound:.65}:vehicle.pose;
+    });
   };
 }
 
@@ -549,6 +606,9 @@ export function regionActors(theme,layout,plan,completed) {
     const miter=offset/Math.max(.5,1+ax*bx+az*bz);
     return [point.x-(az+bz)*miter,point.z+(ax+bx)*miter];
   });
+  const elevation=(x,z)=>plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
+  const routeVariants=circuits.slice(0,18).map(points=>route(lane(points),STREET_TURN_RADIUS));
+  const alternatives=routeVariants.concat(circuits.slice(0,18).map(points=>route(lane(points.slice().reverse()),STREET_TURN_RADIUS)));
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
@@ -559,7 +619,7 @@ export function regionActors(theme,layout,plan,completed) {
       const circuit=circuits[1]??circuits[0];
       const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
       actors.push(actor(vehicle('hover','#b982ac'),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
-        elevation:(x,z)=>roadElevation(layout,x,z)+.17}));
+        elevation:(x,z)=>elevation(x,z)+.17}));
     }
   }
   const station=completed.find(plot=>plot.kind==='busStation');
@@ -570,8 +630,8 @@ export function regionActors(theme,layout,plan,completed) {
     const cost=path=>distance(path)-Math.min(path.length,12)*.8;
     const closest=routes.reduce((near,route)=>cost(route)<cost(near)?route:near);
     const points=circuits.length?lane(closest):laneLoop(closest,.83);
-    actors.push(actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
-      elevation:(x,z)=>roadElevation(layout,x,z),corner:STREET_TURN_RADIUS}));
+    actors.push({...actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
+      elevation,corner:STREET_TURN_RADIUS}),horn:44});
   }
   for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
     const cargo=plot.kind==='quay';
@@ -590,10 +650,10 @@ export function regionActors(theme,layout,plan,completed) {
     const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
     const circuit=circuits[i%circuits.length];
     const points=circuit?lane(circuit):laneLoop(path,.83);
-    actors.push(actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
-      kind:'road',elevation:(x,z)=>roadElevation(layout,x,z),speed:moon?2.3:2.9,phase:i*.23+.12,
+    actors.push({...actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
+      kind:'road',elevation,speed:moon?2.3:2.9,phase:i*.23+.12,
       corner:circuit?STREET_TURN_RADIUS:1.12,
-    }));
+    }),...(circuit&&{route:routeVariants[i%circuits.length],alternatives}),horn:moon?0:34+i*11});
   }
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
@@ -601,7 +661,7 @@ export function regionActors(theme,layout,plan,completed) {
     const points=walkCircuit ? lane(walkCircuit,i%2===0?1.86:-1.86) : laneLoop(path,1.83);
     const person=walkers[i%walkers.length];
     actors.push(actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c'),points,{
-      kind:'walk',elevation:(x,z)=>roadElevation(layout,x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
+      kind:'walk',elevation:(x,z)=>elevation(x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
       voice:moon?person:'people',
     }));
   }

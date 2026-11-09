@@ -2,9 +2,10 @@ import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.22.0';
+export const VERSION='1.24.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
+const DEFAULT_ROUND_LENGTH=5;
 export const ROUND_LENGTHS=Object.freeze([5,6,ROUND_LENGTH]);
 const validRoundLength=length=>ROUND_LENGTHS.includes(length);
 export const PROGRESSION_ROUNDS=3;
@@ -186,7 +187,7 @@ export function advancePractice(state, grade, finishedLevel) {
   return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
 }
 
-export function freshState(){return{version:1,level:1,roundLength:ROUND_LENGTH,mix:null,autoProgress:false,progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function freshState(){return{version:1,level:1,roundLength:DEFAULT_ROUND_LENGTH,mix:null,autoProgress:false,progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>{
@@ -208,5 +209,5 @@ export function restoreState(raw){
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
   const autoProgress=raw.autoProgress===true, progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:ROUND_LENGTH,autoProgress,progressRounds,mix:['grade','all'].includes(raw.mix)?raw.mix:null,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:fallback.roundLength,autoProgress,progressRounds,mix:['grade','all'].includes(raw.mix)?raw.mix:null,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

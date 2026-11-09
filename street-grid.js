@@ -59,7 +59,7 @@ function streetGraph(layout,spacing,shift) {
       const ground=corners.map(([a,b])=>regionSurface(layout,x+a,z+b));
       const low=Math.min(...ground.map(tile=>tile.y)), high=Math.max(...ground.map(tile=>tile.y));
       if (ground.some(tile=>tile.water||tile.bank<.26||layout.theme==='moon'&&tile.basin<-.65)||high-low>2.15) continue;
-      if (Object.values(layout.berths).some(site=>gap(site,{x,z})<(site.span?site.span*.66+3:8.7))) continue;
+      if (Object.entries(layout.berths).some(([kind,site])=>kind!=='lighthouse'&&gap(site,{x,z})<(site.span?site.span*.66+3:8.7))) continue;
       lots.push({x,z,y:high+.045,ring,perimeter,front,west,weight:rng()*4.8,westFirst:rng()>.5});
     }
   }
@@ -173,7 +173,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
 
   for (const {index,kind} of buildings) {
     latestPaths=new Map();
-    const special=layout.berths[kind];
+    const lighthouse=kind==='lighthouse'&&layout.berths.lighthouse;
+    const special=lighthouse?null:layout.berths[kind];
     if (special) {
       const entries=specialEntrances(special,kind);
       for (const entry of entries) {
@@ -216,8 +217,20 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     add(edge);
     lot.perimeter.forEach(add);
     const entry=yaw===0?{x:lot.x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z:lot.z};
-    plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry],
-      streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
+    if (lighthouse) {
+      // Keep its original lot reserved so later parcels in saved towns stay put.
+      const entries=specialEntrances(lighthouse,kind);
+      const candidates=[...active].map(id=>nodes[id]);
+      const start=candidates.reduce((near,node)=>gap(node,entries[0])<gap(near,entries[0])?node:near);
+      const shoreRoad=connectWaterfront(connectorLayout,start,entries[0],false);
+      connectors.push(shoreRoad);
+      latestPaths.set(shoreRoad,false);
+      connectedNodes.add(start.id);
+      plots.push({...lighthouse,index,kind,entries});
+    } else {
+      plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry],
+        streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});
+    }
   }
   const openLinks=nodes.map(()=>[]);
   for (const {a,b} of open.values()) {

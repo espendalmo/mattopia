@@ -19,6 +19,10 @@ SOUND_PATTERNS.back=[[72,0,.082,.013,68]];
 SOUND_PATTERNS.hint=[[72,0,.11,.023],[81,.075,.17,.025,83]];
 SOUND_PATTERNS.finale=[[60,.45,.18,.043],[67,.55,.19,.045],[72,.72,.23,.055],[76,.91,.27,.054],
   [79,1.09,.28,.049],[84,1.29,.67,.06],[79,1.29,.64,.036],[76,1.29,.65,.029],[60,1.29,.65,.032]];
+SOUND_PATTERNS.success2=[[72,0,.18,.062],[77,.087,.19,.063],[81,.177,.33,.062],[77,.177,.3,.028]];
+SOUND_PATTERNS.success3=[[74,0,.17,.062],[78,.083,.18,.058],[81,.16,.17,.061],[86,.25,.3,.065]];
+SOUND_PATTERNS.success4=[[79,0,.13,.055],[83,.081,.17,.058],[86,.158,.34,.066],[79,.158,.28,.028]];
+const successPhrases=['success','success2','success3','success4'];
 const lightSounds=new Set(['key','select','open','next','build','tap','back','hint']);
 const worlds=new Set(['city','moon','island']);
 export const AMBIENCE_LEVEL=.75;
@@ -33,6 +37,7 @@ function playbackSession() {
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)(), getSession=playbackSession) {
   let context,voices=[],generation=0,buildGeneration=0,ambience,ambienceGeneration=0,session,carrier;
   const beds=new Map(),clips=new Map();
+  let successPhrase=0;
 
   function releaseVoice({source,gain}) {
     try { source.stop(); } catch {}
@@ -95,7 +100,8 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     const world=typeof scene==='string'?scene:scene?.id;
     const buildings=Math.min(4,Math.ceil((scene?.soundscape?.buildings??Object.keys(scene?.landmarks??{}).length)/4));
     const fun=Math.min(2,scene?.soundscape?.fun??0);
-    const key=`${world}:${buildings}:${fun}`;
+    const {wheel=false,hotel=false}=scene?.soundscape??{};
+    const key=`${world}:${buildings}:${fun}:${wheel}:${hotel}`;
     const limited=Number.isFinite(duration);
     if (ambience?.key===key&&!ambience.limited&&!limited) return true;
     stopAmbience();
@@ -105,7 +111,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       await unlock();
       if (!context || token!==ambienceGeneration) return false;
       if (!beds.has(key)) {
-        beds.set(key,ambienceBuffer(context,world,buildings,fun));
+        beds.set(key,ambienceBuffer(context,world,buildings,{fun,wheel,hotel}));
         if (beds.size>8) beds.delete(beds.keys().next().value);
       }
       const source=context.createBufferSource(),gain=context.createGain();
@@ -121,7 +127,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       }
       source.connect(gain);
       gain.connect(context.destination);
-      const mix={key,source,gain,start,end,limited,heard:new Map(),lastCue:-Infinity};
+      const mix={key,world,source,gain,start,end,limited,heard:new Map(),lastCue:-Infinity};
       source.onended=()=>{
         if (ambience===mix) ambience=null;
         source.disconnect();
@@ -160,10 +166,11 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function activity(kind,intensity=1) {
     const clip=ACTIVITY_SOUNDS[kind];
     if (!clip||!ambience||!context) return false;
+    if (ambience.world!=='moon'&&['rocket','monorail','rover','astronaut','alien'].includes(kind)) return false;
     const now=context.currentTime;
     if (now<ambience.start||now>ambience.end-.8) return false;
     const [length,volume,rest]=clip;
-    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||now-ambience.lastCue<.31) return false;
+    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||kind!=='tram-bell'&&now-ambience.lastCue<.31) return false;
     try {
       sample(kind,now,volume*Math.max(0,Math.min(1,intensity))/.07,{destination:ambience.gain,voice:false});
       ambience.heard.set(kind,now);
@@ -209,7 +216,8 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     unlock().then(()=>{
       if (!context||token!==generation) return;
       const now=context.currentTime+(kind==='key'?0:.015);
-      melody(kind,now);
+      const phrase=kind==='success'?successPhrases[successPhrase++%successPhrases.length]:kind;
+      melody(phrase,now);
     }).catch(()=>{});
   }
 

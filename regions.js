@@ -139,6 +139,8 @@ export function regionLayout(theme,seed,grand=false) {
     return {x,z,...sample,blocked:sites.some(site=>distance(site,{x,z})<5.7)};
   });
   layout.grid=grid;
+  if (grand&&theme==='city') berths.lighthouse=cityBerth(layout,bridgeZ>0?-56:54,-side);
+  if (grand&&theme==='island') berths.lighthouse=coastSite(layout,layout.phase+4.14);
   layouts.set(key,layout);
   if (layouts.size>6) layouts.delete(layouts.keys().next().value);
   return layout;
@@ -214,7 +216,7 @@ function ordinaryEntrance(site,target) {
 
 export function specialEntrances(site,kind) {
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
-  const land=polar(site.yaw+Math.PI,3.4);
+  const land=polar(site.yaw+Math.PI,kind==='lighthouse'?5.2:3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];
 }
 
@@ -232,7 +234,8 @@ export function planRegion(layout,buildings) {
   let land=0;
   const closest=(points,place)=>points.reduce((near,point)=>distance(point,place)<distance(near,place)?point:near,points[0]);
   for (const {index,kind} of buildings) {
-    const special=berths[kind];
+    const lighthouse=kind==='lighthouse'&&berths.lighthouse;
+    const special=lighthouse?null:berths[kind];
     const site=special??sites[land++];
     if (!site) continue;
     const target=closest(network,site);
@@ -251,7 +254,12 @@ export function planRegion(layout,buildings) {
       paths.push(path);
       network.push(...path.filter((_,i)=>i%4===0),path.at(-1));
     }
-    plots.push({...site,...entrance,entries,kind,index});
+    if (lighthouse) {
+      const shore=specialEntrances(lighthouse,kind);
+      const start=closest(network,shore[0]);
+      paths.push(connectWaterfront(layout,start,shore[0],false));
+      plots.push({...lighthouse,entries:shore,kind,index});
+    } else plots.push({...site,...entrance,entries,kind,index});
   }
   return {plots,paths,origin,latestPaths:new Map(paths.slice(latestStart).map(path=>[path,false]))};
 }
@@ -259,16 +267,17 @@ export function planRegion(layout,buildings) {
 export function regionVisibility(plan,x,z,full=false) {
   if (full) return clamp((EDGE-Math.max(Math.abs(x),Math.abs(z)))/10,0,1);
   const distanceTo=(point)=>Math.hypot(point.x-x,point.z-z);
-  let reach=Math.max(0,1-(distanceTo(plan.origin)-11)/13);
-  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-10)/15);
+  let reach=Math.max(0,1-(distanceTo(plan.origin)-13)/15);
+  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-12)/17);
   for (const path of plan.paths) {
-    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-3.8)/11);
+    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-4.8)/13);
   }
   if (plan.transit) {
     for (let i=0;i<plan.transit.length;i+=5) {
       reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.1)/9);
     }
   }
+  for (const portal of plan.transitPortals??[]) reach=Math.max(reach,1-(distanceTo(portal)-7)/9);
   reach=clamp(reach,0,1);
   return reach*reach*(3-2*reach);
 }

@@ -222,6 +222,8 @@ function canvasPainter(canvas, faces, background) {
         if (actor&&!face.hinge&&(actor.rollCos!==1||actor.rollSin)) {
           [nx,ny]=[nx*actor.rollCos-ny*actor.rollSin,nx*actor.rollSin+ny*actor.rollCos];
         }
+        const tilt=actor?.pitch??0,up=Math.cos(tilt),along=Math.sin(tilt);
+        if (tilt) [ny,nz]=[ny*up+nz*along,nz*up-ny*along];
         const facingLight=actor ? (nx*actor.cos+nz*actor.sin)*facing[0]+ny*facing[1]+(nz*actor.cos-nx*actor.sin)*facing[2]
           : dot(face.normal,facing);
         if (facingLight<=0) continue;
@@ -239,6 +241,7 @@ function canvasPainter(canvas, faces, background) {
               y+=px*actor.rollSin+py*actor.rollCos-py;
             }
             const step=actor.stride*face.stride;
+            if (tilt) [y,z]=[y*up+z*along,z*up-y*along];
             const strideZ=z+step;
             z=actor.z+strideZ*actor.cos-x*actor.sin;
             x=actor.x+x*actor.cos+strideZ*actor.sin;
@@ -317,6 +320,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
     uniform float center;
     uniform vec4 reveal;
     uniform vec4 actorPose[${MAX_ACTORS}];
+    uniform vec2 actorTilt[${MAX_ACTORS}];
     uniform vec4 actorMotion[${MAX_ACTORS}];
     varying mediump vec3 shade;
     varying mediump float modelHeight;
@@ -337,6 +341,8 @@ function webGLPainter(canvas, faces, background, illustrated) {
           vec4 motion = actorMotion[i];
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
           pos.xy += vec2(pivot.x*motion.z-pivot.y*motion.w,pivot.x*motion.w+pivot.y*motion.z)-pivot;
+          vec2 slope = actorTilt[i];
+          pos.yz = vec2(pos.y*slope.x+pos.z*slope.y,pos.z*slope.x-pos.y*slope.y);
           float step = stride*motion.y;
           float z = pos.z+step;
           pos = vec3(pose.x+pos.x*pose.w+z*motion.x,pos.y+pose.y+max(0.0,step)*.58,
@@ -388,9 +394,10 @@ function webGLPainter(canvas, faces, background, illustrated) {
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location,size,gl.FLOAT,false,44,offset);
   }
-  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]']
+  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
   const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
+  const actorSlopes=new Float32Array(MAX_ACTORS*2);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),1);
@@ -405,12 +412,14 @@ function webGLPainter(canvas, faces, background, illustrated) {
       gl.uniform1f(uniforms.center,center);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
-      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin},i)=>{
+      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0},i)=>{
         actorPositions.set([x,y,z,cos],i*4);
         actorMovement.set([sin,stride,rollCos,rollSin],i*4);
+        actorSlopes.set([Math.cos(pitch),Math.sin(pitch)],i*2);
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
+      gl.uniform2fv(uniforms['actorTilt[0]'],actorSlopes);
       gl.drawArrays(gl.TRIANGLES,0,data.length/11);
     },
     dispose() {
@@ -601,12 +610,13 @@ export function mountProjectView(container, scene, interactive=false, {
       effects.actors.forEach((pose,i)=>{
         if (!pose.sound||pose.y< -150) return;
         const actor=scene.ambient[i];
-        const kind=actor.voice??(scene.id==='moon'&&actor.kind==='road'?'rover':nearbySounds[actor.kind]??actor.kind);
+        const kind=pose.cue??actor.voice??(scene.id==='moon'&&actor.kind==='road'?'rover':nearbySounds[actor.kind]??actor.kind);
         const [x,y]=projectPoint(pose.x,pose.y,pose.z);
         const edge=Math.max(Math.abs(2*x/width-1),Math.abs(2*y/height-1));
         const reach=aircraft.has(kind)?2.1:1.3;
         if (edge>reach) return;
-        if (audibleActors.has(i)||onActivity(kind,pose.sound*(1-edge/reach*.5))) heard.add(i);
+        const cue=`${i}:${kind}`;
+        if (audibleActors.has(cue)||onActivity(kind,pose.sound*(1-edge/reach*.5))) heard.add(cue);
       });
       audibleActors=heard;
     }
@@ -661,12 +671,14 @@ export function mountProjectView(container, scene, interactive=false, {
   });
 
   if (interactive) {
+    let pendingTap=null;
     const position=event=>[event.clientX,event.clientY];
     const midpoint=([a,b],[c,d])=>[(a+c)/2,(b+d)/2];
     const distance=([a,b],[c,d])=>Math.hypot(a-c,b-d);
     listen(canvas,'pointerdown',event=>{
       if (event.button!==0 || pointers.size>=2) return;
       stopTransition();
+      pendingTap=null;
       pointers.set(event.pointerId,position(event));
       tap=onInspect&&pointers.size===1?{id:event.pointerId,x:event.clientX,y:event.clientY}:null;
       canvas.setPointerCapture(event.pointerId);
@@ -700,10 +712,17 @@ export function mountProjectView(container, scene, interactive=false, {
       if (tap?.id!==event.pointerId) return;
       const isTap=event.type==='pointerup'&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)<7;
       tap=null;
-      if (!isTap) return;
-      const bounds=canvas.getBoundingClientRect();
-      onInspect(landmarkAt(selectable,projectedView,event.clientX-bounds.left-canvas.clientLeft,event.clientY-bounds.top-canvas.clientTop));
+      if (isTap) pendingTap=[event.clientX,event.clientY];
     };
+    listen(canvas,'click',event=>{
+      if (!pendingTap) return;
+      const [x,y]=pendingTap;
+      pendingTap=null;
+      event.preventDefault();
+      event.stopPropagation();
+      const bounds=canvas.getBoundingClientRect();
+      onInspect(landmarkAt(selectable,projectedView,x-bounds.left-canvas.clientLeft,y-bounds.top-canvas.clientTop));
+    });
     for (const name of ['pointerup','pointercancel','lostpointercapture']) listen(canvas,name,release);
     listen(canvas,'wheel',event=>{
       event.preventDefault();

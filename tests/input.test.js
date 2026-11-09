@@ -450,3 +450,13 @@ test('Eplo greets a named player, describes progress and changes the pause encou
   assert.match(h.run('pauseMarkup'),/1 av 30 bygg\. Neste steg er på Fotballbanen/);
   assert.match(h.run('pauseMarkup'),/data-project-preview="city"/);
 });
+
+test('An empty map invites the first build and defaults to five exercises',()=>{
+  const h=harness();
+  h.run(`submitProfile('first',{name:'Ada',grade:3});
+    state=selectRewardMode({...freshState()},'city',()=>.3);
+    render();`);
+  assert.match(h.root.innerHTML,/Klar for å komme i gang/);
+  assert.match(h.root.innerHTML,/Velg første bygg/);
+  assert.match(h.root.innerHTML,/5 oppgaver venter/);
+});

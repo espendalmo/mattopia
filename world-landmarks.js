@@ -981,9 +981,9 @@ const art={
 };
 
 export const RAIL_LANDMARKS={
-  city:['Elveby stasjon','Toget stopper på flere perronger før det kjører ut av byen.','railwayStation'],
+  city:['Elveby stasjon','Toget går i en stor sløyfe med flere perronger.','railwayStation'],
   island:['Palmetrikkens depot','En turkis trikk kjører rundt øya og stopper på tre perronger.','tramStation'],
-  moon:['Månesporet','En stasjon med svevebane og flere stopp gjennom basen.','monorailStation'],
+  moon:['Månesporet','En svevebane som går i ring gjennom månebasen.','monorailStation'],
 };
 
 export const NEW_LANDMARKS={

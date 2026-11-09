@@ -63,8 +63,8 @@ const stories={
 };
 
 export function landmarkStory(theme,index,kind) {
-  if (kind==='railwayStation') return 'Toget stopper på perrongen. Følg sporet fra stopp til stopp helt ut av byen.';
-  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Se det gli over gatene og stoppe underveis.';
+  if (kind==='railwayStation') return 'Toget stopper på perrongen. Se om du får øye på toget igjen på den andre siden av tunnelen.';
+  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
   if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
   if (kind==='lighthouse') return 'På mørke kvelder viser lykta båtene vei forbi grunna.';

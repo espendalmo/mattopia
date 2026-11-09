@@ -75,6 +75,7 @@ function icon(name, css = '') {
     settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/>',
     sprout: '<path d="M12 20v-9M12 14C5 14 4 9 4 6c6 0 8 3 8 8ZM12 11c0-6 4-8 8-8 0 5-2 8-8 8Z"/>',
     'brand-friend': '<path d="M11.5 7.6c0-3.6 2.5-5.5 5.5-5.1-.3 2.9-2.1 4.5-5.5 5.1Z" fill="#81c77f" stroke="none"/><path d="M11.3 8c6.1-2.1 8.5 1.4 8.5 6.2 0 4.5-3 7.2-8 7.2s-8-2.5-8-7 2.4-7.6 7.5-6.4Z" fill="#d4edb7" stroke="none"/><ellipse cx="8.8" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><ellipse cx="14.6" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><path d="M10.4 16.3q1.3 1.7 2.6 0" stroke="#203c34" stroke-width="1.05"/><path d="M20.1 3.7l.7 1.9 1.8.7-1.8.6-.7 1.9-.7-1.9-1.8-.6 1.8-.7Z" fill="#f6cd6e" stroke="none"/>',
+    again: '<path d="M20 11a8 8 0 1 1-3-6.2L20 8M20 3v5h-5"/><path d="m12 8 .7 2.3L15 11l-2.3.7L12 14l-.7-2.3L9 11l2.3-.7L12 8Z"/>',
     star: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L2.9 9.4l6.3-.9Z"/>',
     sound: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
     muted: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="m16 9 5 6m0-6-5 6"/>',
@@ -89,6 +90,9 @@ function buddy(happy = false, surprised = false) {
 function eploNote(message,celebration=false) {
   return `<div class="eplo-note${celebration?' eplo-finale':''}"><div class="eplo-avatar">${buddy(celebration)}</div>
     <div><strong>Eplo</strong><p>${escapeHtml(message)}</p></div></div>`;
+}
+function mapEplo(note, demo=false, standalone=false) {
+  return `<div class="map-eplo-overlay${standalone?' map-eplo-standalone':''}" ${demo?'data-demo-finale hidden':''}>${note}<button type="button" class="icon-button map-eplo-close" data-action="dismiss-eplo" aria-label="Lukk meldingen fra Eplo">${icon('close')}</button></div>`;
 }
 function projectCongratulations(id) {
   const messages={
@@ -416,7 +420,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <div><small data-map-info-status></small><h3></h3><p data-map-info-description></p><div class="map-story"><span class="eplo-avatar">${buddy()}</span><p><strong class="sr-only">Eplo</strong><span data-map-info-story></span></p></div></div>
           <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
         </section>`:''}
-        ${demo ? `<div class="map-eplo-overlay" data-demo-finale hidden>${projectCongratulations(id)}</div>` : ''}
+        ${demo ? mapEplo(projectCongratulations(id),true) : ''}
       </div>
       <div class="project-controls">
         ${scene.world?`<label class="map-inspect-label" hidden><span>Bygg på kartet</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
@@ -426,7 +430,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
-      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp eller bruk pluss og minus for å zoome.</p>
+      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
@@ -450,6 +454,8 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       card.querySelector('[data-map-info-description]').textContent=building.story?building.description:'';
       const story=card.querySelector('[data-map-info-story]');
       story.textContent=building.story||building.description;
+      const avatar=card.querySelector('.map-story .eplo-avatar');
+      avatar.innerHTML=buddy();
     };
     const updateBuildingList=()=>{
       if (!selector) return;
@@ -469,7 +475,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       });
       card.querySelector('[data-map-info-close]').addEventListener('click',()=>{
         inspect(null);
-        selector.focus({preventScroll:true});
+        viewer.querySelector('.project-map-stage canvas')?.focus({preventScroll:true});
       });
       updateBuildingList();
       if (place!==null) inspect(place);
@@ -758,12 +764,13 @@ function renderHome() {
     : `${g.garden.stage} av 5 vekststeg.`;
   const nextBuilding = g.map && worldBuilding(g.mode, g.building,g.map);
   const choose = g.map && g.building === null && !g.full;
+  const firstBuild = g.map && g.completed === 0;
   const archives = g.map ? (state.worlds?.[g.mode] ?? []).slice(0,-1) : [];
-  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? 'Velg neste bygg' : 'Start runden';
+  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? firstBuild ? 'Velg første bygg' : 'Velg neste bygg' : 'Start runden';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
     ${rewardArt(false, next)}<p class="home-eyebrow">${g.label}</p>
-    <h1 tabindex="-1">${total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
+    <h1 tabindex="-1">${firstBuild ? 'Klar for å komme i gang?' : total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
     <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
     <button class="primary" data-action="start">${cta}${icon('arrow')}</button>
     <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av ${state.active.tasks.length} oppgaver.` : nextBuilding ? `Neste byggesteg · ${nextBuilding.name}` : g.map && g.full ? 'Kartet er ferdig!' : choose ? 'Hvilket bygg vil du sette på kartet?' : 'Vi ser, teller og finner ut sammen.'}</p>
@@ -782,7 +789,7 @@ function showWorldChoices(id, choices) {
     </button>`;
   }).join('');
   sounds.play('open', state.sound);
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>Hva vil du bygge nå?</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggevalget">${icon('close')}</button></div>
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${map.progress===0?'Hva vil du bygge først?':'Hva vil du bygge nå?'}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggevalget">${icon('close')}</button></div>
     <p class="world-choose-note">Hvert bygg tar tre runder.</p><div class="world-options">${cards}</div>`, 'world-chooser', dialog => {
     const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt),map)));
     dialog.addEventListener('close', () => dispose.forEach(stop => stop()), {once:true});
@@ -1278,11 +1285,11 @@ function renderComplete() {
   const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
   const mapIndex=g.map?playerMaps(g.mode).length-1:null;
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
-  const gallery=inCollection ? `<button class="${finishedProject?'primary':'secondary'} result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
+  const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
   const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?`<div class="map-eplo-overlay">${projectCongratulations(g.mode)}</div>`: ''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${gallery}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="${finishedProject?'secondary secondary-cta':'primary'}" data-action="home">Ferdig for nå${icon('check')}</button><button class="secondary secondary-cta" data-action="${newMap ? 'world-new' : 'again'}">${again}</button></main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
   celebrateOnRender = false;
 }
 
@@ -1401,7 +1408,7 @@ function showPause() {
   const encouragement=pauseEncouragements[pauseVisits++%pauseEncouragements.length];
   const note=eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`);
   showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2>
-    ${preview&&isWorld(info.mode)?`<div class="project-map-stage">${preview}<div class="map-eplo-overlay">${note}</div></div>`:`${note}${preview}`}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
+    ${preview&&isWorld(info.mode)?`<div class="project-map-stage">${preview}${mapEplo(note)}</div>`:`${mapEplo(note,false,true)}${preview}`}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
     <button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, preview ? 'pause-dialog pause-dialog--map' : 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
 }
 
@@ -1756,6 +1763,12 @@ document.addEventListener('click', e => {
   if (control&&!ownClickSound.has(action)&&!control.matches('[data-project-latest], [data-demo-step], [data-demo-finish], [data-project-ambience]')) {
     const back=['close-dialog','setup-back','pause-home','home','retry'].includes(action);
     sounds.play(back?'back':'tap',state.sound);
+  }
+  if (action === 'dismiss-eplo') {
+    const overlay=actionButton.closest('.map-eplo-overlay');
+    const stage=overlay.parentElement;
+    overlay.hidden=true;
+    (stage.querySelector('.project-peek, canvas[tabindex], [data-action=close-dialog]')??document.querySelector('.complete h1'))?.focus({preventScroll:true});
   }
   if (action === 'start' || action === 'again') startRound();
   if (action === 'welcome-start') {

@@ -1,4 +1,4 @@
-# Mattopia 1.22.0
+# Mattopia 1.24.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.22.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.24.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -50,6 +50,20 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.24.0
+
+- Eplo beveger munnen litt lenger når han har en snakkeboble. Ellers smiler han med øynene.
+- Elvebyen har elvelyd og små jazzstrofer, Palmeøya har bølger og cubanske strofer, og Månebasen har en egen rommelodi. Motorlydene ligger lavere i miksen.
+- Tog og monorail følger gjennomgående sløyfer. Der sporet går i tunnel, kommer toget ut av en egen åpning på den andre siden. Veitunneler har flat veibane i samme høyde ved begge åpningene.
+
+## Nytt i 1.23.0
+
+- Nye profiler starter med fem oppgaver per runde. Første byggevalg har egen tekst, og «En runde til» er hovedvalget etter en vanlig runde.
+- Eplo hilser med en liten animasjon. Hilsenen kan lukkes i pausen og når kartet er ferdig. På berøringsskjermer zoomer du ved å klype på kartet.
+- Banene i Elvebyen og på Månebasen fortsetter ut av kartet gjennom tunneler. Enkelte veier går også gjennom lave åsrygger. Biler kan bytte rute på felles veistrekninger, og kjøretøyene lener seg med stigningen.
+- Fyrtårn bygges ved vannet. Den delvis åpne Palmetrikken ringer ved avgang.
+- Kartene har egne lengre lydsløyfer, med sporadisk theremin på månen, salsa ved hotell på Palmeøya, tivolivals når pariserhjulet er bygd og et tut fra trafikken av og til. Fire korte fanfarer veksler ved riktige svar.
 
 ## Nytt i 1.22.0
 

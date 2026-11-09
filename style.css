@@ -1105,3 +1105,37 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
     z-index: 2;
   }
 }
+
+.map-eplo-overlay[hidden] { display: none; }
+.map-eplo-overlay .eplo-note { padding-right: 46px; }
+.map-eplo-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 44px;
+  height: 44px;
+  pointer-events: auto;
+}
+@media (pointer: coarse), (hover: none) {
+  .project-control-group .project-zoom, .project-desktop-hint { display: none; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  :is(.eplo-avatar,.garden-friend,.focus-result) .buddy { animation: eplo-greet 380ms ease-out both; }
+  :is(.eplo-note,.map-story,.companion-strip) .buddy-smile { animation: eplo-speak 940ms ease-in-out; }
+  :is(.garden-friend,.focus-result) .buddy-eye { animation: eplo-eye-smile 680ms ease-in-out; }
+  @keyframes eplo-eye-smile {
+    0%, 100% { transform: scaleY(1); }
+    28%, 65% { transform: scale(1.42, .72); background: transparent; border: 2px solid var(--ink); border-bottom: 0; border-radius: 70% 70% 0 0; }
+  }
+  @keyframes eplo-greet {
+    0% { translate: 0 7px; rotate: -5deg; opacity: .5; }
+    63% { translate: 0 -3px; rotate: 3deg; }
+    100% { translate: 0 0; rotate: 0deg; opacity: 1; }
+  }
+  @keyframes eplo-speak {
+    0%, 100% { transform: scale(1); background: transparent; }
+    19%, 49%, 77% { transform: scale(.72, 1.18); background: var(--ink); border-radius: 50%; }
+    34%, 64%, 89% { transform: scale(1, .59); background: transparent; }
+  }
+}
+.map-eplo-overlay.map-eplo-standalone { position: relative; inset: auto; margin: 10px auto; }

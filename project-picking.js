@@ -17,8 +17,10 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
     const actor=face.group>=2?effects.actors?.[face.group-2]:null;
     if (actor?.y< -150) return [];
     let [nx,ny,nz]=face.normal;
+    const tilt=actor?.pitch??0,up=Math.cos(tilt),along=Math.sin(tilt);
     if (actor) {
       if (!face.hinge) [nx,ny]=[nx*actor.rollCos-ny*actor.rollSin,nx*actor.rollSin+ny*actor.rollCos];
+      if (tilt) [ny,nz]=[ny*up+nz*along,nz*up-ny*along];
       [nx,nz]=[nx*actor.cos+nz*actor.sin,nz*actor.cos-nx*actor.sin];
     }
     if (nx*s*slope+ny*rise+nz*c*slope<=0) return [];
@@ -27,6 +29,7 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
         const [px,py]=face.hinge??[x,y];
         x+=px*actor.rollCos-py*actor.rollSin-px;
         y+=px*actor.rollSin+py*actor.rollCos-py;
+        if (tilt) [y,z]=[y*up+z*along,z*up-y*along];
         const step=face.stride*actor.stride;
         z+=step;
         [x,y,z]=[actor.x+x*actor.cos+z*actor.sin,actor.y+y+Math.max(0,step)*.58,actor.z+z*actor.cos-x*actor.sin];

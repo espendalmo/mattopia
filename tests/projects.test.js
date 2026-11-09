@@ -5,13 +5,13 @@ import { selectRewardMode, prepareReward, awardPractice } from '../rewards.js';
 import { PROJECTS, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from '../projects.js';
 import { projectFaces, buildMotion, projectCameras, finishTransition } from '../project-view.js';
 import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite } from '../scenery.js';
-import { AIRPORT_HELIPAD } from '../transport.js';
+import { AIRPORT_HELIPAD, districtRail } from '../transport.js';
 import {landmarkAt} from '../project-picking.js';
 import {seasonForDate} from '../seasons.js';
 import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, GRAND_REGION_CATALOG, RAIL_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldSelect, worldStatus } from '../worlds.js';
 import {planRegion,regionLayout,regionSurface,regionVisibility,riverAt,riverWidth} from '../regions.js';
 import {planStreetRegion,STREET_TURN_RADIUS} from '../street-grid.js';
-import {regionRoads,roundedStreetPaths} from '../region-roads.js';
+import {prepareRoadTunnels,regionRoads,roundedStreetPaths} from '../region-roads.js';
 
 test('A completed round adds one step to the selected project and preserves other rewards', () => {
   let state = freshState();
@@ -214,10 +214,10 @@ test('Late horizons extend the world mesh, with edges blending into the backgrou
   for (const id of WORLD_IDS) {
     const map={layout:3,legacy:0,seed:6163,order,progress:54};
     const outerTerrain=scene=>scene.parts.filter(part=>part.layer===0&&part.outline.some(([x,,z])=>Math.max(Math.abs(x),Math.abs(z))>80));
-    assert.equal(outerTerrain(projectScene(id,map)).length,0);
+    const early=outerTerrain(projectScene(id,map));
     const late=projectScene(id,{...map,progress:72});
     const outer=outerTerrain(late);
-    assert.ok(outer.length>0);
+    assert.ok(outer.length>early.length);
     const sky=late.background.slice(1).match(/../g).map(channel=>parseInt(channel,16)/255);
     assert.ok(outer.some(part=>part.colors.some(color=>color.every((value,i)=>value===sky[i]))));
     assert.ok(outer.some(part=>part.colors.some(color=>color.some((value,i)=>Math.abs(value-sky[i])>.03))));
@@ -508,7 +508,7 @@ test('Train and monorail are build choices that open a route only after the stat
     assert.ok(carriage&&Math.hypot(actorPose(train,0).x-actorPose(carriage,0).x,actorPose(train,0).z-actorPose(carriage,0).z)>2.8);
     const trip=Array.from({length:340},(_,i)=>actorPose(train,i*.25));
     assert.ok(trip.some(point=>point.sound&&point.y>0));
-    assert.ok(trip.some(point=>point.y<-500),'the train leaves the visible map');
+    assert.ok(trip.some(point=>point.y<-500),'the train goes into the tunnel');
     assert.ok(trip.some(point=>point.y>0&&Math.hypot(point.x-trip[0].x,point.z-trip[0].z)>10),'the train leaves the station');
     const travel=trip.reduce((sum,point,i)=>i&&point.y>0&&trip[i-1].y>0
       ?sum+Math.hypot(point.x-trip[i-1].x,point.z-trip[i-1].z):sum,0);
@@ -611,4 +611,89 @@ test('The wider new river and larger ponds leave the earlier terrain alone',()=>
   assert.ok(expanded.basins.every(({x,z})=>regionSurface(expanded,x,z).water));
   const island=regionLayout('island',6163,true);
   assert.ok(island.basins.every(({x,z})=>regionSurface(island,x,z).pond&&regionSurface(island,x,z).water));
+});
+
+test('Regional trains pass into terrain portals and trams ring only around departure',()=>{
+  for (const theme of ['city','moon','island']) {
+    const scene=projectScene(theme,{...freshWorld(()=>6163/2**32),order:[0,3,RAIL_PLACE],progress:9});
+    const train=scene.ambient.find(actor=>['train','monorail','tram'].includes(actor.kind));
+    if (theme==='island') {
+      assert.notEqual(actorPose(train,1).cue,'tram-bell');
+      assert.equal(actorPose(train,2.2).cue,'tram-bell');
+      assert.notEqual(actorPose(train,3).cue,'tram-bell');
+    } else {
+      const portals=scene.parts.filter(part=>part.tunnel===true&&part.shape==='beam');
+      assert.equal(portals.length,12);
+      const samples=Array.from({length:1600},(_,i)=>actorPose(train,i*.075));
+      assert.ok(samples.some(p=>p.y< -500));
+      assert.ok(samples.some(p=>Math.abs(p.pitch)>.01));
+    }
+  }
+});
+
+test('Lighthouses use the waterfront and surface vehicles tilt with a slope',()=>{
+  for (const [theme,id] of [['city',38],['island',37]]) {
+    const map={...freshWorld(()=>6163/2**32),order:[id],progress:3};
+    const site=projectScene(theme,map).landmarks[id];
+    const layout=regionLayout(theme,map.seed,true);
+    const [x,,z]=pointOnSite([0,0,6],site);
+    assert.ok(site.waterfront&&regionSurface(layout,x,z).water);
+    const occupied=planStreetRegion(layout,[{index:id,kind:'lighthouse'},{index:0,kind:'hotel'}],30);
+    const prior=planStreetRegion(layout,[{index:id,kind:'ordinary'},{index:0,kind:'hotel'}],30);
+    assert.deepEqual(occupied.plots[1],prior.plots[1]);
+  }
+  const climbing=actor(vehicle('car','#b4766a'),[[0,0],[14,0],[14,9],[0,9]],{
+    kind:'road',speed:2,elevation:x=>x/8,
+  });
+  const model=actorPose(climbing,3);
+  assert.ok(model.pitch>.1&&model.y>.6);
+});
+
+test('A car can diverge from a slower bus after taking a shared stretch',()=>{
+  const main=[[0,0],[30,0],[30,14],[0,14]];
+  const branch=[[0,0],[30,0],[30,-14],[0,-14]];
+  const bus=actor(vehicle('bus','#333333'),main,{kind:'bus',ground:0,speed:1.8,phase:.16});
+  const car=actor(vehicle('car','#ff0000'),main,{kind:'road',ground:0,speed:3.9,phase:.02});
+  car.alternatives=[actor([],branch,{kind:'road',ground:0,speed:3.9}).route];
+  const run=createTraffic([bus,car]);
+  let diverged=false;
+  for (let i=0;i<=2200;i++) {
+    const poses=run(i/30);
+    if (poses[1].z< -3) diverged=true;
+  }
+  assert.ok(diverged);
+});
+
+test('Both regional trains return to the station in the same direction on a closed line',()=>{
+  for (const theme of ['city','moon']) {
+    const kind=theme==='moon'?'monorailStation':'railwayStation';
+    const layout=regionLayout(theme,6163,true);
+    const plan=planStreetRegion(layout,[{index:0,kind:'hotel'},{index:3,kind:'hotel'},{index:RAIL_PLACE,kind}],30);
+    const rail=districtRail(layout,plan.plots[2],plan);
+    assert.deepEqual(rail.points[0],rail.points.at(-1));
+    assert.equal(rail.portals.length,2);
+    const initial=actorPose(rail.actors[0],0);
+    const visits=Array.from({length:900},(_,i)=>actorPose(rail.actors[0],12+i*.12))
+      .filter(p=>Math.hypot(initial.x-p.x,initial.z-p.z)<.12&&p.y>0);
+    assert.ok(visits.length>0);
+    assert.ok(visits.every(p=>p.sin*initial.sin+p.cos*initial.cos>.995));
+  }
+});
+
+test('Road tunnel portals meet a level road shared by both traffic lanes',()=>{
+  let found=false;
+  for (let seed=1;seed<=12&&!found;seed++) {
+    const layout=regionLayout('city',seed*913321,true);
+    const buildings=Array.from({length:14},(_,index)=>({index,kind:'hotel'}));
+    const plan=planStreetRegion(layout,buildings,30);
+    const tunnel=prepareRoadTunnels(layout,plan);
+    if (!tunnel.length) continue;
+    const supports=tunnel.filter(part=>part.shape==='beam');
+    const a=supports[0],b=supports[6];
+    assert.equal(a.y,b.y);
+    const midpoint={x:(a.x+b.x)*.5,z:(a.z+b.z)*.5};
+    assert.ok(Math.abs(plan.streetElevation(midpoint.x,midpoint.z)-a.y)<.001);
+    found=true;
+  }
+  assert.ok(found);
 });

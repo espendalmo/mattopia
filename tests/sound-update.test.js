@@ -1,3 +1,4 @@
+import {ambienceBuffer,soundClip} from '../sound-art.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {AMBIENCE_LEVEL,createSoundPlayer,SOUND_PATTERNS} from '../sound.js';
@@ -37,7 +38,7 @@ test('World ambience is quiet, loops once, and stops even if its audio context r
     resume:()=>waiting?new Promise(resolve=>{release=resolve;}):Promise.resolve(),
     createBuffer(channels,frames,rate) {
       assert.equal(channels,1);
-      assert.equal(frames/rate,20);
+      assert.equal(frames/rate,48);
       return {getChannelData:()=>new Float32Array(frames)};
     },
     createGain:()=>({gain:{setValueAtTime(){},linearRampToValueAtTime:value=>ramps.push(value),cancelScheduledValues(){},setTargetAtTime(){}},connect(){},disconnect(){}}),
@@ -143,4 +144,34 @@ test('A finished build schedules the firework sounds and world tail while iOS ke
   assert.ok(clips.some(clip=>clip.loop&&clip.time>25),'the soundscape follows the workshop');
   assert.ok(!clips.some(clip=>clip.buffer===.86));
   player.stop();
+});
+
+test('World beds have distinct long loops with recurring local music',()=>{
+  const context={createBuffer(_channels,frames,rate) {
+    const samples=new Float32Array(frames);
+    return {duration:frames/rate,getChannelData:()=>samples};
+  }};
+  const phrases=[];
+  const energy=(samples,from,to)=>{
+    const window=samples.subarray(from*16000,to*16000);
+    return Math.sqrt(window.reduce((sum,value)=>sum+value*value,0)/window.length);
+  };
+  for (const [world,length] of [['city',48],['island',56],['moon',60]]) {
+    const bed=ambienceBuffer(context,world,2);
+    assert.equal(bed.duration,length);
+    const samples=bed.getChannelData();
+    assert.ok(samples[0]===0);
+    assert.ok(energy(samples,4,7)>energy(samples,12,15),world);
+    phrases.push(Array.from(samples.subarray(80000,80008)));
+  
+  }
+  assert.equal(new Set(phrases.map(JSON.stringify)).size,3);
+  const quiet=ambienceBuffer(context,'island',2).getChannelData();
+  const music=ambienceBuffer(context,'island',2,{hotel:true,wheel:true}).getChannelData();
+  assert.equal(quiet[1000],music[1000]);
+  assert.ok(music.subarray(4*16000,7*16000).some((sample,i)=>sample!==quiet[4*16000+i]));
+  assert.ok(music.subarray(45*16000,47*16000).some((sample,i)=>sample!==quiet[45*16000+i]));
+  assert.ok(soundClip(context,'tram-bell').getChannelData().some(n=>Math.abs(n)>.2));
+  assert.ok(soundClip(context,'horn').getChannelData().some(n=>Math.abs(n)>.2));
+  assert.equal(new Set(['success','success2','success3','success4'].map(key=>JSON.stringify(SOUND_PATTERNS[key]))).size,4);
 });

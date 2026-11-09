@@ -1,5 +1,5 @@
 const TAU=2*Math.PI;
-const loopLength=20;
+const loopLengths={city:48,island:56,moon:60};
 const unit=value=>Math.max(0,Math.min(1,value));
 const wave=(time,pitch)=>Math.sin(TAU*time*pitch);
 
@@ -23,51 +23,101 @@ function chirp(t,length,pitch) {
   return Math.sin(Math.PI*t/length)**2*wave(t,pitch*(1-.145*t/length));
 }
 
-const fairPhrases=[
-  {at:3.1,notes:[523,659,784,698,659,587,523,392]},
-  {at:13.4,notes:[392,523,659,784,659,698,587,523]},
-];
-function fairground(t) {
-  for (const {at,notes} of fairPhrases) {
-    const beat=(t-at)/.29,index=Math.floor(beat);
-    if (index<0||index>=notes.length) continue;
-    const phase=(beat-index)*.29,pitch=notes[index];
-    const pulse=unit(phase*45)*unit((.27-phase)*8);
-    return pulse*(wave(phase,pitch)*.53+wave(phase,pitch*2)*.18+wave(phase,pitch*.5)*.22);
-  }
-  return 0;
+function phrase(t,notes,beat) {
+  const index=Math.floor(t/beat);
+  if (index<0||index>=notes.length) return 0;
+  const age=t-index*beat,pitch=notes[index];
+  return unit(age*40)*unit((beat*.94-age)*9)*
+    (wave(age,pitch)*.53+wave(age,pitch*2)*.17+wave(age,pitch*.5)*.24);
 }
 
-export function ambienceBuffer(context,world,buildings,fun) {
-  const calls=world==='city'?[[1.9,1550],[2.16,1790],[7.4,1850],[7.69,1580],[12.33,1710]]
-    :world==='island'?[[6.2,920],[12.6,1060]]:[[4.25,392],[4.49,466],[11.2,330]];
+function waltz(t) {
+  const beat=.38;
+  const melody=phrase(t,[523,659,784,698,659,587,523,392,494,523,659,784,880,784,698,659,587,523],beat);
+  const index=Math.floor(t/beat);
+  if (index<0||index>=18) return 0;
+  const age=t-index*beat;
+  const root=[130.81,130.81,146.83,98,130.81,98][Math.floor(index/3)];
+  const chord=index%3===0?wave(age,root)*.54:(wave(age,root*3)*.34+wave(age,root*4)*.19);
+  return melody*.68+unit(age*38)*Math.exp(-age*10)*chord;
+}
+
+const jazzNotes=[392,466,523,587,554,523,466,392,349,392,466,523,0,466,392,349,392,0];
+const jazzBass=[130.81,155.56,164.81,174.61,146.83,130.81,98,130.81];
+const cubanNotes=[523,659,0,784,698,659,0,587,698,0,880,784,698,659,587,523,0,659,784,0,698,659,587,523];
+const claveHits=[0,.324,.648,1.08,1.404];
+
+function jazz(t,mid) {
+  if (t<0||t>=7.6) return 0;
+  const beat=t%.46,index=Math.floor(t/.46);
+  const offbeat=beat>=.306;
+  const age=offbeat?beat-.306:beat;
+  const melody=jazzNotes[(index+(offbeat?1:0))%jazzNotes.length];
+  const lead=unit(age*42)*Math.exp(-age*7)*(wave(age,melody)*.57+wave(age,melody*2)*.15);
+  const root=jazzBass[index%jazzBass.length];
+  const bass=unit(beat*34)*Math.exp(-beat*10)*(wave(beat,root)*.52+wave(beat,root*2)*.19);
+  const brush=mid*unit(age*45)*Math.exp(-age*14)*(index%2?.62:.25);
+  return (lead*.7+bass*.57+brush)*unit((7.6-t)*3);
+}
+
+function salsa(t,mid) {
+  if (t<0||t>7.6) return 0;
+  const figure=phrase(t-.13,cubanNotes,.216);
+  const bar=t%1.728;
+  const bassAge=bar<.648?bar:bar-.648;
+  const root=Math.floor(t/1.728)%2?98:130.81;
+  const bass=(wave(bassAge,root)*.49+wave(bassAge,root*1.5)*.18)*unit(bassAge*40)*Math.exp(-bassAge*8);
+  const claveAge=claveHits.reduce((age,hit)=>bar>=hit?Math.min(age,bar-hit):age,1);
+  const clave=(wave(claveAge,1160)+mid*.78)*Math.exp(-claveAge*85)*unit(claveAge*430);
+  return (figure*.84+bass*.62+clave*.25)*unit((7.6-t)*2);
+}
+
+function moonPhrase(t) {
+  if (t<0||t>7.5) return 0;
+  const note=phrase(t,[220,261.63,329.63,293.66,261.63,196,220,0,329.63,392,329.63,261.63],.59);
+  const glide=270*t+19*Math.sin(t*1.55)+.085*Math.sin(t*31);
+  const halo=Math.sin(TAU*glide)*Math.sin(Math.PI*t/7.5)**2*.2;
+  return note*.42+halo;
+}
+
+export function ambienceBuffer(context,world,buildings,{fun=0,wheel=false,hotel=false}={}) {
+  const loopLength=loopLengths[world]??48;
+  const birds=world==='city'?[[1.9,1550],[2.16,1790],[17.4,1850],[17.69,1580],[34.33,1710]]
+    :world==='island'?[[6.2,1220],[19.6,1360],[36.7,1530],[39.1,1480]]:[];
   return synthesize(context,loopLength,(t,noise,low,mid)=>{
-    let bed;
+    let bed,music;
     if (world==='island') {
-      const swell=.17+.69*(.5-.5*Math.cos(t*TAU/4))**2;
-      bed=swell*(low*1.8+mid*.75+noise*.11);
+      const swell=.18+.82*(.5-.5*Math.cos(t*TAU/7))**2;
+      bed=swell*(low*1.66+mid*.47+noise*.19);
+      music=(hotel?.57:.47)*(salsa(t-3.5,mid)+salsa(t-26,mid));
     } else if (world==='moon') {
-      bed=low*.53+mid*.12+.085*wave(t,56)*(.8+.2*Math.cos(t*TAU/8));
-    } else bed=(.78+.22*wave(t,1/8))*(low*.93+mid*.17);
-    for (const [at,pitch] of calls) {
-      bed+=(world==='city'?.11:.065)*chirp(t-at,world==='island'?.42:.15,pitch);
+      bed=low*.36+mid*.07+.065*wave(t,56)*(.8+.2*Math.cos(t*TAU/12));
+      music=.73*(moonPhrase(t-3.5)+moonPhrase(t-34));
+    } else {
+      const breeze=.67+.33*wave(t,1/12);
+      const river=.49+.28*wave(t,1/3.5);
+      bed=breeze*(low*.73+mid*.12)+river*(mid*.41+noise*.045);
+      music=.55*(jazz(t-3.5,mid)+jazz(t-21.5,mid));
     }
+    for (const [at,pitch] of birds) bed+=.085*chirp(t-at,world==='island'?.3:.15,pitch);
     const passes=(.4+.32*wave(t,1/8)+.23*wave(t,3/16))**2;
-    const street=buildings*.11*passes*(low*1.2+wave(t,world==='moon'?172:124)*.25);
-    const fair=fun?(.22+fun*.075)*fairground(t):0;
-    const chatter=buildings>=2 ? mid*.16*unit((t-9.2)*1.9)*unit((12.1-t)*1.6)*(.7+.24*wave(t,5)) : 0;
-    return (bed+street+fair+chatter)*Math.min(1,t*3,(loopLength-t)*3);
+    const street=buildings*.043*passes*(low*1.2+mid*.12);
+    const fair=wheel?.19*waltz(t-(world==='city'?36:44))
+      :fun&&world!=='moon'?.105*phrase(t-(world==='city'?38:46),[392,523,659,784,659,698,587,523],.31):0;
+    return (bed+street+music+fair)*Math.min(1,t*3,(loopLength-t)*3);
   });
 }
 
 export const ACTIVITY_SOUNDS=Object.freeze({
-  rocket:[2.25,.24,3],
-  plane:[2.8,.29,3],
-  helicopter:[3.45,.29,4],
-  train:[1.9,.21,4],
-  monorail:[1.65,.19,4],
-  traffic:[1.45,.17,5.8],
-  rover:[1.65,.14,6.5],
+  rocket:[2.25,.055,4],
+  plane:[2.8,.058,4],
+  helicopter:[3.45,.057,5],
+  train:[1.9,.058,5],
+  'tram-bell':[.65,.24,0],
+  horn:[.52,.085,12],
+  monorail:[1.65,.052,5],
+  traffic:[1.45,.047,6.5],
+  rover:[1.65,.045,7.5],
   people:[1.63,.145,9],
   astronaut:[1.55,.14,11],
   alien:[1.57,.145,13],
@@ -127,11 +177,20 @@ export function soundClip(context,kind) {
       const rotor=.27+.71*wave(t,11.2)**4;
       return pass*rotor*(low*.82+mid*.47+.31*wave(t,112-2*t)+.18*wave(t,224-4*t));
     }
+    if (kind==='tram-bell') {
+      const bell=age=>age<0?0:unit(age*195)*Math.exp(-age*13)*(wave(age,986)*.67+wave(age,1525)*.24+wave(age,2164)*.13);
+      return bell(t-.01)+bell(t-.18)*.84;
+    }
+    if (kind==='horn') {
+      const toot=age=>age<0?0:unit(age*105)*unit((.16-age)*27)*(wave(age,392)*.63+wave(age,512)*.31+wave(age,783)*.13);
+      return toot(t-.01)+toot(t-.22)*.72;
+    }
     if (kind==='train') return pass*(low*.65+(.5+.49*wave(t,6)**4)*(mid*.61+noise*.095)+chirp(t-.5,.53,357)*.17);
     if (kind==='monorail') return pass*(low*.36+.23*wave(t,136+t*11)+chirp(t-.13,.75,442)*.24);
     if (kind==='traffic'||kind==='rover') {
       const engine=(kind==='traffic'?115:148)+30*pass-24*t;
-      return pass*(mid*.36+low*.51+.23*wave(t,engine)+.125*wave(t,engine*2.03));
+      return kind==='traffic'?pass*(mid*.49+low*.71+.08*wave(t,engine))
+        :pass*(mid*.36+low*.51+.23*wave(t,engine)+.125*wave(t,engine*2.03));
     }
     if (kind==='ride-cheer') {
       const a=chirp(t-.12,.83,618+110*pass),b=chirp(t-.33,.86,825+145*pass);
