@@ -4,6 +4,20 @@ function newerThan(a,b){
   for(let i=0;i<3;i++){if(x[i]!==y[i])return x[i]>y[i];}return false;
 }
 
+export const PRODUCTION_PATH='/mattopia/';
+
+export async function readPublishedVersion(origin, {signal, request=globalThis.fetch}={}) {
+  const url = new URL(PRODUCTION_PATH+'core.js', origin);
+  // A unique URL also avoids cached responses from older Tallvenn workers.
+  url.searchParams.set('__tallvenn_published', String(Date.now()));
+  const response = await request(url, {cache:'no-store', credentials:'omit', redirect:'error', signal});
+  if (!response.ok) return null;
+  const source = await response.text();
+  const version = source.match(/^\s*export\s+const\s+VERSION\s*=\s*(['"])(\d+\.\d+\.\d+)\1\s*;?\s*$/mu)?.[2];
+  const channel = source.match(/^\s*export\s+const\s+CHANNEL\s*=\s*(['"])([^'"]+)\1/mu)?.[2];
+  return version && (!channel || channel === 'stable') ? version : null;
+}
+
 export function createUpdater({currentVersion,onStatus,beforeReload,serviceWorker=globalThis.navigator?.serviceWorker,reload=version=>{
   const url=new URL(location.href);url.searchParams.set('__tallvenn_update',version);location.replace(url.href);
 },activationTimeout=10000,messageTimeout=1800,pollInterval=250}){

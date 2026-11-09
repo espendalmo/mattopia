@@ -1,6 +1,8 @@
 import {countStep} from './core.js';
+import {curriculumTopic} from './curriculum.js';
 // Early hints suggest an action. Only the third step reveals the answer.
 export function hintFor(t,stage=1){
+  if(curriculumTopic(t.type))return t.hints[Math.min(3, Math.max(1, stage))-1];
   if(t.type==='missing'){
     if(stage>=3)return `${t.a} + ${t.answer} = ${t.n}.`;
     return stage===1?`Start på ${t.a}. Tell videre til ${t.n}.`:`Du kan også regne ${t.n} − ${t.a}. Hvor stor er forskjellen?`;

@@ -7,7 +7,8 @@
   <meta name="description" content="Små, rolige økter med telling, tallforståelse, pluss og minus.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>Tallvenn – ett lite steg om gangen</title>
+  <meta name="apple-mobile-web-app-title" content="Mattopia">
+  <title>Mattopia – ett lite steg om gangen</title>
   <link rel="icon" href="./assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png">
   <link rel="manifest" href="./manifest.webmanifest">
@@ -15,9 +16,10 @@
   <script type="module" src="./app.js"></script>
 </head>
 <body>
+  <div class="status-bar-fill" aria-hidden="true"></div>
   <div id="app"></div>
   <div id="announcer" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
-  <noscript><p class="fallback">Tallvenn trenger JavaScript for å vise oppgavene.</p></noscript>
-  <script>if(location.protocol==='file:')document.getElementById('app').innerHTML='<p class="fallback">Åpne Tallvenn via GitHub Pages eller en lokal webserver. Se README.md i pakken.</p>';</script>
+  <noscript><p class="fallback">Mattopia trenger JavaScript for å vise oppgavene.</p></noscript>
+  <script>if(location.protocol==='file:')document.getElementById('app').innerHTML='<p class="fallback">Åpne Mattopia via GitHub Pages eller en lokal webserver. Se README.md i pakken.</p>';</script>
 </body>
 </html>

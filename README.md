@@ -1,53 +1,196 @@
-# Tallvenn 1.7.0
+# Mattopia 1.22.0
 
-En liten norsk matteapp for mobil og iPad. Åtte oppgaver i en rolig runde, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
+En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
 ## Prøv på egen enhet først
 
-ZIP-filen har to mapper. **`tallvenn-beta/`** er den ferdige prøvepakken. **`tallvenn/`** er den vanlige appen og kildekoden.
+ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`mattopia/`** er den vanlige appen og kildekoden.
 
-1. Publiser innholdet i `tallvenn-beta/` til en egen GitHub Pages-side, for eksempel fra et eget repository kalt `tallvenn-beta`. Behold dagens produksjonspublisering mens du tester.
-2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Tallvenn Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `tallvenn/` på den vanlige adressen. Først da kan vanlige installasjoner oppdage versjon 1.7.0.
+1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
+2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.22.0.
 
-For vanlige GitHub Pages-prosjekter kan `/tallvenn/` og `/tallvenn-beta/` ligge ved siden av hverandre. Ligger betaen under en adresse som allerede har Tallvenn 1.4.0 eller eldre, kan en gammel service worker åpne den vanlige appen på betaadressen. Bruk en adresse utenfor den gamle appens område til testen. Bruk HTTPS for å teste installasjon, offline og oppdateringer.
+Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
 En vanlig offentlig Pages-adresse gir adskilte utrullinger, men er tilgjengelig for andre som kjenner adressen. Velg tilgangsbeskyttet hosting hvis selve testadressen skal være privat.
 
 ### Neste testpakke og tilbakeføring
 
-Fra kildemappen `tallvenn/` kan du bygge nye statiske pakker uten å installere avhengigheter:
+Fra kildemappen `mattopia/` kan du bygge nye statiske pakker uten å installere avhengigheter:
 
 ```sh
-node tools/release.mjs preview ../tallvenn-beta-1.7.1 1.7.1
-node tools/release.mjs stable ../tallvenn-utgave-1.7.1 1.7.1
+node tools/release.mjs preview ../mattopia-beta-1.21.1 1.21.1
+node tools/release.mjs stable ../mattopia-utgave-1.21.1 1.21.1
 ```
 
 Publiser testpakken på den samme testadressen ved hver ny test. Bruk et høyere nummer enn det som allerede er publisert på den adressen. Da kan du prøve selve oppdateringsknappen. For produksjon skal nummeret også være høyere enn den sist publiserte produksjonsversjonen.
 
-Hvis en test feiler, lar du produksjonspakken ligge. Hvis en feil først oppdages etter publisering, bygg den siste fungerende koden med et **høyere** versjonsnummer og publiser den på produksjonsadressen. Slik kan 1.6.1 gjenbrukes etter at 1.7.0 er publisert.
+Hvis en feil først oppdages etter publisering, kan du bygge den siste fungerende koden med et **høyere** versjonsnummer og publisere den på produksjonsadressen. Eksemplet gjenbruker 1.20.0 etter at 1.21.0 er publisert.
 
 ```sh
-node tools/release.mjs stable ../tallvenn-tilbake-1.7.1 1.7.1 ../utpakket-1.6.1/tallvenn
+node tools/release.mjs stable ../mattopia-tilbake-1.21.1 1.21.1 ../utpakket-1.20.0/mattopia
 ```
 
 Behold et Git-merke eller en ZIP av hver godkjente kildeutgave. Erstatt hele den publiserte pakken samlet. Utgaver før 1.7.0 viser øvingen slik den var før profiler ble innført. Profilene blir tilgjengelige igjen i en utgave som støtter dem. Øving gjort i den eldre utgaven i mellomtiden legges ikke inn i eksisterende profiler.
 
+Bruk egne Beta-profiler når du tester tilbakeføring. En tidligere utgave kan overskrive framgang på nyere kart.
+
 ## Legg på GitHub Pages
 
 1. Pakk ut ZIP-filen.
-2. Last opp innholdet i mappen `tallvenn` til roten av et GitHub-repository. `index.html` skal ligge rett i roten, sammen med `app.js`, `core.js`, `style.css`, `sw.js`, `manifest.webmanifest`, `.nojekyll` og `assets/`.
+2. Last opp innholdet i mappen `mattopia` til roten av et GitHub-repository. `index.html` skal ligge rett i roten, sammen med `app.js`, `core.js`, `style.css`, `sw.js`, `manifest.webmanifest`, `.nojekyll` og `assets/`.
 3. Gå til **Settings → Pages → Build and deployment**.
 4. Velg **Deploy from a branch**, deretter grenen **main** og mappen **/(root)**. Lagre.
 5. Åpne adressen GitHub viser når publiseringen er ferdig.
 
-Appen trenger ingen npm-installasjon eller bygging. Alle stier er relative, så den fungerer både på `brukernavn.github.io/repository/` og på et eget domene. Mappen `tests/`, `package.json` og denne veiledningen kan bli med i repositoryet, men er ikke nødvendige for selve appen.
+Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er relative, så den fungerer både på `brukernavn.github.io/repository/` og på et eget domene. Mappen `tests/`, `package.json` og denne veiledningen kan bli med i repositoryet, men er ikke nødvendige for selve appen.
 
-GitHubs veiledning: https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site
+[GitHubs veiledning om publisering](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)
 
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.22.0
+
+- Fri blanding på valgt klassetrinn eller på tvers av 3.–10. trinn. Valgene finnes i profilveiviseren og under «For voksne». Blandet øving teller mot byggeprosjektene, mens automatisk progresjon følger det valgte sporet.
+- Nye oppgavevarianter i blant annet koordinater, brøk, måling, statistikk, algebra og økonomi, med utgangspunkt i kompetansemålene i MAT01-05.
+- Trykk på et bygg for å fremheve konturen og lese det Eplo forteller. Eplo kan også dukke opp over kartet under pausen og finalen.
+- Kjøretøy kan kjøre gjennom flere kvartaler og vente på hverandre. Tog og monorail stopper underveis før de fortsetter ut av kartet. Nye Palmeøya kan få en trikk med tre stopp.
+- Nye kart har plass til 30 bygg og flere byggevalg, blant annet flyplass i Elvebyen og et månetårn med roterende restaurant. Nye Elvebyen har bredere elv, og både Elvebyen og Palmeøya har tydeligere dammer. Påbegynte kart beholder sine opprinnelige tomter og mål.
+
+## Nytt i 1.21.0
+
+- Eplo hilser i pausen, viser framgangen på valgt prosjekt og veksler mellom ulike oppmuntringer.
+- Hjemskjermappen har en fast flate med samme farge som resten av appen ved statusfeltet på iPhone. Det gir iOS en heldekkende bakgrunn for toppkanten.
+- På støttede iPhone- og iPad-nettlesere holder et tilnærmet lydløst signal lydøkten aktiv etter første avspilling, så lenge applyden er på og appen er i forgrunnen.
+- Lyd fra fyrverkeriet følger hver rakett. Fyrverkeriet varer ett sekund lenger. Mellomsteg har en lengre og tydeligere byggeplasslyd før omgivelseslyden toner inn.
+- Fly, helikopter og trafikk har egne motorlyder. Fornøyelsesparkene får små melodier og karusellhyl, og forbipasserende får korte stemmelyder.
+- Tog og monorail går over flere kvartaler og svinger mellom gatene før tunnelene. Kartutsnittet rundt stasjonen viser mer av sporet.
+
+## Nytt i 1.20.0
+
+- Elveby stasjon og Månesporet dukker opp som byggevalg når minst to bygg står ferdige. Begge stasjonene åpner en bane med tog og tunnelportaler etter tre byggesteg.
+- Helikoptre flyr over Elvebyen og bruker den nye landingsplassen ved Palmeflyplassen.
+- Et trykk på et bygg fremhever tomta. Eplo hilser ved profiloppretting, gir hint i oppgavene og forteller små historier om byggene.
+- Byggetrinn har egne lyder for månen og jorda. Lydbildet i kartene vokser med antall bygg, og fly, raketter og andre kjøretøy kan høres når de passerer i utsnittet. Omgivelseslyden ligger på 75 prosent av den vanlige miksen.
+- Lengre fyrverkeri og applaus feirer nye bygg. Ved fullført kart eller superhelt kommer Eplo med en egen hilsen og en snarvei til samlingen. Velg «Vis finalen» i en byggedemo i beta for å se feiringen direkte.
+- På iPhone og iPad ber Mattopia om avspilling i lydløsmodus der nettleseren støtter det. Lydbryteren i appen styrer fremdeles all lyd.
+
+## Nytt i 1.19.0
+
+- Mattopia har sesongdetaljer som følger datoen, med vinter, jul, påske, vår, sommer, høst og Halloween.
+- Byggeplasser i terreng får sokler med mur- og steindetaljer, varierte grunnflater og egne adkomster. Nye veistykker kan komme til syne før det første byggesteget.
+- Veikryss får ryddigere kanter. Langs gatene dukker det opp gangfelt, lys og trær.
+- Rovergarasjen, verkstedet og lasteterminalen har tårn og glassbroer. Månebasen har både gatekjøring og roverruter i terrenget.
+- Flyplassen har en lengre diagonal rullebane og mer bakkekjøring før avgang og etter landing. Baner og tivoli har spillere, besøkende og passasjerer.
+- Trykk på et bygg i kartet eller velg det fra listen for å lese hva som skjer der.
+
+## Nytt i 1.18.0
+
+- Husk klossebygget bruker isometriske klosser med fargesymboler. Dra klossene til omrissene, eller trykk på en kloss og deretter plassen. Kims lek trekker fra 40 illustrasjoner.
+- Nye Elvebyen, Månebasen og Palmeøya har 36 mulige bygg hver. Kartet er fullført etter 24 valg, fortsatt med tre runder per bygg. Kart som allerede er påbegynt beholder sitt opprinnelige utvalg og plasseringene sine.
+- Elvebyen får blant annet fabrikk, bussterminal og skyskrapere. Månebasen får små kratere, Moon Burger, Cosmic Ice Cream og raketter som tar av og lander. Palmeøya får større hoteller, flyplasser med fly i bevegelse, badende og vannscootere.
+- Når et bygg ferdigstilles, vises et lite fyrverkeri over bygget. Hele ferdige kart og superheltbygg får en egen gratulasjon og snarvei til samlingen.
+- Dra direkte for å rotere en superhelt og klyp for å zoome. Kartutsnittet på rundeslutt og i pausen er litt høyere.
+
+## Nytt i 1.17.0
+
+- Gatenettet har avrundede svinger med midtstriper som følger veien. Automatisk bygde bruer har eget dekke, rekkverk og pilarer.
+- Mot slutten går landskapet over i en isometrisk horisont som gradvis toner ut i kanten.
+- Oppgavetelleren står i et fast, dekkende toppfelt mens selve oppgaven kan rulle.
+- Kartene har knappen **Utforsk kartet** og viser siste byggetrinn på nært hold etter en runde og ved pause. Superheltfigurene har motsatt drageretning i roteringsmodus.
+
+## Nytt i 1.16.0
+
+- Kartene har fast isometrisk vinkel. Du kan dra, zoome og velge **Oversikt**. Rotasjon ligger i visningen av superheltfigurene.
+- Nye kart starter med et lite kvartal og et kjøretøy. Det sammenhengende gatenettet blir synlig bit for bit etter hvert som du bygger. Kart fra 1.15.0 fortsetter med sine opprinnelige veier og byggeplasser.
+- Kran, gravemaskin, sperringer og stillas viser hvor det bygges. Utsnittet viser området rundt byggeplassen. Når bygget er ferdig, zoomer visningen mykt inn. **Vis siste steg** spiller av overgangen.
+- Ferdige pariserhjul snurrer og vognene kjører rundt i berg-og-dal-banen. Når kartet nærmer seg ferdig, kommer fjellene, verdensrommet eller havhorisonten til syne.
+- Fasader, terreng, trær og knauser har flere detaljer. I Beta kan dere prøve de nye kartene under **For voksne → Byggedemoer**.
+- Teksten beholder full kontrast ved skjermbytte. Toppen av skjermen tar høyde for mobilens sikre visningsområde.
+
+## Nytt i 1.15.0
+
+- Elvebyen, Månebasen og Palmeøya har faste, tilfeldig genererte landskap. Tåka letter rundt veier og byggeplasser mens spilleren utforsker terrenget. Veier svinger mellom høydedrag, dammer og kratere, og byggene vender seg mot adkomsten sin.
+- Hvert nytt kart har 24 byggeprosjekter, med tre runder per bygg. Blant dem er et rådhus, en rød hengebro, en biodome, en astronautbane, en hotellresort og en berg-og-dal-bane.
+- Biler, månebiler, mennesker og dyr kommer til underveis. Ferdige brygger og kaier får båttrafikk.
+- **Se samlingen → Bygg og kart** samler ferdige bygg fra både aktive og tidligere kart. Trykk på et bygg for å finne det i 3D. Bruk **Oversikt** for å se hele det utforskede området.
+- Påbegynte kart fra tidligere utgaver fortsetter med sin opprinnelige utforming. Det nye landskapet brukes når et nytt kart startes. I Beta kan dere prøve det under **For voksne → Byggedemoer**.
+
+## Nytt i 1.14.0
+
+- Elvebyen, Månebasen og Palmeøya begynner med et lite område. Gater, terreng og detaljer kommer til rundt byggene. Hvert nytt kart får et tilfeldig landskap som lagres med profilen.
+- Velg mellom opptil tre bygg før du starter på neste. Hvert bygg tar tre runder, og et nytt kart har 16 byggverk. Trær, lys og kjøretøy hører til områdene som vokser fram. Når kartet er ferdig, kan du starte et nytt og finne ferdige kart under **Tidligere kart**.
+- Eksisterende kart bruker samme plassering av byggene. Når et påbegynt bygg er ferdig, dukker de nye byggevalgene opp.
+- Profilveiviseren lar dere velge klassetrinn, avatar, fast spor eller automatisk progresjon, antall oppgaver og belønning. Valgene kan justeres under **For voksne**.
+- I Beta kan dere gå til **For voksne → Start på nytt i Beta** for å avbryte en runde eller nullstille et valgt stort prosjekt. I pausens meny ligger også **Avbryt runden**. En nullstilling av kart genererer et nytt landskap. Byggedemoene har en egen knapp for nytt demokart.
+
+## Nytt i 1.13.0
+
+- **For voksne** i Beta viser både den åpne betaversjonen og versjonen som svarer på `/mattopia/` på samme domene. Oppslaget henter `core.js` fra nettet utenom appens offlinecache. Det vises en egen status dersom hovedadressen er utilgjengelig.
+- Elvebyen, Månebasen og Palmeøya har egne skilt, rikere fasader og mer terrengdetaljer. Bilen kjører en runde gjennom sammenhengende gater. Månebasen har en sekshjuls rover, en astronaut og en alien.
+- Nye byggedeler på kartene vokser fra underlaget og får et kort lysskinn. Effekten kan spilles på nytt med **Vis igjen**. Med redusert bevegelse vises det ferdige steget direkte.
+- Hvert kart har sin egen svake omgivelseslyd i 3D-visningen. **Omgivelseslyd** slår av bakgrunnslyden i den åpne visningen. Lyden stopper ved lukking, og appens lydvalg styrer om den kan spilles.
+- Superhelter, små klossefigurer, planter og utmerkelser har fått mer detaljerte overflater, illustrasjoner og lys.
+
+## Nytt i 1.12.0
+
+- Elvebyen, Månebasen og Palmeøya har større landflater, justerte plasseringer og mykere former. Større landflater gir plass til alle bygg og gjenstander. Byggesteg og lagret framgang følger samme rekkefølge som før.
+- Når et bygg eller en gjenstand blir ferdig, vises **Ferdig på kartet** med navn, konfetti og en egen fanfare. Det kan også prøves i byggedemoene.
+- Forsiden veksler mellom to øvingshilsener etter fullførte runder. Stjerner og utmerkelser vises under **Så langt har du kommet**. Utmerkelsene har hver sin form, palett og illustrasjon.
+
+## Nytt i 1.11.0
+
+- Elvebyen, Månebasen og Palmeøya viser siste byggesteg på makszoom. Bruk **Oversikt** for å se hele kartet.
+- I Beta åpner **For voksne → Byggedemoer** alle de seks store prosjektene. Bruk **Forrige**, **Neste** eller venstre og høyre piltast for å prøve byggestegene. Når selve 3D-bildet har tastaturfokus, styrer piltastene kameraet. Demoen bruker en egen teller og lagrer ingen framgang.
+- Beta-merket sitter over logoen i toppfeltet og i den eksisterende framdriftslinjen under øving.
+- Kims lek og avatarene har egne SVG-illustrasjoner. Øvingen har fått litt mykere overganger og korte lyder når du går videre, velger bilder eller åpner byggevisningen. Lydknappen styrer også de nye lydene.
+- **En runde til** og **Ta en pause** har større, innrammede knapper.
+
+## Nytt i 1.10.0
+
+- Et nærbilde følger det nyeste byggesteget. Etter runden flyr de nye klossene på plass og markeres i gull. Navnet og trinnnummeret blir stående. Trykk **Vis igjen** på resultatsiden, eller **Vis siste steg** i 3D-visningen. **Oversikt** zoomer ut.
+- Elvebyen, Månebasen og Palmeøya har mykere terrengkanter, små detaljer i overflatene og henholdsvis en bil, en rover og en fugl i bevegelse.
+- Oppgaver, skjermbytter og dialoger har korte overganger. Når enheten ber om redusert bevegelse, vises siste byggesteg direkte og detaljene i landskapet står i ro.
+- Vibrasjon følger svar og fullføringer på enheter og nettlesere som støtter Vibration API. På de enhetene kan du slå av vibrasjonen under **For voksne** uavhengig av lyden. Safari på iPhone og iPad bruker visuell tilbakemelding og lyd.
+
+## Nytt i 1.9.0
+
+I **For voksne → Oppgaver per runde** kan hver spiller bruke fem, seks eller åtte oppgaver. Åtte er standard. En påbegynt runde beholder lengden den startet med. Automatisk progresjon går fortsatt over til neste øvingsspor etter tre fullførte runder, og historikken viser hvor lang hver runde faktisk var.
+
+Under **For voksne → Hva vil barnet bygge videre på? → Store byggeprosjekter** kan dere velge et bygg som vokser over flere runder. Hver fullførte runde gir én stjerne og ett byggesteg så lenge prosjektet har flere steg. Framgangen lagres separat for hvert prosjekt og hver spiller. Blomster og små klossefigurer kan fortsatt velges.
+
+| Prosjekter | Runder per prosjekt |
+| --- | ---: |
+| Rustningshelten, Edderkopphelten og Skjoldhelten | 24 |
+| Elvebyen, Månebasen og Palmeøya | 120 |
+
+Trykk **Utforsk i 3D** på forsiden eller etter en runde. Velg **Flytt** eller **Roter** og dra i bildet. Klyp eller bruk **+** og **−** for å zoome. Bruk **Oversikt** for å se hele byggeprosjektet. Med tastaturet kan du bruke piltastene, pluss, minus og null når bildet har fokus. Ferdige bygg kan fortsatt utforskes.
+
+## Nytt i 1.8.0
+
+- Øvingssporene følger klassetrinnet som er valgt på profilen. I **For voksne** kan du bytte trinn og øvingsspor. En påbegynt runde kan fullføres før det nye valget trer i kraft. Uten klassetrinn får du de opprinnelige øvingsvalgene.
+- **Automatisk progresjon** er valgfri og avslått som standard. Første runde på sporet bruker det valgte sporet. Andre og tredje runde får henholdsvis én og to oppgaver fra neste spor. Etter tre fullførte runder, altså 24 oppgaver, bytter appen spor innenfor samme trinn. Man kan også velge spor selv.
+- **Hvilket tall er dette?** viser brikkene først. Forklaringen med antall hundrere, tiere og enere vises etter det andre hintet eller ved riktig svar.
+- Avatarvalget har tolv større bilder. Bildene i Kims lek er også litt større.
+
+### Eksempler på øving per trinn
+
+| Trinn | Eksempler |
+| --- | --- |
+| 1 | Telle brikker, legge til og ta bort med tall til 10 |
+| 2 | Tallmønstre, former og de første tallområdene |
+| 3 | Plassverdi, pluss og minus, like grupper, måling og koordinater |
+| 4 | Gangetabeller, deling, areal i ruter og volum i klosser |
+| 5 | Brøk som del av en hel og av en mengde, enkle likninger og sjanse |
+| 6 | Desimaltall og prosent i praktiske situasjoner, areal, omkrets og volum |
+| 7 | Negative tall, regnerekkefølge, brøkregning, likninger og statistikk |
+| 8 | Primtallsfaktorer, brøkforkorting, algebra, funksjonstabeller og fart |
+| 9 | Pytagoras, formlikhet, volum, statistikk og sannsynlighet |
+| 10 | Stigningstall, prosentvis vekst, likningssett, rabatt og rente |
+
+Øvingssporene trener utvalgte deler av [Udirs læreplan i matematikk, MAT01-05](https://www.udir.no/lk20/mat01-05?lang=nob). På 1. trinn er det lagt inn en enklere inngang til kompetansemålene etter 2. trinn.
 
 ## Nytt i 1.7.0
 
@@ -136,7 +279,7 @@ Et nytt bygg begynner på null klosser når klossemodus velges for første gang.
 
 ## Hvordan øvingen fungerer
 
-Én startknapp, åtte oppgaver, ingen tidsfrist. Runden lagres slik at barnet kan ta pause og fortsette senere. Voksenvisningen har **Tall til 20**, **Tall til 100**, **Tall til 999** og **Ganging og deling**. Standard er tall til 20.
+Én startknapp og ingen tidsfrist. Runden lagres slik at barnet kan ta pause og fortsette senere. I voksenvisningen kan du velge rundelengde og øvingsspor for klassetrinnet. Uten klassetrinn starter appen med tall til 20.
 
 Oppgavene dekker tiere og enere, tiervenner, tallrekke, pluss og minus. Brikker kan trykkes bort og legges tilbake, og tomme ruter kan fylles. Svaret velges med tre store knapper; talltastatur innføres først etter flere økter. En stjerne betyr en fullført øvingsrunde, ikke at alle oppgavene er mestret.
 
@@ -148,14 +291,14 @@ Bruk gjerne noen økter sammen med barnet. Spør hvordan det tenkte, og tilpass 
 
 Framgang, valgfritt navn, avatar og klassetrinn lagres i `localStorage` i nettleseren eller hjemskjermappen. Det er ingen analyseverktøy, annonser, konto, tredjepartsressurser eller synkronisering. Vanlig nettverkslogging hos vertstjenesten styres av vertstjenesten. Hvis nettleseren blokkerer lagring, fungerer oppgavene likevel mens appen er åpen. Voksenvisningen opplyser om dette.
 
-Sletting av nettleserdata sletter også framgangen. Historikken kan slettes i voksenvisningen med bekreftelse. Appen er beregnet på én elev per nettleser/installasjon.
+Sletting av nettleserdata sletter også framgangen. Historikken til den aktive spilleren kan slettes i voksenvisningen med bekreftelse.
 
 ## Lokal utvikling og sjekk
 
 Åpne via en webserver, ikke ved å dobbeltklikke `index.html`:
 
 ```sh
-cd tallvenn
+cd mattopia
 python3 -m http.server 8000
 ```
 
@@ -169,7 +312,7 @@ Ved utvikling kan en eldre service worker holde på filene. Fjern registreringen
 
 ## Oppdateringer fra GitHub Pages
 
-**Oppdater til 1.7.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.7.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
+**Oppdater til 1.8.0:** Erstatt filene med innholdet fra pakken, også `style.css`, `sound.js`, `rewards.js`, `sw.js` og de andre JavaScript-filene. Velg deretter **For voksne → Se etter oppdatering → Oppdater nå** når den nye versjonen er tilgjengelig. Se etter **Appversjon 1.8.0**. Eksisterende planteframgang, bygg, samling, stjerner, historikk, lydvalg og påbegynt runde beholdes.
 
 **Hvis iPad åpner en eldre versjon:** Vent til publiseringen på GitHub Pages er ferdig. Åpne appen på nett og velg «Se etter oppdatering». Lukk deretter appen helt fra appveksleren (eller lukk alle Tallvenn-faner hvis du bruker Safari) og åpne den igjen på samme adresse. Dette lukker bare appen; ikke slett den eller nettleserdataene. Kontroller versjonen i voksenvisningen. En installert app og Safari kan ha separat framgang, så prøv i den samme du vanligvis bruker.
 
@@ -177,7 +320,7 @@ Last opp og erstatt appfilene på **samme adresse og sti** som før. Behold `ass
 
 Appen sjekker etter ny service worker ved åpning og kan sjekke igjen når den kommer tilbake fra bakgrunnen utenfor en øvingsrunde. Du kan også velge **For voksne → Se etter oppdatering**. Når en ny, komplett appversjon er lastet ned, vises **Ny versjon klar → Oppdater** på forsiden eller etter runden. Oppgavene blir aldri automatisk avbrutt av en sidelasting. Knappen lagrer framgangen før den laster siden på nytt. Hvis lagring feiler, venter oppdateringen.
 
-**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.7.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
+**Første overgang fra 1.0.0:** Den gamle versjonen har ikke oppdateringsknappen. Etter publisering åpner du appen på nett og laster siden på nytt. Hvis 1.0.0 fortsatt vises, gi nettleseren noen sekunder til å hente den nye service workeren og last siden på nytt igjen. Du kan også lukke alle Tallvenn-faner/appvinduer og åpne igjen. Se etter **Appversjon 1.8.0** i voksenvisningen. Stjerner, historikk, lydvalg og påbegynt runde migreres automatisk.
 
 Framgang lagres separat fra filcachen og beholdes på samme nettadresse og nettleser/installasjon. Å flytte appen til et annet domene eller en annen enhet gir ikke automatisk synkronisering. En serveroppdatering uten nett kan ikke oppdages før appen får nett igjen.
 

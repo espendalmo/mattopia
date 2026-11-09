@@ -45,10 +45,10 @@ function harness(base, {failAsset, claim = async () => {}} = {}) {
 }
 
 test('All offline assets exist and load from cache at root and GitHub project paths', async () => {
-  for (const base of ['https://example.github.io/', 'https://example.github.io/tallvenn/']) {
+  for (const base of ['https://example.github.io/', 'https://example.github.io/mattopia/']) {
     const h = harness(base);
     await h.lifecycle('install');
-    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'update.js', 'rewards.js', 'plants.js', 'breaks.js', 'profiles.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
+    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'sound-art.js', 'update.js', 'rewards.js', 'plants.js', 'breaks.js', 'profiles.js', 'illustrations.js', 'curriculum.js', 'projects.js', 'worlds.js', 'regions.js', 'street-grid.js', 'region-roads.js', 'map-art.js', 'region-scenery.js', 'world-landmarks.js', 'scenery.js', 'transport.js', 'project-view.js', 'project-picking.js', 'landmark-ground.js', 'landmark-stories.js', 'seasons.js', 'project-fireworks.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png']) {
       assert.ok((await h.request(name)).bytes.length > 0, name);
     }
     assert.ok((await h.request('?from=home', 'navigate')).bytes.length > 0, 'navigation query falls back to cached entry');
@@ -56,20 +56,26 @@ test('All offline assets exist and load from cache at root and GitHub project pa
 });
 
 test('A cache update preserves other apps on the same GitHub Pages origin', async () => {
-  const h = harness('https://example.github.io/tallvenn/');
-  h.stores.set('tallvenn:/tallvenn/:0.9.0', new Map());
+  const h = harness('https://example.github.io/mattopia/');
+  h.stores.set('tallvenn:/mattopia/:0.9.0', new Map());
   h.stores.set('tallvenn:/another-app/:0.9.0', new Map());
   h.stores.set('unrelated-cache', new Map());
   await h.lifecycle('install');
   await h.lifecycle('activate');
-  assert.deepEqual(h.deleted, ['tallvenn:/tallvenn/:0.9.0']);
+  assert.deepEqual(h.deleted, ['tallvenn:/mattopia/:0.9.0']);
   assert.ok(h.stores.has('tallvenn:/another-app/:0.9.0'));
+});
+
+test('Published version lookups pass through the offline service worker', async () => {
+  const h=harness('https://example.github.io/');
+  await h.lifecycle('install');
+  assert.equal(await h.request('/mattopia/core.js?__tallvenn_published=1'),undefined);
 });
 
 test('The root app never serves its offline index to a beta page in a subdirectory', async () => {
   const h = harness('https://example.github.io/');
   await h.lifecycle('install');
-  await assert.rejects(h.request('tallvenn-beta/', 'navigate'), /Offline/);
+  await assert.rejects(h.request('mattopia-beta/', 'navigate'), /Offline/);
   assert.ok((await h.request('index.html?from=home', 'navigate')).bytes.length > 0);
 });
 
@@ -85,7 +91,7 @@ test('Manifest is portable and all icon declarations resolve to real files', asy
 });
 
 test('The actual service worker reports the same release as the app and package',async()=>{
-  const h=harness('https://example.github.io/tallvenn/');let reported;
+  const h=harness('https://example.github.io/mattopia/');let reported;
   await h.message({type:'GET_VERSION'},{postMessage:data=>{reported=data.version;}});
   assert.equal(reported,VERSION);
   const pkg=JSON.parse(await fs.readFile(new URL('package.json',root),'utf8'));
@@ -93,7 +99,7 @@ test('The actual service worker reports the same release as the app and package'
 });
 
 test('Every release asset bypasses the HTTP cache and is stored under its normal offline URL',async()=>{
-  const h=harness('https://example.github.io/tallvenn/');await h.lifecycle('install');
+  const h=harness('https://example.github.io/mattopia/');await h.lifecycle('install');
   assert.ok(h.downloads.length>=15);
   for(const request of h.downloads){
     assert.equal(request.cache,'reload');
@@ -105,19 +111,19 @@ test('Every release asset bypasses the HTTP cache and is stored under its normal
 });
 
 test('An incomplete download cannot activate or replace the previous complete offline bundle',async()=>{
-  const h=harness('https://example.github.io/tallvenn/',{failAsset:'app.js'});
+  const h=harness('https://example.github.io/mattopia/',{failAsset:'app.js'});
   const old=new Map([['saved',{bytes:'previous release'}]]);
-  h.stores.set('tallvenn:/tallvenn/:1.2.1',old);
+  h.stores.set('tallvenn:/mattopia/:1.2.1',old);
   await assert.rejects(h.lifecycle('install'),/Incomplete app download/);
   assert.equal(h.skipped(),0);
-  assert.equal(h.stores.get('tallvenn:/tallvenn/:1.2.1'),old);
+  assert.equal(h.stores.get('tallvenn:/mattopia/:1.2.1'),old);
   assert.deepEqual(h.deleted,[]);
 });
 
 test('A legacy page cannot receive the new worker version before activation and claiming finish',async()=>{
   let claimStarted,releaseClaim;
   const started=new Promise(resolve=>{claimStarted=resolve;});
-  const h=harness('https://example.github.io/tallvenn/',{claim:()=>{claimStarted();return new Promise(resolve=>{releaseClaim=resolve;});}});
+  const h=harness('https://example.github.io/mattopia/',{claim:()=>{claimStarted();return new Promise(resolve=>{releaseClaim=resolve;});}});
   const activating=h.lifecycle('activate');await started;
   let reported;
   const response=h.message({type:'GET_VERSION'},{postMessage:data=>{reported=data.version;}});

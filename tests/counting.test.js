@@ -7,6 +7,10 @@ import * as rewards from '../rewards.js';
 import * as plants from '../plants.js';
 import * as breaks from '../breaks.js';
 import * as profiles from '../profiles.js';
+import * as curriculum from '../curriculum.js';
+import * as projects from '../projects.js';
+import * as worlds from '../worlds.js';
+import * as seasons from '../seasons.js';
 import {hintFor} from '../learning.js';
 
 test('Counting covers upward and downward transitions within each selected number range', () => {
@@ -58,12 +62,12 @@ test('Old upward rounds and new downward rounds survive storage without changing
 
 test('The task, accessible text, help sequence and feedback all follow the same counting direction', async () => {
   const source = (await fs.readFile(new URL('../app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
-  const root = {innerHTML:''};
+  const root = {innerHTML:'',querySelector:()=>null};
   const context = vm.createContext({
-    ...core, ...rewards, ...plants, ...breaks, ...profiles, hintFor,
+    ...core, ...rewards, ...plants, ...breaks, ...profiles, ...curriculum, ...projects, ...worlds, ...seasons, mountProjectView:()=>()=>{}, hintFor,
     document:{querySelector:s => s === '#app' ? root : s === '#announcer' ? {textContent:''} : null, querySelectorAll:() => [], addEventListener(){}},
     localStorage:{getItem:() => null, setItem(){}},
-    window:{addEventListener(){}}, navigator:{},
+    window:{addEventListener(){}}, navigator:{}, matchMedia:()=>({matches:true}),
     createSoundPlayer:() => ({}), createUpdater:() => ({}),
   });
   vm.runInContext(source, context);

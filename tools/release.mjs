@@ -39,18 +39,23 @@ async function makeRelease() {
     .replace(channelPattern, `export const CHANNEL = '${channel}'`);
   const namedWorker = replaceRequired(worker, /const VERSION\s*=\s*'[^']+'/, `const VERSION = '${version}'`, 'sw.js');
   const preview = channel === 'preview';
+  const name = manifest.name;
+  const previewName = name + ' Beta';
   if (preview) {
-    manifest.name = 'Tallvenn Beta';
-    manifest.short_name = 'Tallvenn Beta';
+    manifest.name = previewName;
+    manifest.short_name = previewName;
   }
-  const namedHtml = preview
-    ? html.replace('<head>', '<head>\n  <meta name="robots" content="noindex">\n  <meta name="apple-mobile-web-app-title" content="Tallvenn Beta">')
-          .replace('<title>Tallvenn', '<title>Tallvenn Beta')
-    : html;
+  const appleTitle = /<meta name="apple-mobile-web-app-title" content="[^"]*">/;
+  const previewTitle = `<meta name="apple-mobile-web-app-title" content="${previewName}">`;
+  const namedHtml = !preview ? html : (appleTitle.test(html)
+    ? html.replace(appleTitle,previewTitle)
+    : html.replace('<head>',`<head>\n  ${previewTitle}`))
+    .replace('<head>','<head>\n  <meta name="robots" content="noindex">')
+    .replace(`<title>${name}`,`<title>${previewName}`);
 
   const files = await readdir(source, { withFileTypes:true });
   await mkdir(dirname(target), { recursive:true });
-  const temporary = await mkdtemp(join(dirname(target), '.tallvenn-build-'));
+  const temporary = await mkdtemp(join(dirname(target), '.mattopia-build-'));
   try {
     for (const file of files) {
       if (!file.isFile() || !/\.(css|js)$/.test(file.name) || ['core.js', 'sw.js'].includes(file.name)) continue;
@@ -63,7 +68,7 @@ async function makeRelease() {
     await writeFile(join(temporary, 'manifest.webmanifest'), JSON.stringify(manifest, null, 2) + '\n');
     await writeFile(join(temporary, '.nojekyll'), '');
     await rename(temporary, target);
-    console.log(`Tallvenn ${version} (${channel}) er klar i ${target}.`);
+    console.log(`${manifest.name} ${version} (${channel}) er klar i ${target}.`);
   } finally {
     await rm(temporary, { recursive:true, force:true });
   }

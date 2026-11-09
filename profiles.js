@@ -1,13 +1,20 @@
 import { STORAGE_KEY } from './core.js';
+import { illustration } from './illustrations.js';
 
 export const PROFILE_KEY = `${STORAGE_KEY}-profiles-v1`;
 export const AVATARS = {
-  apple:{ icon:'🍏', label:'Eple' },
-  fox:{ icon:'🦊', label:'Rev' },
-  panda:{ icon:'🐼', label:'Panda' },
-  frog:{ icon:'🐸', label:'Frosk' },
-  octopus:{ icon:'🐙', label:'Blekksprut' },
-  owl:{ icon:'🦉', label:'Ugle' },
+  apple:{ icon:illustration('apple'), label:'Eple' },
+  fox:{ icon:illustration('fox'), label:'Rev' },
+  panda:{ icon:illustration('panda'), label:'Panda' },
+  frog:{ icon:illustration('frog'), label:'Frosk' },
+  octopus:{ icon:illustration('octopus'), label:'Blekksprut' },
+  owl:{ icon:illustration('owl'), label:'Ugle' },
+  tiger:{ icon:illustration('tiger'), label:'Tiger' },
+  koala:{ icon:illustration('koala'), label:'Koala' },
+  penguin:{ icon:illustration('penguin'), label:'Pingvin' },
+  cat:{ icon:illustration('cat'), label:'Katt' },
+  dragon:{ icon:illustration('dragon'), label:'Drage' },
+  robot:{ icon:illustration('robot'), label:'Robot' },
 };
 export const GRADES = Array.from({ length:10 }, (_, i) => i + 1);
 export const NAME_LIMIT = 24;

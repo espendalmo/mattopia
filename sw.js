@@ -1,9 +1,9 @@
 const SCOPE = new URL('./', self.location.href);
 const INDEX = new URL('index.html', SCOPE);
 const PREFIX = `tallvenn:${SCOPE.pathname}:`;
-const VERSION = '1.7.0';
+const VERSION = '1.22.0';
 const CACHE = `${PREFIX}${VERSION}`;
-const ASSETS = ['./', './index.html', './style.css', './app.js', './core.js', './learning.js', './sound.js', './update.js', './rewards.js', './plants.js', './breaks.js', './profiles.js', './manifest.webmanifest', './assets/icon.svg', './assets/apple-touch-icon.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png'];
+const ASSETS = ['./', './index.html', './style.css', './app.js', './core.js', './learning.js', './sound.js', './sound-art.js', './update.js', './rewards.js', './plants.js', './breaks.js', './profiles.js', './illustrations.js', './curriculum.js', './projects.js', './worlds.js', './regions.js', './street-grid.js', './region-roads.js', './map-art.js', './region-scenery.js', './world-landmarks.js', './scenery.js', './transport.js', './project-view.js', './project-picking.js', './landmark-ground.js', './landmark-stories.js', './seasons.js', './project-fireworks.js', './manifest.webmanifest', './assets/icon.svg', './assets/apple-touch-icon.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png'];
 let activationReady = Promise.resolve();
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
@@ -33,7 +33,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.origin !== SCOPE.origin || !url.pathname.startsWith(SCOPE.pathname)) return;
+  if (url.origin !== SCOPE.origin || !url.pathname.startsWith(SCOPE.pathname) || url.searchParams.has('__tallvenn_published')) return;
   event.respondWith(caches.open(CACHE).then(async cache => {
     const cached = await cache.match(event.request);
     if (cached) return cached;

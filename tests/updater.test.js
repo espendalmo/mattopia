@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createUpdater} from '../update.js';
+import {createUpdater,readPublishedVersion} from '../update.js';
+
+test('Beta reads the live stable version, including releases that predate channels', async () => {
+  const origin='https://example.github.io/mattopia-beta/';
+  const check=(source,ok=true)=>readPublishedVersion(origin,{request:async (url,options)=>{
+    assert.equal(url.pathname,'/mattopia/core.js');
+    assert.equal(url.origin,'https://example.github.io');
+    assert.ok(url.searchParams.has('__tallvenn_published'));
+    assert.equal(options.cache,'no-store');
+    assert.equal(options.redirect,'error');
+    return {ok,text:async()=>source};
+  }});
+  assert.equal(await check("export const VERSION = '1.12.0';\nexport const CHANNEL = 'stable';"),'1.12.0');
+  assert.equal(await check("export const VERSION='1.3.0';"),'1.3.0');
+  assert.equal(await check("export const VERSION='1.13.0';\nexport const CHANNEL = 'preview';"),null);
+  assert.equal(await check('<!doctype html><title>404</title>'),null);
+  assert.equal(await check("export const VERSION='1.12.0';",false),null);
+});
 
 function eventSource(){
   const listeners=new Map();
@@ -70,10 +87,10 @@ test('An older worker cannot offer a downgrade to an already newer page',async()
 test('The new navigation has a release-specific URL and preserves the GitHub project path',async()=>{
   const previous=globalThis.location;let destination;
   try{
-    globalThis.location={href:'https://example.github.io/tallvenn/?demo=1#home',replace:url=>{destination=url;}};
+    globalThis.location={href:'https://example.github.io/mattopia/?demo=1#home',replace:url=>{destination=url;}};
     const h=harness({defaultReload:true});await h.updater.init();await h.takeControl();await h.updater.apply();
     const url=new URL(destination);
-    assert.equal(url.pathname,'/tallvenn/');assert.equal(url.searchParams.get('__tallvenn_update'),'1.2.2');
+    assert.equal(url.pathname,'/mattopia/');assert.equal(url.searchParams.get('__tallvenn_update'),'1.2.2');
     assert.equal(url.searchParams.get('demo'),'1');assert.equal(url.hash,'#home');
   }finally{if(previous===undefined)delete globalThis.location;else globalThis.location=previous;}
 });
