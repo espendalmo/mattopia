@@ -1,3 +1,4 @@
+import {taskSuccessStep} from '../sound.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -11,34 +12,37 @@ import * as curriculum from '../curriculum.js';
 import * as projects from '../projects.js';
 import * as worlds from '../worlds.js';
 import {hintFor} from '../learning.js';
+import {rewardIllustration} from '../illustrations.js';
 import {seasonForDate,seasonMark} from '../seasons.js';
 import {PRODUCTION_PATH} from '../update.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=new Map(),roundFixture=!hash,navigator={}}={}){
-  const events={},plays=[],builds=[],animations=[],timers=[];
-  const document={activeElement:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events[name]=fn;}};
+  const events={},plays=[],builds=[],buildingSounds=[],animations=[],timers=[];
+  const document={activeElement:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events[name]=fn;},
+    removeEventListener:(name,fn)=>{if(events[name]===fn) delete events[name];}};
   const heading={focus(){document.activeElement=heading;}};
   const count={textContent:''},check={disabled:true};
-  const root={innerHTML:'',querySelector:s=>s==='h1'?heading:s==='.focus-count'?count:s==='[data-action="focus-check"]'?check:null};
+  const root={innerHTML:'',
+    querySelector:s=>s==='h1'?heading:s==='.focus-count'?count:s==='[data-action="focus-check"]'?check:null};
   const output={textContent:'',animate:(...args)=>animations.push(args)};
   const submit={disabled:true},erase={disabled:true,animate:(...args)=>animations.push(args)};
   const digits=Object.fromEntries(Array.from({length:10},(_,i)=>[i,{animate:(...args)=>animations.push(args)}]));
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
   const location={pathname:'/mattopia-beta/',search:'',hash};
   const window={location,history:{replaceState(){location.hash='';}},addEventListener:(name,fn)=>{events[name]=fn;},scrollTo(){}};
-  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mountProjectView:()=>()=>{},hintFor,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
+  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
-    requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),matchMedia:()=>({matches:reduced}),
+    requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),clearTimeout:id=>{if(timers[id-1]) timers[id-1].cancelled=true;},matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({
-      play:(...args)=>plays.push(args),playBuild:(...args)=>builds.push(args),stopAmbience(){},stopBuild(){},resume(){},stop(){},
+      play:(...args)=>plays.push(args),playBuild:(...args)=>builds.push(args),playBuilding:(...args)=>buildingSounds.push(args),stopAmbience(){},stopBuild(){},resume(){},stop(){},
     }),
   });
   const run=code=>vm.runInContext(code,context);run(source);
   if (roundFixture) run(`state.sound=${sound}; state.active=createRound(1,42,true); state.active.tasks[0].mode='input'; view='round'; render();`);
   function click(digit){const button={disabled:false,dataset:{digit},closest:s=>s==='[data-digit]'?button:null};events.click({target:button});}
   function key(value,mods={}){events.keydown({key:value,...mods,preventDefault(){},target:{closest:()=>null}});}
-  return {run,click,key,events,plays,builds,animations,timers,output,submit,erase,root,heading,document,count,check,location};
+  return {run,click,key,events,plays,builds,buildingSounds,animations,timers,output,submit,erase,root,heading,document,count,check,location};
 }
 
 test('Touch and physical keys update the same entry, click once per accepted digit and enforce the limit',()=>{
@@ -91,7 +95,7 @@ test('Fast taps after a wrong answer require a fresh retry before accepting anot
   h.run('ui.retryUntil = 0; retryAnswer(); submitAnswer(10);');
   assert.equal(h.run('state.active.attempts[0]'), 2);
   assert.equal(h.run('state.active.solved'), true);
-  assert.deepEqual(h.plays.map(([kind])=>kind), ['retry','recover']);
+  assert.deepEqual(h.plays.map(([kind])=>kind), ['retry','task-success-0']);
 });
 
 test('A pending memory game can be retried and completed without awarding another star', () => {
@@ -282,6 +286,27 @@ test('Wizard preferences apply to the new profile and the next round', () => {
   assert.ok(h.run("currentWorld(state,'moon')"));
 });
 
+test('The wizard offers new and original avatars and an illustrated card for every reward', () => {
+  const h=harness({roundFixture:false});
+  const profileStep=h.run(`profileFields({name:'Sam',grade:10,avatar:'skateboard'})`);
+  assert.match(profileStep,/Dyr og figurer/);
+  assert.match(profileStep,/Interesser og symboler/);
+  assert.match(profileStep,/name="avatar" value="fox"/);
+  assert.match(profileStep,/name="avatar" value="skateboard" checked/);
+  assert.equal((profileStep.match(/name="avatar"/g)??[]).length,24);
+  h.run(`submitProfile('first',{name:'Sam',grade:10,avatar:'skateboard'})`);
+  assert.equal(h.run('profile.avatar'),'skateboard');
+  const rewardStep=h.run(`setupForm({...makeSetup('new'),step:2,rewardMode:'moon'})`);
+  const expected=['plant','bricks',...Object.keys(projects.PROJECTS)];
+  const images=rewardStep.match(/<svg viewBox="0 0 160 88"[^]*?<\/svg>/g)??[];
+  assert.equal(images.length,expected.length);
+  assert.equal(new Set(images).size,expected.length);
+  assert.ok(images.every(image=>image.includes('<path')&&!image.includes('undefined')));
+  assert.match(rewardStep,/<small>Bygg en rød og gyllen helt med lys i brystet\.<\/small>/);
+  assert.match(rewardStep,/<small>Bygg et feriested med strand,/);
+  assert.match(rewardStep,/name="reward" value="moon" class="sr-only" checked/);
+});
+
 test('Beta can discard a round without awarding progress and only Beta can reset projects', () => {
   for (const channel of ['preview','stable']) {
     const h=harness({channel});
@@ -459,4 +484,115 @@ test('An empty map invites the first build and defaults to five exercises',()=>{
   assert.match(h.root.innerHTML,/Klar for å komme i gang/);
   assert.match(h.root.innerHTML,/Velg første bygg/);
   assert.match(h.root.innerHTML,/5 oppgaver venter/);
+});
+
+test('The returning player is greeted by name in a dismissible bubble on the map',()=>{
+  const h=harness();
+  h.run(`submitProfile('first',{name:'Ada',grade:3});
+    state=selectRewardMode(state,'city',()=>.4);
+    let welcome;
+    showDialog=(content)=>welcome=content;
+    localStorage.setItem(AWAY_KEY+'-'+profile.id,Date.now()-WELCOME_AFTER-1000);
+    welcomeBack();`);
+  const html=h.run('welcome');
+  assert.match(html,/Velkommen tilbake/);
+  assert.match(html,/eplo-bubble[\s\S]*Hei igjen, Ada!/);
+  assert.match(html,/data-action="dismiss-eplo"/);
+});
+
+test('The building dropdown moves the camera and both selection methods play building sounds',()=>{
+  const h=harness();
+  const result=h.run(`
+    const focusCalls=[];
+    const choices={value:'',parentElement:{},addEventListener(name,fn){this[name]=fn;}};
+    const nodes=new Map();
+    const card={querySelector(key){
+      if (!nodes.has(key)) nodes.set(key,{addEventListener(){}});
+      return nodes.get(key);
+    }};
+    const viewer={querySelector(key){return key==='[data-map-inspect]'?choices:key==='[data-map-info]'?card:null;}};
+    let mapTap;
+    mountProjectView=(_viewer,_scene,_interactive,options)=>{
+      mapTap=options.onInspect;
+      const release=()=>{};
+      release.inspect=(index,options)=>focusCalls.push([index,options.focus]);
+      return release;
+    };
+    showDialog=(_html,_class,open)=>open({
+      querySelector:key=>key==='.project-viewer'?viewer:null,
+      addEventListener(){},
+    });
+    state=replaceCurrentWorld(state,'city',{...freshWorld(()=>.8),order:[0,3],progress:6});
+    showProject('city');
+    choices.value='3';
+    choices.change();
+    mapTap(0);
+    JSON.stringify(focusCalls);
+  `);
+  assert.deepEqual(JSON.parse(result),[[3,true],[0,false]]);
+  assert.equal(h.plays.filter(([kind])=>kind==='select').length,2);
+  assert.deepEqual(h.buildingSounds,[['city',3,'field',true],['city',0,'house',true]]);
+});
+
+test('Eplo celebrates a perfect round on the last task, before opening the reward',()=>{
+  for (const [wrong,reduced] of [[false,false],[true,false],[false,true]]) {
+    const h=harness({reduced});
+    const message={textContent:'Se hva du fikk til!'};
+    const sparks={innerHTML:'',replaceChildren(){this.innerHTML='';}};
+    const classes=new Set();
+    const companion={querySelector:selector=>selector==='.companion-message'?message:sparks,
+      classList:{add:name=>classes.add(name),remove:name=>classes.delete(name)}};
+    const query=h.root.querySelector;
+    h.root.querySelector=selector=>selector==='.companion-strip'?companion:query(selector);
+    h.run(`
+      for (let i=0;i<state.active.tasks.length-1;i++) {
+        const correct=state.active.tasks[i].answer;
+        if (${wrong}&&i===0) state.active=answerRound(state.active,correct+1);
+        state.active=answerRound(state.active,correct);
+        state.active=advanceRound(state.active);
+      }
+      submitAnswer(state.active.tasks[state.active.index].answer);
+    `);
+    assert.equal(h.run('view'),'round');
+    assert.match(h.root.innerHTML,/class="companion-message"/);
+    assert.equal(message.textContent==='Perfekt runde!',!wrong);
+    assert.equal(classes.has('perfect-round'),!wrong);
+    assert.equal((sparks.innerHTML.match(/<i /g)||[]).length,wrong||reduced?0:10);
+    const dismiss=h.timers.find(timer=>timer.delay===3500);
+    assert.equal(Boolean(dismiss),!wrong);
+    dismiss?.fn();
+    assert.equal(message.textContent,'Se hva du fikk til!');
+    assert.equal(classes.has('perfect-round'),false);
+    assert.equal(sparks.innerHTML,'');
+    const next={dataset:{action:'next'},closest:selector=>selector==='[data-action]'?next:null};
+    h.events.click({target:next});
+    assert.equal(h.run('view'),'complete');
+    assert.doesNotMatch(h.root.innerHTML,/Perfekt runde!/);
+  }
+});
+
+test('Idle home surprises rotate, puff away on touch, and stop when leaving home',()=>{
+  const h=harness();
+  const stage={hidden:true,dataset:{},replaceChildren(){this.innerHTML='';}};
+  const query=h.root.querySelector;
+  h.root.querySelector=selector=>selector==='[data-home-surprise]'?stage:query(selector);
+  h.run("view='home'; render();");
+  assert.match(h.root.innerHTML,/data-home-surprise aria-hidden="true" hidden/);
+  assert.match(h.run('homeSurpriseProps.winter'),/winter-gear/);
+  assert.match(h.run('homeSurpriseProps.yawn'),/yawn-breath/);
+  assert.match(h.run('homeSurpriseProps.book'),/eplo-book/);
+  const runTimer=delay=>h.timers.findLast(timer=>timer.delay===delay&&!timer.cancelled).fn();
+  runTimer(12000);
+  assert.equal(stage.hidden,false);
+  const first=stage.dataset.act;
+  h.events.pointerdown();
+  assert.equal(stage.dataset.act,'puff');
+  assert.match(stage.innerHTML,/class="eplo-puff"/);
+  runTimer(420);
+  assert.equal(stage.hidden,true);
+  runTimer(12000);
+  assert.notEqual(stage.dataset.act,first);
+  h.run("view='round'; render();");
+  assert.equal(h.events.pointerdown,undefined);
+  assert.equal(h.timers.at(-1).cancelled,true);
 });

@@ -1,4 +1,4 @@
-# Mattopia 1.24.0
+# Mattopia 1.30.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.24.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.30.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -50,6 +50,60 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.30.0
+
+- Ved en perfekt runde blir Eplo og snakkeboblen større over siste oppgave. Gnister og stjerner sprer seg rundt dem før feiringen toner ut.
+- Eplo har fått større plass på startsiden. Innslagene veksler blant annet mellom vinterlue og skjerf, gjesping og boklesing.
+
+## Nytt i 1.29.2
+
+- Byggevalgene i veiviseren starter med «Bygg». Den mørke rammen rundt illustrasjonene følger de avrundede hjørnene.
+
+## Nytt i 1.29.1
+
+- Astronautbanen og andre bygg med firkantet plattform får firkantet grunnmur. Brede flater oppå plattformen følger samme kontur som muren, også på eldre kart.
+
+## Nytt i 1.29.0
+
+- Profilvelgeren har 24 avatarer i to grupper. De 12 nye motivene dekker blant annet musikk, sport, spill, friluftsliv og verdensrom.
+- Veiviseren viser illustrerte kort for alle åtte belønninger, med egne motiver for hver helt og hvert kart.
+- På siste oppgave sier Eplo «Perfekt runde!» i den vanlige snakkeboblen. Eplo hopper litt og det gnistrer rundt boblen.
+- Faden på månekartet tegnes uten skjøter i den lille visningen. Flyvebilene har en astronaut bak rattet, av og til med en passasjer.
+
+## Nytt i 1.28.0
+
+- Tog, monorail og trikk legges med klaring til bygninger. Hjørnebistroen har fått terrakottatak, og flere andre tak skiller seg tydeligere fra veien.
+- Flyvebiler kan kjøre på månebasen fra starten, så snart det finnes en kjørbar rute.
+- Eplo sier «Perfekt runde!» på siste oppgave, før belønningen åpnes.
+- Når startsiden har stått i ro, kan Eplo drikke juice, ta på solbriller eller sjonglere. Ved berøring forsvinner han i en liten røyksky.
+
+## Nytt i 1.27.0
+
+- Månebasen har stjernehimmel rundt hele kartet fra første byggesteg. Lukkekryssene i velkomstbildet har tett bakgrunn.
+- Hvert bygg har en kort lyd når det velges på kartet eller i nedtrekkslisten. Det vanlige blippet spilles først.
+- Eplo sier «Perfekt runde!» når alle svar er riktige på første forsøk. Meldingen toner ut av seg selv.
+
+## Nytt i 1.26.2
+
+- «Bygg på kartet» sentrerer kartet på bygget du velger. Når du lukker kartvinduet, tones lyd og effekter raskt ut.
+
+## Nytt i 1.26.1
+
+- Måneterrenget toner ut i svart. Stjernene og jordkloden har mer kontrast når de kommer til syne over horisonten.
+
+## Nytt i 1.26.0
+
+- Riktige svar følger en stigende lydrekke gjennom runder med fem, seks eller åtte oppgaver. Den siste oppgaven har den lyseste fanfaren.
+- Elveby lufthavn har en større tomt og lengre rullebane. Månebasen har fått egen flyplass med en romferge som tar av og lander, og tre nye høyhus.
+- Terrenget er synlig lenger ut fra starten og toner ut langs en ujevn, avrundet horisont. På berøringsskjermer er knipegesten på kartet forbeholdt kartets zoom.
+
+## Nytt i 1.25.0
+
+- Eplo ønsker spilleren velkommen tilbake med navn. Over kartet står figuren fritt ved siden av en snakkeboble med lukkeknapp. Munnbevegelsen er kortere og ender med et smil med øynene.
+- Byggevalgene for flyplass, trikk og tog viser kjøretøyene. Grunnmur og grunnflate bruker samme kontur.
+- Tunnelene følger banen som én sammenhengende ås. Togbanene kan vokse med byen, og lange nok baner kan få et ekstra tog eller en ekstra trikk. Tåka slipper mer av terrenget til syne rundt byen.
+- Sagingen er roligere og første suksessfanfare er forkortet. Innstillingene under «For voksne» er gruppert etter tema.
 
 ## Nytt i 1.24.0
 

@@ -142,6 +142,90 @@ function voices(t,kind) {
   return voice;
 }
 
+const buildingKinds={
+  birds:['park','garden','greatPark','palmGarden','camp','beachCamp','biodome','moonGarden'],
+  water:['pool','tropicalPools','beachClub','dock','pier','quay','marina','bridge','lighthouse','tank'],
+  flight:['airport','airstrip','hangar','shuttlePort','launch','rocketPort','orbitalPort'],
+  rail:['railwayStation','tramStation','monorailStation'],
+  motor:['roverGarage','hoverDealer','busStation'],
+  clock:['school','church','hall','bank','prison','bookHall'],
+  fair:['wheel','coaster','cinema','nightCinema','bandstand','dance','casino'],
+  arcade:['arcade','lunarArcade','islandArcade'],
+  crowd:['field','spaceField','fitness','square','market','tropicalMarket'],
+  work:['mill','factory','sawmill','moonWorkshop','moonCargo','oxygen','generator','refinery','supplyDepot','cargoDepot'],
+  signal:['solar','solarGarden','telescope','telescopeArray','craterLab','radioTower','lunarRadio','prismTower','novaTower','haloTower'],
+  dining:['restaurant','bistro','coralCafe','tikiBar','dustCafe','moonBurger','cosmicIce','needleTower'],
+  hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel'],
+};
+const buildingVoices=Object.fromEntries(Object.entries(buildingKinds)
+  .flatMap(([voice,kinds])=>kinds.map(kind=>[kind,voice])));
+
+export function buildingClip(context,world,index,kind) {
+  const voice=buildingVoices[kind]??(world==='moon'?'signal':world==='island'?'dining':'chime');
+  const pitch=2**(((index*7)%11-5)/12);
+  const length=.73+(index%5)*.035;
+  const pluck=(t,at,note,decay=13)=>{
+    const age=t-at;
+    if (age<0) return 0;
+    const f=note*pitch;
+    return unit(age*180)*Math.exp(-age*decay)*(wave(age,f)*.77+wave(age,f*2.03)*.23);
+  };
+  return synthesize(context,length,(t,noise,low,mid)=>{
+    const envelope=unit(t*40)*unit((length-t)*10);
+    const swell=Math.sin(Math.PI*t/length)**2;
+    const second=length*.29;
+    let cue;
+    switch (voice) {
+      case 'birds':
+        cue=chirp(t-.035,.17,1530*pitch)+.66*chirp(t-second,.20,1840*pitch)+low*swell*.38;
+        break;
+      case 'water':
+        cue=swell*(low*1.6+mid*.55+noise*.12)+.48*pluck(t,second,kind==='lighthouse'?204:670,7);
+        break;
+      case 'flight':
+        cue=swell*(low*1.6+mid*.58+.5*wave(t,(world==='moon'?57:119)*pitch*(1+.85*t)));
+        break;
+      case 'rail':
+        cue=.44*swell*(mid+wave(t,55*pitch))*(.5+.5*wave(t,10)**4)
+          +pluck(t,.02,kind==='tramStation'?1000:kind==='monorailStation'?628:363,7)
+          +.66*pluck(t,second,kind==='tramStation'?1000:kind==='monorailStation'?770:414,8);
+        break;
+      case 'motor':
+        cue=swell*(.55*low+.48*wave(t,125*pitch*(1+t))+.21*wave(t,250*pitch*(1+t)))+.33*pluck(t,second,410);
+        break;
+      case 'clock':
+        cue=.82*pluck(t,.015,440,5)+.54*pluck(t,second,350,7);
+        break;
+      case 'fair':
+        cue=.85*phrase(t,[392*pitch,523*pitch,659*pitch,587*pitch],length*.23);
+        break;
+      case 'arcade':
+        cue=.62*phrase(t,[523*pitch,784*pitch,659*pitch,1046*pitch],length*.19)+.35*pluck(t,length*.76,1318);
+        break;
+      case 'crowd':
+        cue=swell*(.7*voices(t,world==='moon'?'astronaut':'people')+mid*.3)+.46*chirp(t-.04,.19,990*pitch);
+        break;
+      case 'work':
+        cue=.75*pluck(t,.01,162,27)+.56*pluck(t,second,224,22)+.35*pluck(t,second*2.1,140,20)
+          +swell*(world==='moon'?.29*wave(t,540*pitch-140*t):mid*.42);
+        break;
+      case 'signal':
+        cue=.86*chirp(t-.025,.29,596*pitch)+.61*chirp(t-second*1.6,.34,920*pitch)+.29*swell*wave(t,230*pitch+16*wave(t,4));
+        break;
+      case 'dining':
+        cue=.72*pluck(t,.015,world==='island'?523:349)+.62*pluck(t,second,world==='moon'?785:659)
+          +.61*pluck(t,second*1.62,world==='island'?784:523,8);
+        break;
+      case 'hotel':
+        cue=.65*pluck(t,.015,261,6)+.58*pluck(t,second,392,7)+.47*pluck(t,second*1.8,523,6);
+        break;
+      default:
+        cue=.8*pluck(t,.018,587,8)+.58*pluck(t,second,698,9);
+    }
+    return cue*.72*envelope;
+  });
+}
+
 export function soundClip(context,kind) {
   if (kind==='firework') {
     return synthesize(context,.86,(t,noise,low,mid)=>{
@@ -162,9 +246,10 @@ export function soundClip(context,kind) {
           (low*.72+mid*.82+wave(age,moon?134:212)*.37+wave(age,347)*.16);
       }
       const work=unit((t-.63)*14)*unit((1.48-t)*10)+unit((t-2.08)*11)*unit((2.87-t)*9);
+      const stroke=.38+.62*Math.max(0,wave(t-.67,1.75))**1.55;
       const tool=moon
         ? (wave(t,480+t*68)+.5*wave(t,1040-t*97))*(.53+.38*wave(t,29))*.31
-        : (.62+.34*wave(t,7.4))*(mid*.87+noise*.28+wave(t,176)*.11);
+        : stroke*(mid*.43+noise*.13+low*.32);
       return knocks*.89+work*tool;
     });
   }

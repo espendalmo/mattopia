@@ -2,6 +2,7 @@
 const circle = (x,y,r,fill) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>`;
 const ellipse = (x,y,rx,ry,fill) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${fill}"/>`;
 const path = (d,fill='none') => `<path d="${d}" fill="${fill}"/>`;
+const rect = (x,y,w,h,fill,r=0) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}"/>`;
 const eyes = (y=33) => `<path d="M24 ${y}h.1m15.9 0h.1" stroke-width="3.4"/>`;
 const smile = path('M29 39q3 3 6 0');
 const cheeks = `<path d="M20 38h3m18 0h3" stroke="#e48783" stroke-width="2.5"/>`;
@@ -96,8 +97,94 @@ const art = {
     +path('m8 38 8-3 8 3 8-3 8 3 8-3 8 3v5H8Z',green)+path('M10 44h44v5H10Z','#dd7f76')+path('M10 49h44v5H10Z','#e9b785')+path('m18 24 3-1m11 0 2-2m10 3 2 1'),
   headphones:path('M13 39V29q0-18 19-18t19 18v10')+path('M17 32v-5q0-12 15-12t15 12v5m-4 13v9h-8')
     +path('M8 35q8-5 13 2v12q-5 7-13 2Zm48 0q-8-5-13 2v12q5 7 13 2Z',purple)+circle(32,54,3,red),
+  controller:path('M20 20h24c6 0 9 4 11 10l4 12c3 10-4 13-10 7l-6-6H21l-6 6c-6 6-13 3-10-7l4-12c2-6 5-10 11-10Z','#72959f')
+    +path('M19 26h5v5h5v5h-5v5h-5v-5h-5v-5h5Z',cream)
+    +circle(45,30,3.2,gold)+circle(50,36,3.2,red)+path('M30 39h4'),
+  skateboard:`<g transform="rotate(-35 32 32)">${circle(16,39,5,'#f3ca80')}${circle(48,39,5,'#f3ca80')}
+    ${rect(7,22,50,15,'#58597e',7)}${rect(7,19,50,13,'#a994d8',6)}
+    ${path('m21 30 5-9m3 9 5-9m3 9 5-9')}</g>`,
+  basketball:circle(32,32,23,'#e89651')+path('M14 18q10 1 19 14t18 14M13 45q7-17 20-19t16-12M11 30q7 6 14 3m14 4q9-5 15-2'),
+  football:circle(32,32,23,cream)+path('m32 23 9 7-3 10H26l-3-10Z','#3e5966')
+    +path('m32 23 1-9m8 16 12-4M38 40l6 10M26 40l-6 10m3-20-12-4')
+    +path('m27 10 6 5 6-5m12 11 1 6 3 3m-8 18-5 0-3 5m-14 0-3-5-5 0M9 30l3-3 1-6','#3e5966'),
+  mountain:path('M5 51 25 15l8 12 7-8 19 32Z','#708b9b')
+    +path('m19 26 6-11 8 12-7-3-3 5Zm15 1 6-8 8 13-8-5-3 3Z','#edf4ee')+path('m33 28 10 23M10 51h45')+circle(50,13,4,gold),
+  compass:circle(32,12,4,'#c9d9da')+circle(32,34,20,'#42677a')+circle(32,34,15,'#e0eee8')
+    +path('m41 23-6 15-12 7 6-15Z',red)+path('m29 30 6 8-12 7Z',sky)+path('M32 20v2m0 24v2M18 34h2m24 0h2'),
+  lightning:path('M34 7 14 36h15l-2 22 23-31H35l6-20Z','#f3c267')
+    +path('m30 24 6-8M12 15l-3-4m42 33 5 3M9 48l5-3m40-26 4-4'),
 };
 
 export function illustration(key) {
   return `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false" fill="none" stroke="#273e42" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">${art[key]}</svg>`;
+}
+
+const rewardBackdrop = color => `<rect width="160" height="88" fill="${color}" stroke="none"/>`;
+const heroFrame = (background,halo,body,edge) => rewardBackdrop(background)
+  +circle(80,47,37,halo)+path('M0 82h160v6H0Z',edge)
+  +path('M36 88V72l12-12 20-4h24l20 4 12 12v16Z',body)
+  +path('M48 61v13m64-13v13M65 56l5 9h20l5-9');
+
+const rewardArt = {
+  plant:rewardBackdrop('#e4efdb')+circle(80,40,29,'#f1f4cf')
+    +ellipse(80,79,38,5,'#c0d3b6')+path('M80 56V25m0 18c-17 0-28-8-28-22 18 0 28 8 28 22Zm0-11c0-16 11-25 28-25 0 15-11 25-28 25Z','#75a86b')
+    +path('m56 54 6 25h36l6-25Z','#b96f56')+rect(54,51,52,9,'#e5a67b',4)
+    +path('M68 67l2 8m46-46h8m-4-4v8m-75 6h7m-3.5-3.5v7'),
+  bricks:rewardBackdrop('#e3eaf5')+ellipse(80,76,56,8,'#c6d1e7')
+    +path('M28 56l38-16 43 12-36 18Z','#8dc9ba')+path('m28 56 45 14v12L28 69Z','#62a394')
+    +path('m73 70 36-18v13L73 82Z','#438275')+ellipse(46,55,6,3,'#b7ded4')+ellipse(64,62,6,3,'#b7ded4')
+    +path('m56 39 34-14 42 11-33 17Z','#efab91')+path('m56 39 43 14v16L56 55Z','#d87867')
+    +path('m99 53 33-17v16L99 69Z','#b75c59')+ellipse(116,37,6,3,'#ffceae')
+    +path('m57 25 20-12 33 9-21 13Z','#ffdb87')+path('m57 25 32 10v14L57 38Z','#e8b25a')
+    +path('m89 35 21-13v15L89 49Z','#c48747')+ellipse(74,23,6,3,'#ffeab6')+ellipse(92,26,6,3,'#ffeab6'),
+  armor:heroFrame('#f0d9c5','#f6e7bc','#b9444e','#d9a694')
+    +path('M60 22 69 14h22l9 8v29l-9 11H69L60 51Z','#b93646')
+    +path('M65 26h9l3-7h6l3 7h9v22l-9 10H74l-9-10Z','#f0bc62')
+    +path('m68 34 10 2-2 5-8-2Zm24 0-10 2 2 5 8-2Z','#c9f7ff')
+    +path('m74 49 6-2 6 2')+circle(80,76,8,'#72d6e3')+circle(80,76,3.8,'#e5fbff')
+    +path('M42 25h9m-4.5-4.5v9m66 8h12m-6-6v12'),
+  spider:heroFrame('#e4e1f0','#f5d9de','#406d9f','#b5bbd8')
+    +path('M61 24q0-11 19-11t19 11v24L90 61H70l-9-13Z','#d64c57')
+    +path('M80 14v46M62 30q18-8 36 0M62 42q18-7 36 0M68 53q12-5 24 0M65 19l27 36m4-36L69 55')
+    +path('M64 30q9 1 14 13-13 4-14-13Zm32 0q-9 1-14 13 13 4 14-13Z','#fff7e6')
+    +ellipse(80,76,4,7,'#263e55')+path('m76 74-7-5m7 8-8 3m16-6 7-5m-7 8 8 3')
+    +path('M0 10l34 21L4 57m30-26-3-29M12 15q4-3 5-13M12 52q5-11-5-13', 'none'),
+  shield:heroFrame('#dcece9','#eaf2d9','#3975a9','#b3cfc7')
+    +path('M61 24l8-10h22l8 10v21l-7 14H68l-7-14Z','#346b9f')
+    +path('M66 39h28v9l-7 10H73l-7-10Z','#e3ae92')+path('M67 36h9m8 0h9m-16 14h6')
+    +path('m75 28 5-9 5 9m-8-3h6', '#fcf2d7')
+    +circle(108,67,18,'#c3525c')+circle(108,67,13.8,'#f5e8cf')
+    +circle(108,67,9.2,'#427fae')+path('m108 60 2 5 5 .5-4 3 1 5-4-3-4 3 1-5-4-3 5-.5Z','#f5e8cf'),
+  city:rewardBackdrop('#e1f0e9')+circle(120,17,10,'#f2d697')
+    +path('M0 43q25-9 51-4t47 0 62-4v53H0Z','#a8c79c')
+    +path('M100 41h20q-17 14-7 20 8 4 47 9v18H98Q66 72 78 62Z','#61a9c4')
+    +path('M105 48q-17 13-13 18m21 9 20 4m-16 3 13 3')
+    +rect(19,35,21,30,'#dd9a77',1)+path('m17 36 12-11 13 11Z','#a45b53')
+    +rect(48,20,24,41,'#6996a6',2)+rect(52,15,16,6,'#4c788b',1)
+    +path('M55 28h2m6 0h2m-10 7h2m6 0h2m-10 7h2m6 0h2m-10 7h2m6 0h2M25 43h4m4 0h3M25 51h4m4 0h3')
+    +rect(123,39,23,24,'#e9c48e',1)+path('m120 40 15-11 13 11Z','#ad7164')
+    +path('M62 71h70v7h-13q-3-8-10-8t-12 8H62Z','#d6a278')
+    +path('M62 70h70v4H62Z','#f1d9a8')+circle(11,59,6,'#649773')+circle(150,56,5,'#7fa46b'),
+  moon:rewardBackdrop('#232b49')+circle(130,20,12,'#7eb7cb')
+    +path('M121 12q13-9 19 4l-9 2-3 7-6-3Z','#95c6a5')
+    +`<g stroke="#f8eccf">${path('M17 13h6m-3-3v6M45 25h.1m12-16h.1m36 22h.1m15-17h.1m39 24h.1')}</g>`
+    +path('M0 68q36-17 75-9t85-1v30H0Z','#9896b5')+ellipse(127,74,13,4,'#777b9b')+ellipse(16,76,9,3,'#777b9b')
+    +path('M23 65q0-23 22-23t22 23Z','#91cbd5')+path('M35 65q0-23 10-23t10 23M27 54h36')
+    +rect(22,64,46,7,'#d0c8d4',2)+path('M68 65h16v7H68Z','#aeacc9')
+    +path('M91 52q-8 2-11 14l13-5m14-9q8 2 11 14l-13-5Z','#c96e75')
+    +path('M91 52q-4-20 8-33 12 13 8 33l-3 10H94Z','#f6e7d9')
+    +circle(99,40,4.5,'#7ab4c6')+path('M94 63h10l-5 10Z','#f5c781'),
+  island:rewardBackdrop('#9edfe0')+path('M0 31q28-7 55-3t49-3 56-3v10q-32 5-57 4t-46 3-57 2Z','#78cbd4')
+    +path('M0 66q13 2 21-2m111 4q14 3 28-2M7 80q13 2 25-1m101 4 14-1')
+    +path('M19 64q17-20 49-20 49-7 76 17-8 15-42 18-60 6-83-15Z','#eed19a')
+    +path('M32 57q31-17 65-10 25 3 36 13-20 9-53 8-32 2-48-11Z','#a7c98d')
+    +rect(84,35,39,25,'#f2c6a1',2)+path('m82 36 9-9h24l11 9Z','#bd7365')
+    +path('M90 43h7m5 0h7m5 0h4m-28 7h7m5 0h7m5 0h4')+rect(77,63,29,8,'#65b8cb',4)
+    +path('M55 63q3-17-6-35l5-2q11 16 9 37Z','#b68760')
+    +path('M52 30q-13-15-24-2 12-2 24 2Zm0 0q1-18 19-17-10 7-19 17Zm0 0q17-12 28 2-14-4-28-2Zm0 0q-15-5-16 9 9-7 16-9Z','#539c74')
+    +path('M18 55q5-5 12 0l-4 4h-8Z','#e48b74'),
+};
+
+export function rewardIllustration(key) {
+  return `<svg viewBox="0 0 160 88" aria-hidden="true" focusable="false" fill="none" stroke="#34494f" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">${rewardArt[key]}</svg>`;
 }

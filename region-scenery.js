@@ -3,7 +3,7 @@ import {regionLayout,planRegion,regionVisibility,regionSurface} from './regions.
 import {REGION_PLACES,WORLD_BUILD_STEPS,grandCatalog,hasExpandedCatalog,randomGenerator,worldStatus} from './worlds.js';
 import {planStreetRegion} from './street-grid.js';
 import {prepareRoadTunnels,regionRoads} from './region-roads.js';
-import {constructionYard,landmarkVisitors,lunarSky,rideModels} from './map-art.js';
+import {constructionYard,landmarkVisitors,lunarEarth,rideModels} from './map-art.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
 
@@ -101,7 +101,7 @@ function distantRelief(layout) {
 function regionGround(layout,plan,sky,full,horizon,season) {
   const background=rgb(sky);
   const inner=Math.sqrt(layout.grid.length);
-  const extension=[3,7,12,18,25];
+  const extension=[3,7,12,18,25,33,42,51];
   const extra=extension.length,row=inner+2*extra;
   const edge=layout.grid[inner-1].x;
   const coords=[...extension.map(distance=>-edge-distance).reverse(),...layout.grid.slice(0,inner).map(tile=>tile.x),
@@ -112,10 +112,12 @@ function regionGround(layout,plan,sky,full,horizon,season) {
     const x=coords[col],z=coords[line];
     const tile=col>=extra&&col<row-extra&&line>=extra&&line<row-extra
       ?layout.grid[(line-extra)*inner+col-extra]:regionSurface(layout,x,z);
-    const distance=Math.max(Math.max(Math.abs(x),Math.abs(z))/103,Math.hypot(x,z)/127);
-    const rim=horizon**2*smooth((1-distance)/.24);
-    const edgeFade=smooth((edge+25-Math.max(Math.abs(x),Math.abs(z)))/17);
-    const visibility=edgeFade*Math.max(rim,regionVisibility(plan,x,z,full));
+    const angle=Math.atan2(z,x);
+    const radius=112+7*Math.sin(angle*3+layout.phase)+4.5*Math.cos(angle*5-layout.phase);
+    const distance=Math.hypot(x,z);
+    const rim=smooth((radius-distance)/38);
+    const edgeFade=smooth((radius+15-distance)/21);
+    const visibility=edgeFade*Math.max((.24+.57*horizon)*rim,regionVisibility(plan,x,z,full));
     const base=surfaceColor(tile,layout,season);
     const distant=relief?.(x,z,tile);
     const color=distant?.tint?blend(base,distant.color,distant.tint*horizon):base;
@@ -128,7 +130,9 @@ function regionGround(layout,plan,sky,full,horizon,season) {
     const [a,b,c,d]=[grid[i],grid[i+1],grid[i+row],grid[i+row+1]];
     if (Math.max(a.visibility,b.visibility,c.visibility,d.visibility)<.008) continue;
     for (const triangle of [[a,c,b],[b,c,d]]) {
-      ground.push(face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color)));
+      const part=face(triangle.map(v=>v.point),sky,0,triangle.map(v=>v.color));
+      if (layout.theme==='moon') part.opacity=triangle.map(v=>v.visibility);
+      ground.push(part);
     }
   }
   return ground;
@@ -288,7 +292,7 @@ function viewBounds(plan,horizon) {
   const xs=points.map(p=>p.x),zs=points.map(p=>p.z);
   const left=Math.min(...xs),right=Math.max(...xs),back=Math.min(...zs),front=Math.max(...zs);
   return {anchorX:(left+right)*.5*(1-horizon),anchorZ:(back+front)*.5*(1-horizon),
-    size:lerp(Math.max(52,Math.hypot(right-left,front-back)*.91+34),238,horizon)};
+    size:lerp(Math.max(78,Math.hypot(right-left,front-back)*.91+39),238,horizon)};
 }
 
 const PHASES=['grunnarbeid','form og fasade','siste detaljer'];
@@ -303,7 +307,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const developments=plan.plots.map(plot=>({plot,steps:buildingParts(plot.index,plot)}));
   const completedPlots=plan.plots.slice(0,status.built);
   const station=completedPlots.find(plot=>['railwayStation','monorailStation','tramStation'].includes(plot.kind));
-  const rail=station&&(station.kind==='tramStation'?districtTram(layout,station,plan):districtRail(layout,station,plan));
+  const rail=station&&(station.kind==='tramStation'?districtTram(layout,station,plan,developments):districtRail(layout,station,plan,developments));
   if (rail) {
     plan.transit=rail.points;
     plan.transitPortals=rail.portals;
@@ -315,15 +319,16 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     return approach?[{...approach,latest:i===developments.length-1}]:[];
   });
   const horizon=clamp((status.built-status.capacity+6)/6);
+  const sky=id==='moon'?'#000000':palette.sky;
   const tunnels=prepareRoadTunnels(layout,plan);
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
   const parts=[
-    ...(id==='moon'&&horizon?lunarSky(map.seed,palette.sky,horizon):[]),
-    ...regionGround(layout,plan,palette.sky,status.full,horizon,season),
+    ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
+    ...regionGround(layout,plan,sky,status.full,horizon,season),
     ...roads,
     ...tunnels,
-    ...landscapeDetails(layout,plan,status.full,palette.sky,season),
+    ...landscapeDetails(layout,plan,status.full,sky,season),
   ];
   let latest=[],last,finished=null,latestTarget=null;
   const landmarks={},sites={},rides=[],visitors=[];
@@ -375,18 +380,18 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
     }
   });
   const locals=regionActors(id,layout,plan,completedPlots);
-  const craft=rides.filter(actor=>['plane','rocket','rocket-flame'].includes(actor.kind));
+  const craft=rides.filter(actor=>['plane','shuttle','rocket','rocket-flame'].includes(actor.kind));
   const street=locals.find(actor=>actor.kind==='road');
   const speakers=locals.filter(actor=>actor.voice).slice(0,id==='moon'?2:1);
   const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...speakers,
-    ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover'].includes(actor.kind))];
+    ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover','hover'].includes(actor.kind))];
   const ambient=[...new Set([...essential,...visitors.slice(0,2),...rides,...locals,...visitors])].slice(0,MAX_ACTORS);
   for (const visitor of visitors) if (!ambient.includes(visitor)) {
     const origin=visitor.pose(0);
     parts.push(...visitor.parts.map(part=>({...part,x:part.x+origin.x,y:part.y+origin.y,z:part.z+origin.z})));
   }
   return {
-    id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:palette.sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
+    id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),
     soundscape:{buildings:completedPlots.length,wheel:completedPlots.some(plot=>plot.kind==='wheel'),
       hotel:id==='island'&&completedPlots.some(plot=>['hotel','resort','sunsetHotel','glassHotel','megaResort'].includes(plot.kind)),fun:completedPlots.filter(plot=>['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},

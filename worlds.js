@@ -6,13 +6,14 @@ export const REGION_CATALOG_PLACES=36;
 export const RAIL_PLACE=REGION_CATALOG_PLACES;
 export const GRAND_REGION_PLACES=30;
 export const GRAND_REGION_CATALOG=44;
+export const LUNAR_REGION_CATALOG=48;
 export const grandCatalog=map=>map?.layout===3&&map.catalog===3;
 export const LEGACY_WORLD_STEPS=120;
 export const isWorld=id=>WORLD_IDS.includes(id);
 export const isRegion=map=>map?.layout===2||map?.layout===3;
 export const worldCapacity=map=>grandCatalog(map)?GRAND_REGION_PLACES:!map||isRegion(map)?REGION_PLACES:WORLD_PLACES;
 export const hasExpandedCatalog=map=>map?.layout===3&&[2,3].includes(map.catalog);
-export const worldPoolSize=map=>grandCatalog(map)?GRAND_REGION_CATALOG:hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
+export const worldPoolSize=(map,theme)=>grandCatalog(map)?(theme==='moon'?LUNAR_REGION_CATALOG:GRAND_REGION_CATALOG):hasExpandedCatalog(map)?REGION_CATALOG_PLACES:worldCapacity(map);
 const hasRail=(theme,map)=>isRegion(map)&&(theme==='city'||theme==='moon'||theme==='island'&&grandCatalog(map));
 
 export function randomGenerator(seed){
@@ -71,7 +72,7 @@ export function worldChoices(map,theme) {
   if (!map||status.full||status.building!==null) return [];
   const {finished,partial}=legacyPlacement(map.legacy);
   const used=new Set([...finished,partial?.id,...map.order]);
-  const pool=Array.from({length:worldPoolSize(map)},(_,i)=>i).filter(id=>id!==RAIL_PLACE);
+  const pool=Array.from({length:worldPoolSize(map,theme)},(_,i)=>i).filter(id=>id!==RAIL_PLACE);
   if (hasRail(theme,map) && status.built>=2) pool.push(RAIL_PLACE);
   const options=pool.filter(id=>!used.has(id));
   const rng=randomGenerator((map.seed??0x4fd37d89)+map.order.length*0x47c82f31+(map.legacy||0)*17);
@@ -108,7 +109,7 @@ function restoreWorld(raw,budget,first,theme) {
   const layout=isRegion(raw)&&!legacy?raw.layout:1;
   const catalog=layout===3&&hasExpandedCatalog(raw)?{catalog:raw.catalog}:{};
   const capacity=worldCapacity({layout,...catalog});
-  const pool=worldPoolSize({layout,...catalog});
+  const pool=worldPoolSize({layout,...catalog},theme);
   const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
   const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>

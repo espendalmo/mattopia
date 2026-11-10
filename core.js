@@ -2,7 +2,7 @@ import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.24.0';
+export const VERSION='1.30.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;

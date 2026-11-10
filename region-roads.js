@@ -288,11 +288,13 @@ export function prepareRoadTunnels(layout,plan) {
     const grade=profile(x,z,3.4);
     return grade?natural-Math.max(0,natural-(grade.level-.14))*grade.mix:natural;
   };
-  return selected.flatMap(({x,z,dx,dz,level})=>[-1,1].flatMap(side=>{
-    const a=x+side*dx*mouth,b=z+side*dz*mouth;
-    return tunnelLandform({x:a,y:level,z:b,yaw:Math.atan2(side*dx,side*dz)},layout.theme,
-      {width:1.6,height:1.64,depth:3.75}).map(part=>({...part,tunnel:'road'}));
-  }));
+  return selected.flatMap(({x,z,dx,dz,level})=>{
+    const path=Array.from({length:9},(_,i)=>{
+      const offset=(i/4-1)*mouth;
+      return [x+dx*offset,level,z+dz*offset];
+    });
+    return tunnelLandform(path,layout,{width:1.6,height:1.64}).map(part=>({...part,tunnel:'road'}));
+  });
 }
 
 export function regionRoads(layout,plan,animate=false) {

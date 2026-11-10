@@ -1,7 +1,7 @@
 import {ambienceBuffer,soundClip} from '../sound-art.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {AMBIENCE_LEVEL,createSoundPlayer,SOUND_PATTERNS} from '../sound.js';
+import {AMBIENCE_LEVEL,createSoundPlayer,SOUND_PATTERNS,taskSuccessStep} from '../sound.js';
 import {createUpdater} from '../update.js';
 import {fireworkBursts,FIREWORKS_END,FINALE_FIREWORKS_END} from '../project-fireworks.js';
 
@@ -30,9 +30,44 @@ test('Key clicks are short and quiet, respect mute, and do not cut off an encour
   p.stop();
 });
 
+test('Building cues are short and distinct, and only the latest selection plays',async()=>{
+  const played=[],stopped=[];
+  let created=0;
+  const context={
+    currentTime:1,destination:{},resume:()=>Promise.resolve(),
+    createBuffer(_channels,frames,rate) {
+      const data=new Float32Array(frames);
+      return {data,duration:frames/rate,getChannelData:()=>data};
+    },
+    createGain:()=>({gain:{setValueAtTime(){},cancelAndHoldAtTime(){},linearRampToValueAtTime(){}},connect(){},disconnect(){}}),
+    createBufferSource:()=>({
+      connect(){},disconnect(){},
+      start(time){played.push({time,buffer:this.buffer});},stop(time){stopped.push(time);},
+    }),
+  };
+  const p=createSoundPlayer(()=>{created++;return context;},()=>null);
+  p.playBuilding('city',0,'house',false);
+  assert.equal(created,0);
+  p.playBuilding('city',0,'house');
+  p.playBuilding('city',8,'house');
+  await Promise.resolve();
+  assert.equal(played.length,1);
+  assert.equal(played[0].time,1.075);
+  context.currentTime=1.2;
+  p.playBuilding('city',0,'house');
+  await Promise.resolve();
+  assert.ok(stopped[0]>1.275&&stopped[0]<1.3,'previous building cue fades out');
+  assert.notDeepEqual(played[0].buffer.data,played[1].buffer.data);
+  assert.ok(played.every(({buffer})=>buffer.duration<=.9&&buffer.data.some(value=>Math.abs(value)>.1)));
+  p.playBuilding('moon',0,'rocketPort');
+  p.stopBuild({fade:true});
+  await Promise.resolve();
+  assert.equal(played.length,2,'closing the map cancels a queued building cue');
+});
+
 test('World ambience is quiet, loops once, and stops even if its audio context resumes late',async()=>{
   let release, waiting=false;
-  const started=[],stopped=[],ramps=[];
+  const started=[],stopped=[],ramps=[],held=[];
   const context={
     currentTime:2, destination:{},
     resume:()=>waiting?new Promise(resolve=>{release=resolve;}):Promise.resolve(),
@@ -41,17 +76,21 @@ test('World ambience is quiet, loops once, and stops even if its audio context r
       assert.equal(frames/rate,48);
       return {getChannelData:()=>new Float32Array(frames)};
     },
-    createGain:()=>({gain:{setValueAtTime(){},linearRampToValueAtTime:value=>ramps.push(value),cancelScheduledValues(){},setTargetAtTime(){}},connect(){},disconnect(){}}),
-    createBufferSource:()=>({connect(){},disconnect(){},start(){started.push(this.loop);},stop(){stopped.push(this.loop);}}),
+    createGain:()=>({gain:{setValueAtTime(){},linearRampToValueAtTime:(value,time)=>ramps.push([value,time]),cancelAndHoldAtTime:time=>held.push(time)},connect(){},disconnect(){}}),
+    createBufferSource:()=>({connect(){},disconnect(){},start(){started.push(this.loop);},stop(time){stopped.push([this.loop,time]);}}),
   };
   const sound=createSoundPlayer(()=>context);
   assert.equal(await sound.startAmbience('armor'),false);
   assert.equal(await sound.startAmbience('city'),true);
   assert.equal(await sound.startAmbience('city'),true);
   assert.deepEqual(started,[true]);
-  assert.deepEqual(ramps,[.07*AMBIENCE_LEVEL]);
+  assert.deepEqual(ramps,[[.07*AMBIENCE_LEVEL,2.55]]);
+  context.currentTime=3;
   sound.stopAmbience();
-  assert.deepEqual(stopped,[true]);
+  assert.deepEqual(held,[3]);
+  assert.deepEqual(ramps.at(-1),[0,3.075]);
+  assert.equal(stopped[0][0],true);
+  assert.ok(stopped[0][1]>3.075&&stopped[0][1]<3.1);
   waiting=true;
   const pending=sound.startAmbience('moon');
   sound.stop();
@@ -173,5 +212,16 @@ test('World beds have distinct long loops with recurring local music',()=>{
   assert.ok(music.subarray(45*16000,47*16000).some((sample,i)=>sample!==quiet[45*16000+i]));
   assert.ok(soundClip(context,'tram-bell').getChannelData().some(n=>Math.abs(n)>.2));
   assert.ok(soundClip(context,'horn').getChannelData().some(n=>Math.abs(n)>.2));
-  assert.equal(new Set(['success','success2','success3','success4'].map(key=>JSON.stringify(SOUND_PATTERNS[key]))).size,4);
+
+});
+
+test('Task rewards rise in pitch from first to last at every round length',()=>{
+  for (const length of [5,6,8]) {
+    const steps=Array.from({length},(_,index)=>taskSuccessStep(index,length));
+    assert.equal(steps[0],0);
+    assert.equal(steps.at(-1),7);
+    assert.equal(new Set(steps).size,length);
+    const peaks=steps.map(step=>Math.max(...SOUND_PATTERNS[`task-success-${step}`].map(([pitch])=>pitch)));
+    assert.ok(peaks.every((peak,i)=>i===0||peak>peaks[i-1]));
+  }
 });

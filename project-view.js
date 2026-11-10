@@ -147,7 +147,7 @@ export function projectFaces(scene) {
       const fade=color=>color.map((value,i)=>value+(haze[i]-value)*(piece.fog??0));
       const vertexColors=piece.colors??(piece.shape==='dome'&&faceIndex>0 ? points.map(point=>fade(shaded(domeNormal(piece,point)))) : null);
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
-      return {points,normal:unit,color,vertexColors,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
+      return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -175,6 +175,36 @@ function triangleGradient(context,points,colors,solid,paintColor) {
   return gradient;
 }
 
+export function rasterizeLunarTerrain(image,triangles,sx,sy) {
+  const {data,width,height}=image;
+  for (const {points,colors,opacity} of triangles) {
+    const [[ax,ay],[bx,by],[cx,cy]]=points.map(([x,y])=>[x*sx,y*sy]);
+    const area=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);
+    if (Math.abs(area)<1e-8) continue;
+    const left=Math.max(0,Math.floor(Math.min(ax,bx,cx)));
+    const right=Math.min(width-1,Math.ceil(Math.max(ax,bx,cx)));
+    const top=Math.max(0,Math.floor(Math.min(ay,by,cy)));
+    const bottom=Math.min(height-1,Math.ceil(Math.max(ay,by,cy)));
+    const [a,b,c]=colors;
+    for (let y=top;y<=bottom;y++) {
+      const row=y+.5-cy;
+      for (let x=left;x<=right;x++) {
+        const column=x+.5-cx;
+        const u=((by-cy)*column+(cx-bx)*row)/area;
+        const v=((cy-ay)*column+(ax-cx)*row)/area;
+        const w=1-u-v;
+        if (u< -1e-8||v< -1e-8||w< -1e-8) continue;
+        const alpha=u*opacity[0]+v*opacity[1]+w*opacity[2];
+        const offset=(y*width+x)*4;
+        data[offset+3]=alpha*255;
+        // The mesh stores premultiplied colors. ImageData uses straight alpha.
+        const gain=alpha>0?255/alpha:0;
+        for (let channel=0;channel<3;channel++) data[offset+channel]=(u*a[channel]+v*b[channel]+w*c[channel])*gain;
+      }
+    }
+  }
+}
+
 function splitWideFace(face) {
   const points=face.points;
   if (Number.isFinite(face.layer)||face.group>=2||face.vertexColors||points.length<3) return [face];
@@ -196,7 +226,7 @@ function splitWideFace(face) {
   return points.map((point,i)=>({...face,points:[center,point,points[(i+1)%points.length]]}));
 }
 
-function canvasPainter(canvas, faces, background) {
+function canvasPainter(canvas, faces, background, stars) {
   const context=canvas.getContext('2d');
   if (!context) return null;
   const paintColor=color=>`rgb(${color.map(channel=>Math.round(channel*255)).join(',')})`;
@@ -210,6 +240,7 @@ function canvasPainter(canvas, faces, background) {
   let viewKey;
 
   return (width,height,camera,scale,center,effects)=>{
+    const sx=canvas.width/width,sy=canvas.height/height;
     const cos=Math.cos(camera.yaw), sin=Math.sin(camera.yaw);
     const rise=Math.sin(camera.pitch), slope=Math.cos(camera.pitch);
     const facing=[sin*slope,rise,cos*slope];
@@ -259,10 +290,20 @@ function canvasPainter(canvas, faces, background) {
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
         const paint=highlight ? paintColor(face.color.map((value,i)=>
           value+([1,.86,.46][i]-value)*highlight)) : face.paint;
-        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null});
+        polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,opacity:face.opacity});
       }
       polygons.sort((a,b)=>(a.layer-b.layer)||a.depth-b.depth);
-      for (const {points,paint,colors} of polygons) {
+      const lunarGround=stars?polygons.filter(face=>face.opacity):[];
+      if (lunarGround.length) {
+        // A shared pixel grid avoids antialiasing the internal triangle edges separately.
+        const image=surface.createImageData(surface.canvas.width,surface.canvas.height);
+        rasterizeLunarTerrain(image,lunarGround,sx,sy);
+        surface.putImageData(image,0,0);
+      }
+      for (const {points,paint,colors,opacity,layer} of polygons) {
+        if (opacity) continue;
+        // The lunar horizon sits behind the already painted terrain.
+        if (lunarGround.length) surface.globalCompositeOperation=layer<0?'destination-over':'source-over';
         surface.beginPath();
         points.forEach(([x,y],i)=>i?surface.lineTo(x,y):surface.moveTo(x,y));
         surface.closePath();
@@ -271,9 +312,10 @@ function canvasPainter(canvas, faces, background) {
         surface.fill();
         surface.stroke();
       }
+      if (lunarGround.length) surface.globalCompositeOperation='source-over';
     }
-    const sx=canvas.width/width,sy=canvas.height/height;
     context.setTransform(sx,0,0,sy,0,0);
+    if (stars) context.clearRect(0,0,width,height);
     if (groundContext) {
       // Actors can move while the same projected landscape is reused.
       const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,
@@ -283,8 +325,11 @@ function canvasPainter(canvas, faces, background) {
           backing.width=canvas.width; backing.height=canvas.height;
         }
         groundContext.setTransform(sx,0,0,sy,0,0);
-        groundContext.fillStyle=background;
-        groundContext.fillRect(0,0,width,height);
+        if (stars) groundContext.clearRect(0,0,width,height);
+        else {
+          groundContext.fillStyle=background;
+          groundContext.fillRect(0,0,width,height);
+        }
         drawFaces(groundContext,terrain);
         viewKey=key;
       }
@@ -298,8 +343,8 @@ function canvasPainter(canvas, faces, background) {
   };
 }
 
-function webGLPainter(canvas, faces, background, illustrated) {
-  const gl=canvas.getContext('webgl',{alpha:false,antialias:true});
+function webGLPainter(canvas, faces, background, illustrated, stars) {
+  const gl=canvas.getContext('webgl',{alpha:stars,antialias:true});
   if (!gl) return null;
   const shader=(kind,source)=>{
     const result=gl.createShader(kind);
@@ -309,7 +354,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
   };
   const vertex=shader(gl.VERTEX_SHADER,`
     attribute vec3 position;
-    attribute vec3 color;
+    attribute vec4 color;
     attribute float group;
     attribute float stride;
     attribute vec3 hinge;
@@ -322,7 +367,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
     uniform vec4 actorPose[${MAX_ACTORS}];
     uniform vec2 actorTilt[${MAX_ACTORS}];
     uniform vec4 actorMotion[${MAX_ACTORS}];
-    varying mediump vec3 shade;
+    varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
     void main() {
@@ -357,15 +402,15 @@ function webGLPainter(canvas, faces, background, illustrated) {
   `);
   const fragment=shader(gl.FRAGMENT_SHADER,`
     precision mediump float;
-    varying mediump vec3 shade;
+    varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
     uniform vec2 shine;
     void main() {
       float sweep = max(0.0,1.0-abs(modelHeight-shine.y)/.7)*.36;
-      vec3 color = mix(shade,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
-      ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022;':''}
-      gl_FragColor = vec4(color,1.0);
+      vec3 color = mix(shade.rgb,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
+      ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022*shade.a;':''}
+      gl_FragColor = vec4(color,shade.a);
     }
   `);
   const program=gl.createProgram();
@@ -377,22 +422,22 @@ function webGLPainter(canvas, faces, background, illustrated) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   const data=[];
-  for (const {points,color,vertexColors,group,origin,stride,hinge} of faces) {
+  for (const {points,color,vertexColors,opacity,group,origin,stride,hinge} of faces) {
     const pivot=hinge?[...hinge,1]:[0,0,0];
     for (let i=origin?0:1;i<(origin?points.length:points.length-1);i++) {
       const next=(i+1)%points.length;
-      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),group,stride,...pivot,
-        ...points[i],...(vertexColors?.[i]??color),group,stride,...pivot,
-        ...points[next],...(vertexColors?.[next]??color),group,stride,...pivot);
+      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),opacity?.[0]??1,group,stride,...pivot,
+        ...points[i],...(vertexColors?.[i]??color),opacity?.[i]??1,group,stride,...pivot,
+        ...points[next],...(vertexColors?.[next]??color),opacity?.[next]??1,group,stride,...pivot);
     }
   }
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  for (const [name,size,offset] of [['position',3,0],['color',3,12],['group',1,24],['stride',1,28],['hinge',3,32]]) {
+  for (const [name,size,offset] of [['position',3,0],['color',4,12],['group',1,28],['stride',1,32],['hinge',3,36]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
-    gl.vertexAttribPointer(location,size,gl.FLOAT,false,44,offset);
+    gl.vertexAttribPointer(location,size,gl.FLOAT,false,48,offset);
   }
   const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
@@ -400,7 +445,11 @@ function webGLPainter(canvas, faces, background, illustrated) {
   const actorSlopes=new Float32Array(MAX_ACTORS*2);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
-  gl.clearColor(...backgroundRGB(background),1);
+  gl.clearColor(...backgroundRGB(background),stars?0:1);
+  if (stars) {
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  }
   return {
     draw(width,height,camera,scale,center,effects) {
       gl.viewport(0,0,canvas.width,canvas.height);
@@ -420,7 +469,7 @@ function webGLPainter(canvas, faces, background, illustrated) {
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
       gl.uniform2fv(uniforms['actorTilt[0]'],actorSlopes);
-      gl.drawArrays(gl.TRIANGLES,0,data.length/11);
+      gl.drawArrays(gl.TRIANGLES,0,data.length/12);
     },
     dispose() {
       gl.deleteBuffer(buffer);
@@ -479,7 +528,7 @@ export function finishTransition(elapsed) {
   return {travel: t*t*(3-2*t),opacity:1-.31*Math.sin(Math.PI*t)};
 }
 
-const nearbySounds={road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
+const nearbySounds={shuttle:'rocket',road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
   wheel:'ride-cheer',coaster:'ride-cheer',tram:'train'};
 const aircraft=new Set(['plane','helicopter','rocket']);
 
@@ -502,16 +551,18 @@ export function mountProjectView(container, scene, interactive=false, {
 }={}) {
   let canvas=container.querySelector('canvas');
   const faces=projectFaces(scene);
+  const stars=scene.id==='moon'&&scene.illustrated;
+  if (stars) canvas.classList.add('lunar-starfield');
   let engine;
   if (interactive || scene.world && !still) {
-    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated); }
+    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars); }
     catch {
       const fallback=canvas.cloneNode();
       canvas.replaceWith(fallback);
       canvas=fallback;
     }
   }
-  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background);
+  const paint=engine?.draw || canvasPainter(canvas,faces,scene.background,stars);
   if (!paint) return ()=>{};
   const {initial,maxZoom,context,detail}=projectCameras(scene,target,focusLatest);
   const latest=scene.latest ?? [];
@@ -522,7 +573,7 @@ export function mountProjectView(container, scene, interactive=false, {
   const pointers=new Map();
   const selectable=onInspect?faces.filter(face=>Number.isInteger(face.landmark)):[];
   let frame=0,width=0,height=0,fireworks,projectedView,tap,selectedFaces,glow,glowKey;
-  let lastActivity=-Infinity,audibleActors=new Set();
+  let lastActivity=-Infinity,audibleActors=new Set(),focusTravel;
   const events=new AbortController();
   const listen=(node,name,handler,options={})=>node.addEventListener(name,handler,{...options,signal:events.signal});
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -550,7 +601,7 @@ export function mountProjectView(container, scene, interactive=false, {
     if (!width || !height) return;
     const playing=!motion.matches && started!==null;
     const alive=!still && !motion.matches && scene.ambient?.length;
-    if ((playing||alive) && now-lastFrame<(engine||playing?32:48)) { schedule(); return; }
+    if ((playing||alive||focusTravel) && now-lastFrame<(engine||playing?32:48)) { schedule(); return; }
     lastFrame=now;
     const pixelRatio=Math.min(window.devicePixelRatio||1,2);
     const pixelsWide=Math.round(width*pixelRatio),pixelsHigh=Math.round(height*pixelRatio);
@@ -574,6 +625,15 @@ export function mountProjectView(container, scene, interactive=false, {
       }
       if (finish) canvas.style.opacity=finish.opacity.toFixed(3);
       if (stageTime>=(canCelebrate?fireworksEnd:1950)) stopTransition();
+    }
+    if (focusTravel) {
+      const progress=clamp((now-focusTravel.start)/330,0,1);
+      const eased=progress*progress*(3-2*progress);
+      for (const key of Object.keys(camera)) {
+        const from=focusTravel.from[key];
+        camera[key]=from+(focusTravel.to[key]-from)*eased;
+      }
+      if (progress===1) focusTravel=null;
     }
     const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
@@ -620,7 +680,7 @@ export function mountProjectView(container, scene, interactive=false, {
       });
       audibleActors=heard;
     }
-    if (started!==null || alive) schedule();
+    if (started!==null || focusTravel || alive) schedule();
   }
   function schedule() {
     if (!frame) frame=requestAnimationFrame(draw);
@@ -650,6 +710,7 @@ export function mountProjectView(container, scene, interactive=false, {
   }
   function stopTransition() {
     started=null;
+    focusTravel=null;
     canvas.style.removeProperty('opacity');
     fireworks?.dispose();
     fireworks=undefined;
@@ -661,6 +722,7 @@ export function mountProjectView(container, scene, interactive=false, {
   }
   listen(container,'click',event=>{
     if (!event.target.closest('[data-project-latest]')) return;
+    stopTransition();
     if (!interactive) canvas.scrollIntoView({block:'nearest'});
     if (completedBuild||scene.roadBuild) Object.assign(camera,context);
     from={...camera};
@@ -754,6 +816,10 @@ export function mountProjectView(container, scene, interactive=false, {
   else listen(window,'resize',schedule);
   listen(document,'visibilitychange',schedule);
   listen(motion,'change',()=>{
+    if (motion.matches && focusTravel) {
+      Object.assign(camera,focusTravel.to);
+      focusTravel=null;
+    }
     if (motion.matches && started!==null) {
       Object.assign(camera,detail);
       stopTransition();
@@ -775,7 +841,15 @@ export function mountProjectView(container, scene, interactive=false, {
     glow?.remove();
     engine?.dispose();
   };
-  dispose.inspect=index=>{
+  dispose.inspect=(index,{focus=false}={})=>{
+    const site=focus&&scene.sites?.[index];
+    if (site) {
+      stopTransition();
+      marked=false;
+      const to=projectCameras(scene,site).detail;
+      if (motion.matches) Object.assign(camera,to);
+      else focusTravel={from:{...camera},to,start:performance.now()};
+    } else if (focus) focusTravel=null;
     selectedFaces=selectable.filter(face=>face.landmark===index);
     glow?.remove();
     glow=null;

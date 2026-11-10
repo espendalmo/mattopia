@@ -1,12 +1,11 @@
-import {ambienceBuffer,ACTIVITY_SOUNDS,soundClip} from './sound-art.js';
+import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,soundClip} from './sound-art.js';
 import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
-export const SOUND_PATTERNS={success:[[76,0,.23,.065],[79,.10,.25,.065],[84,.22,.42,.07],[72,.22,.40,.025]],finish:[[60,0,.18,.045],[64,.12,.20,.045],[67,.24,.22,.05],[72,.38,.27,.06],[76,.56,.25,.05],[79,.70,.28,.055],[84,.9,.72,.055],[79,.9,.72,.035],[76,.9,.72,.035],[72,.9,.72,.03],[60,.9,.72,.025]]};
+export const SOUND_PATTERNS={success:[[76,0,.16,.065],[79,.078,.17,.065],[84,.159,.32,.07],[72,.159,.29,.025]],finish:[[60,0,.18,.045],[64,.12,.20,.045],[67,.24,.22,.05],[72,.38,.27,.06],[76,.56,.25,.05],[79,.70,.28,.055],[84,.9,.72,.055],[79,.9,.72,.035],[76,.9,.72,.035],[72,.9,.72,.03],[60,.9,.72,.025]]};
 SOUND_PATTERNS.key=[[86,0,.035,.018]];
 // Soft pitch glides give the companion a small, voice-like reaction.
 SOUND_PATTERNS.retry=[[78,0,.14,.045,74],[90,0,.13,.012,86],[75,.105,.19,.043,81]];
-SOUND_PATTERNS.recover=[[74,0,.13,.045,81],[86,0,.13,.012,93],[81,.10,.27,.05,86]];
 SOUND_PATTERNS.memory=[[72,0,.13,.05],[76,.09,.14,.05],[79,.18,.16,.055],[84,.29,.34,.055],[76,.29,.34,.028]];
 SOUND_PATTERNS.select=[[79,0,.075,.013]];
 SOUND_PATTERNS.open=[[69,0,.095,.014],[76,.049,.13,.012]];
@@ -19,14 +18,21 @@ SOUND_PATTERNS.back=[[72,0,.082,.013,68]];
 SOUND_PATTERNS.hint=[[72,0,.11,.023],[81,.075,.17,.025,83]];
 SOUND_PATTERNS.finale=[[60,.45,.18,.043],[67,.55,.19,.045],[72,.72,.23,.055],[76,.91,.27,.054],
   [79,1.09,.28,.049],[84,1.29,.67,.06],[79,1.29,.64,.036],[76,1.29,.65,.029],[60,1.29,.65,.032]];
-SOUND_PATTERNS.success2=[[72,0,.18,.062],[77,.087,.19,.063],[81,.177,.33,.062],[77,.177,.3,.028]];
-SOUND_PATTERNS.success3=[[74,0,.17,.062],[78,.083,.18,.058],[81,.16,.17,.061],[86,.25,.3,.065]];
-SOUND_PATTERNS.success4=[[79,0,.13,.055],[83,.081,.17,.058],[86,.158,.34,.066],[79,.158,.28,.028]];
-const successPhrases=['success','success2','success3','success4'];
+const successRoots=[65,67,69,70,72,74,76,77];
+export function taskSuccessStep(index,length) {
+  return Math.max(0,Math.min(7,Math.round(index*7/Math.max(1,length-1))));
+}
+for (const [i,root] of successRoots.entries()) {
+  SOUND_PATTERNS[`task-success-${i}`]=[
+    [root+4,0,.15,.059],[root+7,.078,.17,.059],[root+12,.156,i===7?.34:.285,.064],
+    [root,.156,.25,.022],
+  ];
+}
 const lightSounds=new Set(['key','select','open','next','build','tap','back','hint']);
 const worlds=new Set(['city','moon','island']);
 export const AMBIENCE_LEVEL=.75;
 const floor=.0001;
+const WINDOW_FADE=.075;
 
 function playbackSession() {
   const device=globalThis.navigator;
@@ -35,24 +41,50 @@ function playbackSession() {
 }
 
 export function createSoundPlayer(getContext=()=>new(window.AudioContext||window.webkitAudioContext)(), getSession=playbackSession) {
-  let context,voices=[],generation=0,buildGeneration=0,ambience,ambienceGeneration=0,session,carrier;
-  const beds=new Map(),clips=new Map();
-  let successPhrase=0;
+  let context,voices=[],generation=0,buildGeneration=0,buildingGeneration=0,ambience,ambienceGeneration=0,session,carrier;
+  const beds=new Map(),clips=new Map(),buildingClips=new Map();
 
   function releaseVoice({source,gain}) {
     try { source.stop(); } catch {}
     source.disconnect();
     gain.disconnect();
   }
+  function fadeVoice(voice) {
+    const {source,gain,start}=voice;
+    const now=context.currentTime;
+    if (start>now) {
+      releaseVoice(voice);
+      return;
+    }
+    try {
+      const level=gain.gain;
+      if (typeof level.cancelAndHoldAtTime==='function') level.cancelAndHoldAtTime(now);
+      else {
+        const current=level.value;
+        level.cancelScheduledValues(now);
+        level.setValueAtTime(current,now);
+      }
+      level.linearRampToValueAtTime(0,now+WINDOW_FADE);
+      source.stop(now+WINDOW_FADE+.01);
+    } catch {
+      releaseVoice(voice);
+    }
+  }
   function stopVoices() {
     generation++;
     voices.forEach(releaseVoice);
     voices=[];
   }
-  function stopBuild() {
+  function stopBuild({fade=false}={}) {
     buildGeneration++;
-    voices.filter(voice=>voice.build).forEach(releaseVoice);
+    stopBuilding(fade);
+    voices.filter(voice=>voice.build).forEach(fade?fadeVoice:releaseVoice);
     voices=voices.filter(voice=>!voice.build);
+  }
+  function stopBuilding(fade) {
+    buildingGeneration++;
+    voices.filter(voice=>voice.building).forEach(fade?fadeVoice:releaseVoice);
+    voices=voices.filter(voice=>!voice.building);
   }
   function holdSession() {
     if (!session||carrier) return;
@@ -83,17 +115,9 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function stopAmbience() {
     ambienceGeneration++;
     if (!ambience) return;
-    const {source,gain}=ambience;
+    const playing=ambience;
     ambience=null;
-    try {
-      const now=context.currentTime;
-      gain.gain.cancelScheduledValues(now);
-      gain.gain.setTargetAtTime(floor,now,.038);
-      source.stop(now+.2);
-    } catch {
-      source.disconnect();
-      gain.disconnect();
-    }
+    fadeVoice(playing);
   }
 
   async function startAmbience(scene,{delay=0,duration=Infinity}={}) {
@@ -140,16 +164,19 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     } catch { return false; }
   }
 
-  function sample(kind,time,volume,{destination=context.destination,voice=true,build=false,length,rate=1}={}) {
+  function sample(kind,time,volume,{destination=context.destination,voice=true,build=false,building=false,buffer,length,rate=1}={}) {
     if (!context.createBufferSource) return;
-    if (!clips.has(kind)) clips.set(kind,soundClip(context,kind));
+    if (!buffer) {
+      if (!clips.has(kind)) clips.set(kind,soundClip(context,kind));
+      buffer=clips.get(kind);
+    }
     const source=context.createBufferSource(),gain=context.createGain();
-    source.buffer=clips.get(kind);
+    source.buffer=buffer;
     if (rate!==1) source.playbackRate.setValueAtTime(rate,time);
     gain.gain.setValueAtTime(volume,time);
     source.connect(gain);
     gain.connect(destination);
-    const record={source,gain,build};
+    const record={source,gain,build,building,start:time};
     if (voice) voices.push(record);
     source.onended=()=>{
       if (voice) voices=voices.filter(item=>item!==record);
@@ -189,7 +216,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       gain.gain.exponentialRampToValueAtTime(volume,start+(kind==='key'?.003:.014));
       gain.gain.exponentialRampToValueAtTime(floor,start+duration);
       source.connect(gain); gain.connect(context.destination);
-      const voice={source,gain,build};
+      const voice={source,gain,build,start};
       voices.push(voice);
       source.onended=()=>{
         voices=voices.filter(item=>item!==voice);
@@ -216,8 +243,22 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     unlock().then(()=>{
       if (!context||token!==generation) return;
       const now=context.currentTime+(kind==='key'?0:.015);
-      const phrase=kind==='success'?successPhrases[successPhrase++%successPhrases.length]:kind;
-      melody(phrase,now);
+      melody(kind,now);
+    }).catch(()=>{});
+  }
+
+  function playBuilding(world,index,kind,enabled=true) {
+    if (!enabled||!worlds.has(world)) return;
+    stopBuilding(true);
+    const token=generation,building=buildingGeneration;
+    unlock().then(()=>{
+      if (!context||token!==generation||building!==buildingGeneration) return;
+      const key=`${world}:${index}:${kind}`;
+      if (!buildingClips.has(key)) {
+        buildingClips.set(key,buildingClip(context,world,index,kind));
+        if (buildingClips.size>48) buildingClips.delete(buildingClips.keys().next().value);
+      }
+      sample(kind,context.currentTime+.075,.16,{building:true,buffer:buildingClips.get(key)});
     }).catch(()=>{});
   }
 
@@ -245,5 +286,5 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (tail&&scene?.world) startAmbience(scene,{delay:finished?2.08:workStart+3.38,duration:5.4});
   }
 
-  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuild,stopBuild};
+  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playBuild,stopBuild};
 }

@@ -33,29 +33,53 @@ export function placeParts(parts,site) {
 }
 
 // Front-facing plaques use a few simple painted shapes, at the same scale as the buildings.
-// The opening points toward +z. The hillside wraps over and beside the opening.
-export function tunnelLandform(site,theme,{width=1.25,height=2.05,depth=6}={}) {
-  const moon=theme==='moon';
-  const terrain=moon?['#85839e','#a4a0b7','#9291aa']:['#8d9b6d','#a8ae79','#969b78'];
-  const stone=moon?'#c1b9cb':'#d5c4a8',dark=moon?'#37394c':'#3c4349';
-  const outline=[[-width,0],[-width,height*.64],[-width*.73,height*.9],[0,height],
+// Sweep one ridge from portal to portal, following the grade and turns of the track.
+export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
+  const moon=layout.theme==='moon';
+  const rock=moon?['#9a96ae','#a5a0b6','#9290a8']:['#95a379','#a7ae81','#8e9c73'];
+  const stone=moon?'#c1b9cb':'#d5c4a8',shadow=moon?'#414356':'#42494b';
+  const arch=[[-width,0],[-width,height*.64],[-width*.73,height*.9],[0,height],
     [width*.73,height*.9],[width,height*.64],[width,0]];
-  const shell=outline.map(([x,y])=>[x*1.24,y+.32]);
+  const rings=path.map(([x,y,z],i)=>{
+    const [ax,,az]=path[Math.max(0,i-1)],[bx,,bz]=path[Math.min(path.length-1,i+1)];
+    const span=Math.hypot(bx-ax,bz-az)||1;
+    const nx=(bz-az)/span,nz=(ax-bx)/span;
+    const ridge=Math.sin(Math.PI*i/(path.length-1));
+    const point=([u,v])=>[x+nx*u,y+v,z+nz*u];
+    const inner=arch.map(point);
+    const outer=arch.map(([u,v])=>point([u*(1.26+.19*ridge),v+.29+.59*ridge]));
+    const skirt=[-1,1].map(side=>{
+      const [a,,b]=point([side*width*(2.12+.65*ridge),0]);
+      return [a,regionSurface(layout,a,b).y-.15,b];
+    });
+    return {inner,outer,skirt};
+  });
+  const surface=(outline,color)=>{
+    const [x,y,z]=outline[0];
+    return {shape:'terrain',outline,x,y,z,h:0,color};
+  };
   const parts=[];
-  for (let i=1;i<outline.length;i++) {
-    const [a,b]=[outline[i-1],outline[i]], [c,d]=[shell[i-1],shell[i]];
-    parts.push(beam([...a,.19],[...b,.19],.28,stone),
-      {shape:'terrain',outline:[[...a,.16],[...b,.16],[...b,-1.9],[...a,-1.9]],x:0,y:0,z:0,h:height,color:dark},
-      {shape:'terrain',outline:[[...c,.05],[...d,.05],[d[0]*1.2,d[1]+.75,-depth],[c[0]*1.2,c[1]+.75,-depth]],
-        x:0,y:0,z:0,h:height+1,color:terrain[i%3]});
+  for (let i=1;i<rings.length;i++) {
+    const a=rings[i-1],b=rings[i];
+    for (let j=1;j<arch.length;j++) {
+      parts.push(surface([a.outer[j-1],b.outer[j-1],b.outer[j],a.outer[j]],rock[j%3]),
+        surface([a.inner[j],b.inner[j],b.inner[j-1],a.inner[j-1]],shadow));
+    }
+    parts.push(surface([a.skirt[0],b.skirt[0],b.outer[0],a.outer[0]],rock[0]),
+      surface([a.outer.at(-1),b.outer.at(-1),b.skirt[1],a.skirt[1]],rock[0]));
   }
-  for (const side of [-1,1]) {
-    const x=side*width;
-    parts.push({shape:'terrain',outline:[[x*1.15,0,0],[x*1.17,height*.69,.03],
-      [x*1.47,height*.85,-depth],[x*2.35,-.48,-depth],[x*2.2,-.48,1.1]],x:0,y:0,z:0,h:height,color:terrain[1]});
-    parts.push(box(x*1.11,.23,.22,.34,.87,stone,.01));
+  for (const [index,ring] of [[0,rings[0]],[1,rings.at(-1)]]) {
+    for (let j=1;j<arch.length;j++) {
+      const face=[ring.inner[j-1],ring.outer[j-1],ring.outer[j],ring.inner[j]];
+      parts.push(beam(ring.inner[j-1],ring.inner[j],.24,stone),
+        surface(index?face.reverse():face,stone));
+    }
+    for (const [side,j] of [[0,0],[1,arch.length-1]]) {
+      const edge=[ring.inner[j],ring.outer[j],ring.skirt[side]];
+      parts.push(surface((index===side)?edge:edge.reverse(),rock[2]));
+    }
   }
-  return placeParts(parts,site);
+  return parts;
 }
 
 const cream='#fff2cc', blue='#b4e5ed', apricot='#f5ad6c', rose='#ff9db1', mint='#96dfbc', ink='#324857';
@@ -206,6 +230,15 @@ export function visitor(kind,coat,skin,seated=false,scale=.83) {
   return model.map(part=>({...part,x:part.x*scale,y:part.y*scale,z:part.z*scale,w:part.w*scale,d:part.d*scale,h:part.h*scale}));
 }
 
+function occupiedHovercar(passenger=false) {
+  return [
+    ...vehicle('hover','#b982ac'),
+    ...at(visitor('astronaut','#e7e1d6',undefined,true,.46),-.23,.60,-.19),
+    tube(-.23,.25,.21,.065,.21,'#465463',.84,'z'),
+    ...(passenger?at(visitor('alien','#5aa69b',undefined,true,.43),.24,.58,-.27):[]),
+  ];
+}
+
 function route(points, corner) {
   const path=points.flatMap(([x,z],i)=>{
     const approach=points.at(i-1), exit=points[(i+1)%points.length];
@@ -243,6 +276,7 @@ export function worldActors(theme) {
   ];
   if (theme==='moon') return [
     actor(vehicle('rover','#d5b38e'),[[-15,-13],[-15,11],[15,11],[15,-13]],{kind:'road',ground:.085,speed:2.35,phase:.018,corner:1.25,roads:[-13,-.75,11],roadRise:.102}),
+    actor(occupiedHovercar(),[[-15,-13],[-15,11],[15,11],[15,-13]],{kind:'hover',ground:.27,speed:3.15,phase:.47,corner:1.25,roads:[-13,-.75,11],roadRise:.102}),
     actor(walker('astronaut','#ebe9e0'),[[-18,-19],[-17.9,-9],[-18.9,-9],[-19,-19]],{kind:'walk',ground:.045,speed:.9,phase:.14}),
     actor(walker('alien','#79b88d'),[[8,-12],[14,-12],[14,-10.8],[8,-10.8]],{kind:'walk',ground:.047,speed:1.1,phase:.24}),
   ];
@@ -269,6 +303,7 @@ export function districtActors(theme,lots) {
   ];
   if (theme==='moon') return [
     actor(vehicle('rover','#d5b38e'),circuit,{kind:'road',ground:.10,speed:2.25,phase:.19,corner:1.15}),
+    actor(occupiedHovercar(true),circuit,{kind:'hover',ground:.27,speed:3.15,phase:.48,corner:1.15}),
     actor(walker('astronaut','#ebe9e0'),path,{kind:'walk',ground:.04,speed:.95,phase:.21}),
     actor(walker('alien','#79b88d'),side,{kind:'walk',ground:.04,speed:1.08,phase:.59}),
   ];
@@ -290,7 +325,7 @@ export function actorPose(actor, seconds, distanceOverride) {
     return {x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
       sound:Number(seconds%21>10&&seconds%21<12)*.63};
   }
-  if (actor.kind==='plane') return planePose(actor,seconds);
+  if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const {segments,length}=actor.route;
   const traveled=distanceOverride??seconds*actor.speed;
@@ -427,16 +462,17 @@ function rocketPose({x,y,z,yaw,kind,delay},seconds) {
   };
 }
 
-function planePose({x,y,z,yaw,delay,runway},seconds) {
+function planePose({x,y,z,yaw,delay,runway,kind},seconds) {
   const clock=Math.max(0,seconds-delay),t=clock%30;
   const reverse=Math.floor(clock/30)%2===1;
-  const end=runway*.5-1.08;
+  const shuttle=kind==='shuttle';
+  const end=runway*.5-(shuttle?1.32:1.08);
   let along=-end,altitude=0,turn=0;
   if (t>=2.4&&t<5.3) along=-end+2*end*((t-2.4)/2.9)**1.8;
   else if (t>=5.3&&t<8.8) {
     const flight=(t-5.3)/3.5;
     along=end+189*flight**1.7;
-    altitude=115*flight**1.44;
+    altitude=(shuttle?146:115)*flight**1.44;
   } else if (t>=8.8&&t<13) altitude=-540;
   else if (t>=13&&t<17.4) {
     const approach=(17.4-t)/4.4;
@@ -450,8 +486,10 @@ function planePose({x,y,z,yaw,delay,runway},seconds) {
   const direction=reverse?-1:1,heading=yaw+(reverse?Math.PI:0)+turn;
   const bend=altitude>0 ? Math.sign(along)*Math.sin(Math.min(1,altitude/125)*Math.PI)*altitude*.56 : 0;
   const roll=altitude>0?Math.sin(t*2.4)*Math.min(.12,altitude*.012):0;
+  const pitch=t>=5.05&&t<8.8?Math.min(.23,(t-5.05)*.4)
+    :t>=13&&t<17.4?-.1*Math.min(1,(17.4-t)*2.3):0;
   return {x:x+Math.sin(yaw)*along*direction+Math.cos(yaw)*bend,y:y+altitude,z:z+Math.cos(yaw)*along*direction-Math.sin(yaw)*bend,
-    cos:Math.cos(heading+roll),sin:Math.sin(heading+roll),stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+    cos:Math.cos(heading+roll),sin:Math.sin(heading+roll),pitch,stride:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),
     sound:Number(clock>0&&(t>=2.42&&t<8.16||t>=15.4&&t<21.2))};
 }
 
@@ -612,14 +650,14 @@ export function regionActors(theme,layout,plan,completed) {
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
-  if (moon&&completed.length) {
-    const rover=offroadRover(layout,plan,completed);
+  if (moon) {
+    const rover=completed.length&&offroadRover(layout,plan,completed);
     if (rover) actors.push(rover);
-    if (completed.some(plot=>plot.kind==='hoverDealer')&&paths.length) {
+    if (circuits.length||paths.length) {
       const circuit=circuits[1]??circuits[0];
       const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
-      actors.push(actor(vehicle('hover','#b982ac'),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
-        elevation:(x,z)=>elevation(x,z)+.17}));
+      actors.push({...actor(occupiedHovercar(layout.seed%2===1),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
+        elevation:(x,z)=>elevation(x,z)+.17}),...(circuit&&{alternatives})});
     }
   }
   const station=completed.find(plot=>plot.kind==='busStation');

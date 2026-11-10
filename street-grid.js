@@ -1,4 +1,4 @@
-import {connectWaterfront,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
+import {connectWaterfront,regionalAnnex,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
 import {randomGenerator,REGION_PLACES} from './worlds.js';
 
 const WIDTH=11;
@@ -173,8 +173,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
 
   for (const {index,kind} of buildings) {
     latestPaths=new Map();
-    const lighthouse=kind==='lighthouse'&&layout.berths.lighthouse;
-    const special=lighthouse?null:layout.berths[kind];
+    const annex=regionalAnnex(layout,kind);
+    const special=annex?null:layout.berths[kind];
     if (special) {
       const entries=specialEntrances(special,kind);
       for (const entry of entries) {
@@ -217,16 +217,16 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     add(edge);
     lot.perimeter.forEach(add);
     const entry=yaw===0?{x:lot.x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z:lot.z};
-    if (lighthouse) {
+    if (annex) {
       // Keep its original lot reserved so later parcels in saved towns stay put.
-      const entries=specialEntrances(lighthouse,kind);
+      const entries=specialEntrances(annex,kind);
       const candidates=[...active].map(id=>nodes[id]);
       const start=candidates.reduce((near,node)=>gap(node,entries[0])<gap(near,entries[0])?node:near);
       const shoreRoad=connectWaterfront(connectorLayout,start,entries[0],false);
       connectors.push(shoreRoad);
       latestPaths.set(shoreRoad,false);
       connectedNodes.add(start.id);
-      plots.push({...lighthouse,index,kind,entries});
+      plots.push({...annex,index,kind,entries});
     } else {
       plots.push({x:lot.x,y:lot.y,z:lot.z,yaw,index,kind,entries:[entry],
         streetSpan:gap(nodes[lot.ring[0]],nodes[lot.ring[1]])});

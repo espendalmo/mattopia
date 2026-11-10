@@ -2,20 +2,19 @@ import { STORAGE_KEY } from './core.js';
 import { illustration } from './illustrations.js';
 
 export const PROFILE_KEY = `${STORAGE_KEY}-profiles-v1`;
-export const AVATARS = {
-  apple:{ icon:illustration('apple'), label:'Eple' },
-  fox:{ icon:illustration('fox'), label:'Rev' },
-  panda:{ icon:illustration('panda'), label:'Panda' },
-  frog:{ icon:illustration('frog'), label:'Frosk' },
-  octopus:{ icon:illustration('octopus'), label:'Blekksprut' },
-  owl:{ icon:illustration('owl'), label:'Ugle' },
-  tiger:{ icon:illustration('tiger'), label:'Tiger' },
-  koala:{ icon:illustration('koala'), label:'Koala' },
-  penguin:{ icon:illustration('penguin'), label:'Pingvin' },
-  cat:{ icon:illustration('cat'), label:'Katt' },
-  dragon:{ icon:illustration('dragon'), label:'Drage' },
-  robot:{ icon:illustration('robot'), label:'Robot' },
-};
+export const AVATAR_GROUPS = [
+  {label:'Dyr og figurer', avatars:{
+    apple:'Eple', fox:'Rev', panda:'Panda', frog:'Frosk', octopus:'Blekksprut', owl:'Ugle',
+    tiger:'Tiger', koala:'Koala', penguin:'Pingvin', cat:'Katt', dragon:'Drage', robot:'Robot',
+  }},
+  {label:'Interesser og symboler', avatars:{
+    headphones:'Hodetelefoner', controller:'Spillkontroll', skateboard:'Skateboard', basketball:'Basketball',
+    football:'Fotball', mountain:'Fjell', camera:'Kamera', planet:'Saturn',
+    drum:'Trommer', guitar:'Gitar', compass:'Kompass', lightning:'Lyn',
+  }},
+];
+export const AVATARS = Object.fromEntries(AVATAR_GROUPS.flatMap(({avatars})=>
+  Object.entries(avatars).map(([key,label])=>[key,{icon:illustration(key),label}])));
 export const GRADES = Array.from({ length:10 }, (_, i) => i + 1);
 export const NAME_LIMIT = 24;
 

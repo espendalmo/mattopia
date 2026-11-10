@@ -12,20 +12,24 @@ const oval=Array.from({length:16},(_,i)=>{
     Math.sign(Math.sin(angle))*Math.abs(Math.sin(angle))**.7*.5];
 });
 const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moonGarden','biodome','habitat','ringHabitat',
-  'moonHotel','spaceField','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
-const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison','field']);
-const paved=new Set(['busStation','airport','airstrip','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
+  'moonHotel','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
+const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison',
+  'field','spaceField','launch','pool','dance']);
+const paved=new Set(['busStation','airport','airstrip','shuttlePort','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
   'railwayStation','monorailStation']);
 
 export function shapeLandmarkGround(stages,kind) {
   const foundation=stages[0].find(part=>part.support);
   if (!foundation) return stages;
-  const profile=kind==='airport'?runway:curved.has(kind)?oval:square.has(kind)?rectangle:
+  const profile=kind==='shuttlePort'||kind==='airport'&&foundation.w>15?rectangle:kind==='airport'?runway:curved.has(kind)?oval:square.has(kind)?rectangle:
     ['hall','bank','arcade','nightCinema','market','tropicalMarket','square'].includes(kind)?plaza:clipped;
-  if (profile===rectangle) return stages;
+  const cap=foundation.y+foundation.h;
   return stages.map(parts=>parts.map(part=>{
-    const slab=part.support||part.y+part.h<.4&&Math.abs(part.x-foundation.x)<.16&&Math.abs(part.z-foundation.z)<.16&&
-      part.w>=foundation.w*.87&&part.d>=foundation.d*.87;
+    // The platform and its inset surface use the same corner profile as the wall.
+    const slab=part.support||['box','rounded','tube','support'].includes(part.shape)
+      &&part.y>=cap-.12&&part.y<=cap+.51&&part.h<=.52
+      &&Math.abs(part.x-foundation.x)<.21&&Math.abs(part.z-foundation.z)<.21
+      &&part.w>=foundation.w*.75&&part.d>=foundation.d*.75;
     if (!slab) return part;
     const outline=profile.map(([x,z])=>[part.x+x*part.w,part.y,part.z+z*part.d]);
     return {...part,shape:'support',outline};

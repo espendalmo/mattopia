@@ -83,6 +83,24 @@ function landscapeFeatures(theme,rng) {
   return {hills,basins};
 }
 
+function outlyingAirfield(layout) {
+  const side=Math.sign(layout.origin.x)||1;
+  const yaw=-side*Math.PI/2,x=side*88;
+  const candidates=[-34,-19,0,19,34].map(z=>{
+    const ground=[-7,0,7].flatMap(dx=>[-10,0,10].map(dz=>regionSurface(layout,x+dx,z+dz).y));
+    const y=Math.max(...ground)+.085;
+    return {x,y,z,yaw,airfield:true,score:y-Math.min(...ground)+Math.abs(z-layout.origin.z)*.007};
+  });
+  const {score,...site}=candidates.sort((a,b)=>a.score-b.score)[0];
+  return site;
+}
+
+export function regionalAnnex(layout,kind) {
+  if (kind==='lighthouse') return layout.berths.lighthouse;
+  if (kind==='shuttlePort'||kind==='airport'&&layout.theme==='city') return layout.airfield;
+  return null;
+}
+
 export function regionLayout(theme,seed,grand=false) {
   const key=theme+':'+seed+':'+grand;
   if (layouts.has(key)) return layouts.get(key);
@@ -139,6 +157,7 @@ export function regionLayout(theme,seed,grand=false) {
     return {x,z,...sample,blocked:sites.some(site=>distance(site,{x,z})<5.7)};
   });
   layout.grid=grid;
+  if (grand&&theme!=='island') layout.airfield=outlyingAirfield(layout);
   if (grand&&theme==='city') berths.lighthouse=cityBerth(layout,bridgeZ>0?-56:54,-side);
   if (grand&&theme==='island') berths.lighthouse=coastSite(layout,layout.phase+4.14);
   layouts.set(key,layout);
@@ -215,6 +234,10 @@ function ordinaryEntrance(site,target) {
 }
 
 export function specialEntrances(site,kind) {
+  if (site.airfield) {
+    const apron=polar(site.yaw,8.9);
+    return [{x:site.x+apron.x,z:site.z+apron.z}];
+  }
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
   const land=polar(site.yaw+Math.PI,kind==='lighthouse'?5.2:3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];
@@ -234,8 +257,8 @@ export function planRegion(layout,buildings) {
   let land=0;
   const closest=(points,place)=>points.reduce((near,point)=>distance(point,place)<distance(near,place)?point:near,points[0]);
   for (const {index,kind} of buildings) {
-    const lighthouse=kind==='lighthouse'&&berths.lighthouse;
-    const special=lighthouse?null:berths[kind];
+    const annex=regionalAnnex(layout,kind);
+    const special=annex?null:berths[kind];
     const site=special??sites[land++];
     if (!site) continue;
     const target=closest(network,site);
@@ -254,32 +277,32 @@ export function planRegion(layout,buildings) {
       paths.push(path);
       network.push(...path.filter((_,i)=>i%4===0),path.at(-1));
     }
-    if (lighthouse) {
-      const shore=specialEntrances(lighthouse,kind);
+    if (annex) {
+      const shore=specialEntrances(annex,kind);
       const start=closest(network,shore[0]);
       paths.push(connectWaterfront(layout,start,shore[0],false));
-      plots.push({...lighthouse,entries:shore,kind,index});
+      plots.push({...annex,entries:shore,kind,index});
     } else plots.push({...site,...entrance,entries,kind,index});
   }
   return {plots,paths,origin,latestPaths:new Map(paths.slice(latestStart).map(path=>[path,false]))};
 }
 
 export function regionVisibility(plan,x,z,full=false) {
-  if (full) return clamp((EDGE-Math.max(Math.abs(x),Math.abs(z)))/10,0,1);
+  const developed=full?clamp((EDGE+14-Math.hypot(x,z))/15,0,1):0;
   const distanceTo=(point)=>Math.hypot(point.x-x,point.z-z);
-  let reach=Math.max(0,1-(distanceTo(plan.origin)-13)/15);
-  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-12)/17);
+  let reach=Math.max(0,1-(distanceTo(plan.origin)-23)/21);
+  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-16)/24);
   for (const path of plan.paths) {
-    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-4.8)/13);
+    for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-5.5)/17);
   }
   if (plan.transit) {
     for (let i=0;i<plan.transit.length;i+=5) {
-      reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.1)/9);
+      reach=Math.max(reach,1-(distanceTo(plan.transit[i])-3.7)/12);
     }
   }
   for (const portal of plan.transitPortals??[]) reach=Math.max(reach,1-(distanceTo(portal)-7)/9);
   reach=clamp(reach,0,1);
-  return reach*reach*(3-2*reach);
+  return Math.max(developed,.8*reach*reach*(3-2*reach)+.2*reach);
 }
 
 export function roadElevation(layout,x,z) {
