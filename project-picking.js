@@ -1,4 +1,4 @@
-import {residentPoint,residentNormal} from './scene-motion.js';
+import {residentPoint,residentNormal,lunarSurfaceY} from './scene-motion.js';
 
 function triangleDepth(point,a,b,c) {
   const [x,y]=point;
@@ -38,6 +38,7 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
         [x,y,z]=[actor.x+x*actor.cos+z*actor.sin,actor.y+y+Math.max(0,step)*.58,actor.z+z*actor.cos-x*actor.sin];
       }
       if (face.group===1) y=effects.ground+(y-effects.ground)*effects.growth+effects.lift;
+      if (face.lunar) y=lunarSurfaceY(x,y,z,effects.curvature);
       const forward=x*s+z*c,top=y-camera.center;
       return [width*.5+camera.x+(x*c-z*s)*scale,height*.5+camera.y-(top*slope-forward*rise)*scale,top*rise+forward*slope];
     };

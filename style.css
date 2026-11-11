@@ -321,6 +321,11 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
 .progression-setting { margin: 12px 0 0; padding: 9px 13px 12px; border-radius: 14px; background: #edf4e8; }
 .progression-setting .sound-setting { margin: 0; }
 .progression-setting .adult-note { margin: 0 0 0 34px; }
+.progression-setting .progression-tracks { margin: 12px 0 0 34px; padding: 8px 0 0; }
+.progression-tracks .adult-note { margin: 0 0 6px; }
+.progression-setting .progression-track { min-height: 40px; font-size: .875rem; }
+.progression-track input { flex: none; width: 19px; height: 19px; }
+#practice-options .level-option:has(input:disabled) { opacity: .54; cursor: default; }
 .described-setting { margin-bottom: 22px; }
 .described-setting .sound-setting { margin-bottom: 0; }
 .described-setting .adult-note { margin: 0 0 0 34px; line-height: 1.55; }
@@ -838,6 +843,9 @@ canvas.lunar-starfield,
 .setup-modes, .setup-rewards { min-width: 0; border: 0; margin: 0; padding: 0; }
 .setup-modes legend { margin-bottom: 8px; font-size: .93rem; font-weight: 700; }
 .setup-modes label:last-child { margin-bottom: 0; }
+.setup-progression { margin: 0; }
+.setup-progression .progression-tracks { margin: 0; border-top: 0; }
+.setup-form:not(:has(input[name="practice"][value="auto"]:checked)) .setup-progression { display: none; }
 .onboarding:has(.setup-rewards) { width: min(100%, 465px); }
 .setup-rewards > div { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; }
 .setup-reward { display: flex; cursor: pointer; }
@@ -1449,28 +1457,39 @@ canvas.lunar-starfield,
 
 /* Small local moments stay inside the map, clear of its controls. */
 .project-thoughts { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: 15px; }
-.project-thoughts span { position: absolute; left: 0; top: 0; min-width: 23px; height: 27px; padding: 1px 5px;
+.project-thoughts button { position: absolute; left: 0; top: 0; min-width: 34px; height: 34px; padding: 1px 6px; pointer-events: auto;
   color: #544573; background: #fff6dc; border: 1.5px solid #b9abcf; border-radius: 12px 12px 12px 3px;
   font-size: 18px; font-weight: 800; line-height: 23px; text-align: center; box-shadow: 0 2px 6px #0003; }
-.project-thoughts span[hidden] { display: none; }
+.project-thoughts button[hidden] { display: none; }
 
+.project-viewer .project-map-stage {
+  --map-tools-top: 10px;
+  --map-tools-left: 8px;
+  --map-tools-right: 10px;
+  --map-button-size: 46px;
+}
 .map-stage-actions {
   position: absolute;
   z-index: 5;
-  top: 10px;
-  right: 10px;
+  top: var(--map-tools-top);
+  right: var(--map-tools-right);
   display: flex;
   gap: 8px;
 }
 .map-stage-actions .icon-button {
-  width: 46px;
-  height: 46px;
+  width: var(--map-button-size);
+  height: var(--map-button-size);
   color: var(--ink);
   border: 1px solid #d4e0d6;
   background: #fcfdf8;
   box-shadow: 0 2px 8px #14282322;
 }
 .map-stage-actions .map-full-start { display: none; }
+.project-viewer .project-map-stage:has(.map-stage-actions) > .map-eplo-overlay {
+  top: calc(var(--map-tools-top) + var(--map-button-size) + 9px);
+  left: var(--map-tools-left);
+  width: min(360px, calc(100% - var(--map-tools-left) - var(--map-tools-right)));
+}
 .project-dialog.project-fullscreen {
   position: fixed;
   inset: 0;
@@ -1489,9 +1508,10 @@ canvas.lunar-starfield,
 .project-fullscreen .project-viewer,
 .project-fullscreen .project-map-stage { width: 100%; height: 100%; }
 .project-fullscreen .project-map-stage > canvas:not(.project-fireworks) { height: 100%; border: 0; border-radius: 0; }
-.project-fullscreen .map-stage-actions {
-  top: max(12px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+.project-fullscreen .project-viewer .project-map-stage {
+  --map-tools-top: max(12px, env(safe-area-inset-top));
+  --map-tools-left: max(10px, env(safe-area-inset-left));
+  --map-tools-right: max(12px, env(safe-area-inset-right));
 }
 .project-fullscreen .map-stage-actions .map-full-start { display: inline-grid; color: #fff; background: var(--green); border-color: var(--green); }
 .project-fullscreen .map-info-card {

@@ -1,3 +1,4 @@
+import {isSlidePark,slideRiders} from './slide-parks.js';
 import {footballActors} from './map-life.js';
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
@@ -82,6 +83,7 @@ export function constructionYard(layout,plot,phase,height) {
 }
 
 export function rideModels(plot,stages) {
+  if (isSlidePark(plot.kind)) return slideRiders(plot);
   if (plot.kind==='needleTower') {
     const parts=stages.flat().filter(part=>part.observation).map(part=>({...part,y:part.y-7.85}));
     return [{kind:'observation',parts,pose(seconds) {
@@ -140,6 +142,8 @@ const mealVisitors=[[-2.75,.54,3.28,Math.PI,true],[.13,.54,3.65,Math.PI,true],[2
 const campVisitors=[[1.63,.83,-.1,.12,true],[-.01,.42,2.3,-.42]];
 const hotelVisitors=[[-2.27,.35,2.63,.29],[.69,.35,3.91,-.67]];
 const VISITORS={
+  riverSlides:[[-3.25,.36,3.45,-.45]],mangoSlides:[[2.45,.36,3.56,-.45],[3.31,.36,3.34,-.42]],
+  dustSlides:[[1.57,.36,3.08,-.58],[2.74,.36,3.32,-.55]],
   greatPark:parkVisitors,palmGarden:parkVisitors,moonGarden:parkVisitors,
   garden:gardenVisitors,bandstand:gardenVisitors,camp:campVisitors,beachCamp:campVisitors,
   restaurant:mealVisitors,bistro:cafeVisitors,tikiBar:cafeVisitors,coralCafe:cafeVisitors,

@@ -263,7 +263,10 @@ function occupiedHovercar(passenger=false) {
   });
   return [
     ...vehicle('hover','#b982ac'),
-    ...[-.36,.36].flatMap(x=>[...exhaust(x,.13,.66,'#ff985e'),...exhaust(x,.086,.47,'#fff0a8')]),
+    ...[-.36,.36].flatMap(x=>[
+      {...tube(x,-1.414,.28,.084,.27,'#f2aa6c',.29,'z'),life:[0,0,0,-1]},
+      ...exhaust(x,.145,.78,'#ff985e'),...exhaust(x,.09,.53,'#fff0a8'),
+    ]),
     ...at(visitor('astronaut','#e7e1d6',undefined,true,.46),-.23,.60,-.19),
     tube(-.23,.25,.21,.065,.21,'#465463',.84,'z'),
     ...(passenger?at(visitor('alien','#5aa69b',undefined,true,.43),.24,.58,-.27):[]),
@@ -359,14 +362,14 @@ export function actorPose(actor, seconds, distanceOverride) {
   if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const {segments,length}=actor.route;
-  const clock=actor.kind==='walk'&&actor.voice?walkingClock(seconds,actor.phase):{time:seconds,thinking:false};
+  const clock=walkingClock(seconds,actor.encounter);
   const traveled=distanceOverride??clock.time*actor.speed;
   let distance=(traveled+(distanceOverride===undefined?length*actor.phase:0))%length;
   if (distance<0) distance+=length;
   const segment=segments.find(part=>distance<part.end) ?? segments[0];
   const t=(distance-segment.start)/(segment.end-segment.start);
   const x=segment.x+segment.dx*t,z=segment.z+segment.dz*t;
-  const yaw=segment.yaw;
+  const yaw=clock.thinking?Math.atan2(actor.encounter.x-x,actor.encounter.z-z):segment.yaw;
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
   const y=actor.kind==='coaster'?segment.y+segment.dy*t:
@@ -435,6 +438,19 @@ function waitingCycle(vehicles) {
   return [];
 }
 
+function passingPose(vehicle,pass,elapsed,seconds) {
+  const launch=Math.min(elapsed,pass.hover?.29:0);
+  const distance=pass.start+pass.cruise*launch+pass.speed*(elapsed-launch);
+  const pose=actorPose(vehicle.actor,seconds,distance);
+  const smooth=t=>{ const u=Math.max(0,Math.min(1,t));return u*u*(3-2*u); };
+  const enter=smooth(elapsed/.29),exit=smooth((pass.duration-elapsed)/.31);
+  const across=enter*exit*(pass.hover?1.01:1.75);
+  const roll=pass.hover?(exit-enter)*enter*exit*.36:0;
+  return {distance,pose:{...pose,x:pose.x+pose.cos*across,z:pose.z-pose.sin*across,
+    y:pose.y+enter*exit*(pass.hover?2.15:0),rollCos:Math.cos(roll),rollSin:Math.sin(roll),
+    sound:.64,thrust:Number(pass.hover)}};
+}
+
 export function createTraffic(actors,junctions=[]) {
   const crossings=junctions.filter(point=>!point.arms||point.arms.length>=3||point.connector);
   const junctionAt=(vehicle,pose)=>{
@@ -447,6 +463,42 @@ export function createTraffic(actors,junctions=[]) {
   const laneBlocker=(vehicle,pose)=>vehicles.find(other=>other!==vehicle&&(
     overlaps({size:vehicle.size,pose},other)||followsTooClosely({size:vehicle.size,pose},other)));
   const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone);
+  function planPass(vehicle,blocker,seconds) {
+    const {actor,pose,size}=vehicle;
+    const hover=actor.kind==='hover';
+    if (!blocker||vehicle.zone||blocker.zone&&!hover||seconds<(vehicle.nextPass??0)
+      ||!['road','hover'].includes(actor.kind)||!['road','bus','hover'].includes(blocker.actor.kind)
+      ||actor.speed-blocker.actor.speed<.54
+      ||vehicles.some(other=>other.pass)) return null;
+    const near={...pose,x:pose.x+pose.sin*.38,z:pose.z+pose.cos*.38};
+    if (!followsTooClosely({size,pose:near},blocker)) return null;
+    // Surface cars need a marked, two-way road. Hovercars can lift a little
+    // above their own lane without occupying the whole opposing lane.
+    if (!hover&&!actor.alternatives?.length) return null;
+    vehicle.nextPass=seconds+.26;
+    const gap=Math.hypot(pose.x-blocker.pose.x,pose.z-blocker.pose.z);
+    const clearance=size[0]+blocker.size[0]+1.15;
+    const speed=Math.max(actor.speed+1.3,blocker.actor.speed+(hover?6.4:3.5));
+    const cruise=blocker.actor.speed;
+    const duration=(gap+clearance)/(speed-cruise)+(hover?.45:0);
+    const pass={start:vehicle.distance,speed,cruise,duration,hover,elapsed:0};
+    const samples=Math.ceil(duration*32);
+    for (let i=0;i<=samples;i++) {
+      const t=duration*i/samples;
+      const next=passingPose(vehicle,pass,t,seconds+t);
+      const forward=next.pose.cos*pose.cos+next.pose.sin*pose.sin>(hover?-.12:.988);
+      const overJunction=hover&&t>.29&&t<duration-.31;
+      if (!forward||junctionAt(vehicle,next.pose)&&!overJunction) return null;
+      for (const other of vehicles) {
+        if (other===vehicle) continue;
+        const expected=actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
+        if (overlaps({size,pose:next.pose},{size:other.size,pose:expected})
+          ||i===samples&&followsTooClosely({size:other.size,pose:expected},{size,pose:next.pose})) return null;
+        if (other!==blocker&&overlaps({size,pose:next.pose},other)) return null;
+      }
+    }
+    return pass;
+  }
   actors.forEach((actor,index)=>{
     if (!actor.route||!streetKinds.has(actor.kind)) return;
     const {length}=actor.route;
@@ -510,6 +562,20 @@ export function createTraffic(actors,junctions=[]) {
       const priority=vehicles.slice().sort((a,b)=>Number(Boolean(b.zone))-Number(Boolean(a.zone))||b.wait-a.wait);
       for (const vehicle of priority) {
         if (vehicle===backing||seconds<vehicle.holdUntil) continue;
+        if (vehicle.pass) {
+          const pass=vehicle.pass;
+          const elapsed=Math.min(pass.duration,pass.elapsed+step);
+          const {distance,pose}=passingPose(vehicle,pass,elapsed,seconds);
+          if (!physicalBlocker(vehicle,pose)) {
+            Object.assign(vehicle,{distance,pose});
+            pass.elapsed=elapsed;
+            if (elapsed>=pass.duration) {
+              vehicle.pass=null;
+              vehicle.nextPass=seconds+6+vehicle.rng()*5;
+            }
+          }
+          continue;
+        }
         const actor=vehicle.actor;
         if (actor.alternatives?.length&&seconds>=vehicle.nextTurn) {
           const near=vehicles.some(other=>other!==vehicle&&Math.hypot(other.pose.x-vehicle.pose.x,other.pose.z-vehicle.pose.z)<8);
@@ -527,6 +593,13 @@ export function createTraffic(actors,junctions=[]) {
         const blocker=intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
           ||(zone&&zone!==vehicle.zone&&exitBlocker(vehicle,distance,zone,seconds));
         if (blocker) {
+          const pass=!zone&&planPass(vehicle,blocker,seconds);
+          if (pass) {
+            Object.assign(vehicle,{pass,wait:0,blocker:null});
+            vehicle.passCount=(vehicle.passCount??0)+1;
+            if (vehicle.passCount%3===1) vehicle.passHorn=seconds+.54;
+            continue;
+          }
           vehicle.wait+=step;
           vehicle.blocker=blocker;
           vehicle.pose={...vehicle.pose,sound:0,thrust:0};
@@ -539,7 +612,7 @@ export function createTraffic(actors,junctions=[]) {
       const vehicle=byIndex.get(i);
       if (!vehicle) return actor.route&&streetKinds.has(actor.kind)
         ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds);
-      const horn=actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
+      const horn=seconds<vehicle.passHorn||actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
       return horn?{...vehicle.pose,cue:'horn',sound:.65}:vehicle.pose;
     });
   };
@@ -760,7 +833,7 @@ export function regionActors(theme,layout,plan,completed) {
       actors.push({...actor(occupiedHovercar(layout.seed%2===1),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
         elevation:(x,z)=>elevation(x,z)+.17}),...(circuit&&{alternatives})});
       if (completed.length>=2) actors.push({...actor(vehicle('rover-bus','#8daec5'),points,
-        {kind:'bus',speed:1.94,phase:.76,corner:STREET_TURN_RADIUS,elevation}),
+        {kind:'bus',speed:1.94,phase:.47+(layout.seed%7)*.018,corner:STREET_TURN_RADIUS,elevation}),
         lunarBus:true,...(circuit&&{alternatives})});
     }
   }

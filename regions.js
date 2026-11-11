@@ -101,8 +101,8 @@ export function regionalAnnex(layout,kind) {
   return null;
 }
 
-export function regionLayout(theme,seed,grand=false) {
-  const key=theme+':'+seed+':'+grand;
+export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_PLACES:REGION_PLACES) {
+  const key=theme+':'+seed+':'+grand+':'+capacity;
   if (layouts.has(key)) return layouts.get(key);
   const rng=randomGenerator(seed);
   const layout={theme,seed,grand,phase:rng()*Math.PI*2,radiusX:63+rng()*5,radiusZ:55+rng()*5,...landscapeFeatures(theme,rng)};
@@ -114,7 +114,6 @@ export function regionLayout(theme,seed,grand=false) {
     layout.radiusZ+=11;
     layout.basins=layout.basins.map(pond=>({...pond,w:pond.w*1.24,d:pond.d*1.24}));
   }
-  const capacity=grand?GRAND_REGION_PLACES:REGION_PLACES;
   const side=rng()<.5?1:-1;
   const quayZ=22+rng()*8;
   const bridgeZ=(rng()<.5?1:-1)*(5+rng()*8);

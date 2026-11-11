@@ -2,7 +2,7 @@ import {transitVehiclePreview} from './transport.js';
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
 import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
-import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,landmarkStages} from './world-landmarks.js';
+import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,landmarkStages,earthStarterStages} from './world-landmarks.js';
 import {shapeLandmarkGround} from './landmark-ground.js';
 import {landmarkStory} from './landmark-stories.js';
 import {seasonForDate} from './seasons.js';
@@ -458,6 +458,11 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(airport),1);
     available.unshift(airport);
   }
+  const slide=id==='moon'?48:44;
+  if (worldStatus(map).built%6===1 && available.includes(slide)) {
+    available.splice(available.indexOf(slide),1);
+    available.unshift(slide);
+  }
   const types=new Set();
   const varied=[];
   for (const index of available) {
@@ -472,9 +477,8 @@ export function worldBuildingOptions(id,map) {
 
 function regionLandmarkParts(id,index,site,map) {
   const custom=catalogBuilding(id,index,map);
-  let stages;
-  if (custom) stages=landmarkStages(id,custom[2],site,index);
-  else {
+  let stages=custom?landmarkStages(id,custom[2],site,index):earthStarterStages(id,index);
+  if (!stages) {
     const ground=id==='island'?.45:.04;
     const steps=landmark(id,index,PLACES[id][index],[0,0]).map(step=>at(step.parts,0,-ground,0));
     const [{w,d}]=steps[0];

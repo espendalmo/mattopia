@@ -1,7 +1,7 @@
 import {createTraffic,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
 import {entityAt,landmarkSilhouette} from './project-picking.js';
-import {residentPoint,residentNormal,lunarSkyCamera,lightPulse} from './scene-motion.js';
+import {residentPoint,residentNormal,lunarSkyCamera,lightPulse,lunarCurvature,lunarSurfaceY} from './scene-motion.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -155,6 +155,7 @@ export function projectFaces(scene) {
       const actorEntity=layerIndex&&!Number.isInteger(part.landmark)&&piece.life?.[3]!==-1
         &&!['rocket-flame','football-stars','observation'].includes(actorKind);
       return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(actorEntity?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
+        lunar:scene.id==='moon'&&scene.illustrated&&part.layer!==-1,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
         group:layerIndex?layerIndex+1:part.roadBuild!==undefined?-Math.max(.001,part.roadBuild):latest.has(part)?1:0,stride:part.stride??0};
     });
@@ -288,6 +289,7 @@ function canvasPainter(canvas, faces, background, stars) {
             x=actor.x+x*actor.cos+strideZ*actor.sin;
             y+=actor.y+Math.max(0,step)*.58;
           }
+          if (face.lunar) y=lunarSurfaceY(x,y,z,effects.curvature);
           const forward=x*sin+z*cos;
           const heightFromCenter=y-center;
           depth+=heightFromCenter*rise+forward*slope;
@@ -329,7 +331,7 @@ function canvasPainter(canvas, faces, background, stars) {
     if (stars) context.clearRect(0,0,width,height);
     if (groundContext) {
       // Actors can move while the same projected landscape is reused.
-      const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,
+      const key=[canvas.width,canvas.height,width,height,camera.yaw,camera.pitch,camera.x,camera.y,scale,center,effects.curvature,
         ...(terrainChanges?[effects.growth,effects.lift,effects.highlight,effects.sweep,effects.road]:[])].join(',');
       if (key!==viewKey) {
         if (backing.width!==canvas.width||backing.height!==canvas.height) {
@@ -355,7 +357,7 @@ function canvasPainter(canvas, faces, background, stars) {
 }
 
 function webGLPainter(canvas, faces, background, illustrated, stars) {
-  const vertexFloats=16;
+  const vertexFloats=17;
   const gl=canvas.getContext('webgl',{alpha:stars,antialias:true});
   if (!gl) return null;
   const shader=(kind,source)=>{
@@ -371,12 +373,14 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
     attribute float stride;
     attribute vec3 hinge;
     attribute vec4 life;
+    attribute float lunar;
     uniform float age;
     uniform vec2 yaw;
     uniform vec2 pitch;
     uniform vec2 zoom;
     uniform vec2 pan;
     uniform float center;
+    uniform float curvature;
     uniform vec4 reveal;
     uniform vec4 actorPose[${MAX_ACTORS}];
     uniform vec3 actorTilt[${MAX_ACTORS}];
@@ -424,6 +428,10 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
             pose.z+z*pose.w-pos.x*motion.x);
         }
       }
+      if (lunar > .5 && curvature > 0.0) {
+        float distance = max(0.0,length(pos.xz)-32.0);
+        pos.y -= min(35.0,distance*distance*.0052)*curvature;
+      }
       float forward = pos.x*yaw.y + pos.z*yaw.x;
       float y = pos.y-center;
       vec2 point = vec2(pos.x*yaw.x-pos.z*yaw.y,y*pitch.x-forward*pitch.y);
@@ -452,24 +460,24 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
   gl.deleteShader(vertex);
   gl.deleteShader(fragment);
   const data=[];
-  for (const {points,color,vertexColors,opacity,group,origin,stride,hinge,life} of faces) {
+  for (const {points,color,vertexColors,opacity,group,origin,stride,hinge,life,lunar} of faces) {
     const pivot=hinge?[...hinge,1]:[0,0,0];
     for (let i=origin?0:1;i<(origin?points.length:points.length-1);i++) {
       const next=(i+1)%points.length;
-      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),opacity?.[0]??1,group,stride,...pivot,...(life??[0,0,0,0]),
-        ...points[i],...(vertexColors?.[i]??color),opacity?.[i]??1,group,stride,...pivot,...(life??[0,0,0,0]),
-        ...points[next],...(vertexColors?.[next]??color),opacity?.[next]??1,group,stride,...pivot,...(life??[0,0,0,0]));
+      data.push(...(origin??points[0]),...(vertexColors?.[0]??color),opacity?.[0]??1,group,stride,...pivot,...(life??[0,0,0,0]),Number(Boolean(lunar)),
+        ...points[i],...(vertexColors?.[i]??color),opacity?.[i]??1,group,stride,...pivot,...(life??[0,0,0,0]),Number(Boolean(lunar)),
+        ...points[next],...(vertexColors?.[next]??color),opacity?.[next]??1,group,stride,...pivot,...(life??[0,0,0,0]),Number(Boolean(lunar)));
     }
   }
   const buffer=gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
   gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(data),gl.STATIC_DRAW);
-  for (const [name,size,offset] of [['position',3,0],['color',4,12],['group',1,28],['stride',1,32],['hinge',3,36],['life',4,48]]) {
+  for (const [name,size,offset] of [['position',3,0],['color',4,12],['group',1,28],['stride',1,32],['hinge',3,36],['life',4,48],['lunar',1,64]]) {
     const location=gl.getAttribLocation(program,name);
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location,size,gl.FLOAT,false,vertexFloats*4,offset);
   }
-  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
+  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
   const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
   const actorSlopes=new Float32Array(MAX_ACTORS*3);
@@ -490,6 +498,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
       gl.uniform2f(uniforms.zoom,2*scale/width,2*scale/height);
       gl.uniform2f(uniforms.pan,2*camera.x/width,-2*camera.y/height);
       gl.uniform1f(uniforms.center,center);
+      gl.uniform1f(uniforms.curvature,effects.curvature??0);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
       effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0,thrust=0},i)=>{
@@ -560,7 +569,7 @@ export function finishTransition(elapsed) {
 }
 
 const nearbySounds={shuttle:'rocket',road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
-  wheel:'ride-cheer',coaster:'ride-cheer',tram:'train'};
+  wheel:'ride-cheer',coaster:'ride-cheer',slide:'ride-cheer',tram:'train'};
 const aircraft=new Set(['plane','helicopter','rocket']);
 
 function projectPanorama(scene,initial,maxZoom) {
@@ -672,6 +681,7 @@ export function mountProjectView(container, scene, interactive=false, {
     const effects=buildMotion(scene.world,elapsed,low,high,marked,scene.roadBuild);
     const age=still||motion.matches?0:Math.max(0,now-mounted)/1000;
     effects.age=age;
+    effects.curvature=stars?lunarCurvature(camera.zoom):0;
     effects.actors=moveActors(age);
     const scale=Math.min(width,height)*camera.zoom/scene.size;
     if (stars) {
@@ -687,15 +697,28 @@ export function mountProjectView(container, scene, interactive=false, {
     paint(width,height,position,scale,camera.center,effects);
     if (onInspect) projectedView={camera:position,scale,width,height,effects};
     const projectPoint=(x,y,z)=>{
+      if (stars) y=lunarSurfaceY(x,y,z,effects.curvature);
       const cos=Math.cos(camera.yaw),sin=Math.sin(camera.yaw),depth=x*sin+z*cos;
       return [width*.5+position.x+(x*cos-z*sin)*scale,
         height*.5+position.y-((y-camera.center)*Math.cos(camera.pitch)-depth*Math.sin(camera.pitch))*scale];
     };
-    if (interactive&&effects.actors.some(pose=>pose.thought)) {
+    if (onInspect&&effects.actors.some(pose=>pose.thought)) {
       thoughts??=canvas.ownerDocument.createElement('div');
-      if (!thoughts.parentNode) { thoughts.className='project-thoughts';thoughts.setAttribute('aria-hidden','true');canvas.after(thoughts); }
-      while (thoughts.children.length<effects.actors.length) {
-        const bubble=canvas.ownerDocument.createElement('span');bubble.textContent='?';thoughts.append(bubble);
+      if (!thoughts.parentNode) {
+        thoughts.className='project-thoughts';
+        canvas.after(thoughts);
+        scene.ambient.forEach((actor,index)=>{
+          const bubble=canvas.ownerDocument.createElement('button');
+          bubble.type='button';
+          bubble.hidden=true;
+          bubble.textContent='?';
+          bubble.setAttribute('aria-label','Se hva figuren har oppdaget');
+          if (actor.encounter) listen(bubble,'click',event=>{
+            event.stopPropagation();
+            onInspect(`actor:${index}`,{discovery:actor.encounter.key});
+          });
+          thoughts.append(bubble);
+        });
       }
     }
     if (thoughts) effects.actors.forEach((pose,i)=>{
@@ -835,7 +858,10 @@ export function mountProjectView(container, scene, interactive=false, {
       event.preventDefault();
       event.stopPropagation();
       const bounds=canvas.getBoundingClientRect();
-      onInspect(entityAt(selectable,projectedView,x-bounds.left-canvas.clientLeft,y-bounds.top-canvas.clientTop,compact?12:6));
+      const key=entityAt(selectable,projectedView,x-bounds.left-canvas.clientLeft,y-bounds.top-canvas.clientTop,compact?12:6);
+      const actorIndex=typeof key==='string'&&key.startsWith('actor:')?Number(key.slice(6)):-1;
+      const discovery=projectedView?.effects.actors[actorIndex]?.thought?scene.ambient[actorIndex].encounter?.key:undefined;
+      onInspect(key,discovery?{discovery}:undefined);
     });
     for (const name of ['pointerup','pointercancel','lostpointercapture']) listen(canvas,name,release);
     listen(canvas,'wheel',event=>{

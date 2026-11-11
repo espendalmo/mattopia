@@ -1,6 +1,6 @@
 import {constructionStory} from './landmark-stories.js';
 import {mapCharacterInfo} from './map-life.js';
-import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
+import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, practiceLevelForGrade, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
@@ -9,7 +9,7 @@ import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
 import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
 import { rewardIllustration } from './illustrations.js';
-import { curriculumTopic, levelForGrade, levelsForGrade, nextLevelForGrade } from './curriculum.js';
+import { curriculumTopic, levelForGrade, levelsForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
 import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
 import { mountProjectView } from './project-view.js';
@@ -139,7 +139,7 @@ function gradeOptions(selected) {
 }
 
 function alignPracticeLevel(grade) {
-  const level = levelForGrade(grade, state.level);
+  const level = practiceLevelForGrade(state, grade);
   if (level !== state.level || !grade) state.progressRounds = 0;
   if (!grade) state.autoProgress = false;
   if (!grade && state.mix === 'grade') state.mix = null;
@@ -163,11 +163,41 @@ const SETUP_TITLES = ['Hvem skal øve?', 'Hvordan vil du øve?', 'Hva vil du byg
 function makeSetup(mode) {
   const practice = mode === 'first' ? state : freshState();
   const level = practice.active || practice.roundsCompleted || practice.level !== 1 ? practice.level : null;
-  return {mode,step:0,person:profileDetails(),level,mix:practice.mix,autoProgress:practice.autoProgress,roundLength:practice.roundLength,rewardMode:practice.rewardMode};
+  return {mode,step:0,person:profileDetails(),level,mix:practice.mix,autoProgress:practice.autoProgress,
+    progressionExcluded:{...practice.progressionExcluded},roundLength:practice.roundLength,rewardMode:practice.rewardMode};
+}
+
+function progressionTracks(grade,excluded,expanded=false) {
+  const levels=levelsForGrade(grade);
+  const onlyOne=levels.length-excluded.length===1;
+  return `<details class="adult-details progression-tracks" ${expanded?'open':''}><summary>Spor i automatisk progresjon</summary>
+    <p class="adult-note">Fjern haken ved spor barnet skal vente med. Velg minst ett spor. Valget lagres for dette trinnet.</p>
+    ${levels.map(n=>`<label class="sound-setting progression-track"><input type="checkbox" name="progression-track" value="${n}"
+      ${excluded.includes(n)?'':`checked ${onlyOne?'disabled':''}`}>${LEVELS[n].label}</label>`).join('')}
+  </details>`;
+}
+
+function setupExcluded(form) {
+  return [...form.querySelectorAll('input[name="progression-track"]:not(:checked)')].map(input=>Number(input.value));
+}
+
+function syncSetupTracks(form) {
+  const select=form.elements.level;
+  if (!setup?.person.grade||!select) return;
+  const autoProgress=form.elements.practice.value==='auto';
+  const {grade}=setup.person, excluded=setupExcluded(form);
+  const level=practiceLevelForGrade({level:Number(select.value),autoProgress,progressionExcluded:{[grade]:excluded}},grade);
+  for (const option of select.options) option.disabled=autoProgress&&excluded.includes(Number(option.value));
+  select.value=level;
+  const inputs=[...form.querySelectorAll('input[name="progression-track"]')];
+  const onlyOne=inputs.length-excluded.length===1;
+  inputs.forEach(input=>{ input.disabled=input.checked&&onlyOne; });
 }
 
 function setupForm(draft) {
   const {step,person,mix,autoProgress,roundLength,rewardMode} = draft;
+  const excluded=draft.progressionExcluded?.[person.grade]??[];
+  const startingLevel=practiceLevelForGrade(draft,person.grade);
   const modes = [['fixed','Velg et spor','Øv videre på sporet du velger.'],['auto','Følg progresjonen','Oppgavene endrer seg gradvis mens du øver.'],
     ['grade','Fri blanding på trinnet','Bland oppgaver fra alle øvingsområdene på trinnet.'],
     ['all','Fri blanding fra 3.–10. trinn','Prøv oppgaver fra flere klassetrinn i samme runde.']];
@@ -183,7 +213,8 @@ function setupForm(draft) {
       <input type="radio" name="practice" value="${id}" ${id === (mix || (autoProgress && person.grade ? 'auto' : 'fixed')) ? 'checked' : ''} ${['auto','grade'].includes(id) && !person.grade ? 'disabled' : ''}>
       <span><strong>${label}</strong><small>${['auto','grade'].includes(id) && !person.grade ? 'Velg klassetrinn for å bruke dette.' : note}</small></span>
     </label>`).join('')}</fieldset>
-    <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === levelForGrade(person.grade,draft.level) ? 'selected' : ''}>${LEVELS[id].label}</option>`).join('')}</select></label>
+    <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === startingLevel ? 'selected' : ''} ${autoProgress&&excluded.includes(id)?'disabled':''}>${LEVELS[id].label}</option>`).join('')}</select></label>
+    ${person.grade?`<div class="progression-setting setup-progression">${progressionTracks(person.grade,excluded,true)}</div>`:''}
     <label class="profile-field"><span>Oppgaver per runde</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
     () => `<fieldset class="setup-rewards"><legend class="sr-only">Velg belønning</legend><div>${rewards.map(([id,label,note])=>`<label class="setup-reward">
       <input type="radio" name="reward" value="${id}" class="sr-only" ${id === rewardMode ? 'checked' : ''}>
@@ -205,14 +236,18 @@ function stepSetup(form, direction) {
   const values = new FormData(form);
   if (setup.step === 0) {
     const next = profileDetails(Object.fromEntries(values));
-    if (next.grade !== setup.person.grade) setup.autoProgress = false;
+    if (!next.grade) setup.autoProgress = false;
     if (!next.grade&&setup.mix==='grade') setup.mix=null;
+    if (next.grade===3 && !Object.hasOwn(setup.progressionExcluded,3) && (setup.mode==='new'||!state.roundsCompleted&&!state.active)) {
+      setup.progressionExcluded[3]=[4];
+    }
     setup.person = next;
   } else if (setup.step === 1) {
     const mode=values.get('practice');
     setup.autoProgress = Boolean(setup.person.grade && mode === 'auto');
     setup.mix=mode==='all'||mode==='grade'&&setup.person.grade?mode:null;
-    setup.level = levelForGrade(setup.person.grade,Number(values.get('level')));
+    if (setup.person.grade) setup.progressionExcluded[setup.person.grade]=setupExcluded(form);
+    setup.level = practiceLevelForGrade({...setup,level:Number(values.get('level'))},setup.person.grade);
     const length = Number(values.get('length'));
     if (ROUND_LENGTHS.includes(length)) setup.roundLength = length;
   } else {
@@ -308,10 +343,12 @@ function submitProfile(mode, details, preferences = null) {
     practice.level = levelForGrade(person.grade, null);
   }
   if (preferences) {
-    const level = levelForGrade(person.grade,preferences.level);
     const autoProgress = Boolean(person.grade && preferences.autoProgress);
+    const progressionExcluded = preferences.progressionExcluded ?? practice.progressionExcluded;
+    const level = practiceLevelForGrade({level:preferences.level,autoProgress,progressionExcluded},person.grade);
     if (practice.level !== level || practice.autoProgress !== autoProgress) practice.progressRounds = 0;
-    practice = selectRewardMode({...practice,level,autoProgress,mix:preferences.mix??null,roundLength:preferences.roundLength},preferences.rewardMode);
+    practice = selectRewardMode({...practice,level,autoProgress,progressionExcluded,
+      mix:autoProgress?null:preferences.mix??null,roundLength:preferences.roundLength},preferences.rewardMode);
   }
   openProfile({ ...person, name, id }, practice, true);
 }
@@ -492,9 +529,9 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     }
 
     let dispose,selection=null;
-    const inspect=(index,{focus=false,playSound=false}={})=>{
+    const inspect=(index,{focus=false,playSound=false,discovery}={})=>{
       if (!card) return;
-      const character=mapCharacterInfo(scene,index);
+      const character=mapCharacterInfo(scene,index,discovery);
       const site=typeof index==='number'?scene.sites?.[index]:null;
       const building=site&&worldBuilding(id,index,map);
       selection=building||character?index:null;
@@ -553,7 +590,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         closeUp:!fromCollection && Boolean(progress().completed), reveal, demo, target, finale:progress().full,
         focusLatest:!demo&&!archivedMap&&!fromCollection&&(view==='complete'||Boolean(state.active)),
         onActivity:scene.world?sounds.activity:undefined,
-        onInspect:selector?index=>inspect(index,{playSound:true}):undefined,
+        onInspect:selector?(index,context)=>inspect(index,{...context,playSound:true}):undefined,
       });
       if (selection!==null) dispose.inspect?.(selection);
     };
@@ -1643,29 +1680,31 @@ function welcomeBack() {
 }
 
 function progressionNote() {
-  if (state.mix) return 'Velg et øvingsspor for å bruke automatisk progresjon.';
   if (!profile?.grade) return 'Velg et klassetrinn for å bruke automatisk progresjon.';
-  const next = nextLevelForGrade(profile.grade, state.level);
+  if (!state.autoProgress) return 'La appen gå videre til neste valgte spor på trinnet etter tre runder.';
+  const next = progressionPreview(state, profile.grade)?.level;
   if (!next) return 'Dette er siste øvingsspor på trinnet. Øvingen fortsetter her.';
   return `Neste spor er «${LEVELS[next].label}». Noen av oppgavene kommer i de neste rundene. Etter ${PROGRESSION_ROUNDS} fullførte runder på dette sporet går appen over til neste spor.`;
 }
 
 function practiceOptions() {
   const levels = levelsForGrade(profile?.grade);
+  const excluded = state.progressionExcluded[profile?.grade] ?? [];
   const title = profile?.grade ? `Øving på ${profile.grade}. trinn` : 'Hva skal dere øve på?';
   const options = levels.map(n => {
     const level = LEVELS[n];
-    return `<label class="level-option"><input type="radio" name="level" value="${n}" ${!state.mix && state.level === n ? 'checked' : ''}><span><strong>${level.label}</strong><small>${level.description}</small></span></label>`;
+    return `<label class="level-option"><input type="radio" name="level" value="${n}" ${!state.mix && state.level === n ? 'checked' : ''} ${state.autoProgress&&excluded.includes(n)?'disabled':''}><span><strong>${level.label}</strong><small>${level.description}</small></span></label>`;
   }).join('');
   const groups = levels.includes(4) ? '<p class="adult-note"><strong>Ganging og deling.</strong> Sporet blander ganging og deling med pluss, minus og oppgaver med et manglende tall. Fordelingen kan endres etter hva barnet trenger hjelp med.</p>' : '';
   const mixes = [
     ...(profile?.grade ? [['grade','Fri blanding på '+profile.grade+'. trinn','Oppgaver fra alle øvingsområdene på trinnet, i tilfeldig rekkefølge.']] : []),
     ['all','Fri blanding fra 3.–10. trinn','En runde kan blande enkel hoderegning med brøk, algebra og andre oppgaver fra høyere trinn.'],
-  ].map(([id,label,help])=>`<label class="level-option"><input type="radio" name="level" value="${id}" ${state.mix===id?'checked':''}><span><strong>${label}</strong><small>${help}</small></span></label>`).join('');
+  ].map(([id,label,help])=>`<label class="level-option"><input type="radio" name="level" value="${id}" ${state.mix===id?'checked':''} ${state.autoProgress?'disabled':''}><span><strong>${label}</strong><small>${help}</small></span></label>`).join('');
   return `<legend>${title}</legend>${options}${mixes}${groups}
     <p class="adult-note">Valget gjelder fra neste nye runde.</p>
-    <div class="progression-setting"><label class="sound-setting"><input type="checkbox" id="auto-progress" aria-describedby="progression-note" ${state.autoProgress && !state.mix ? 'checked' : ''} ${profile?.grade && !state.mix ? '' : 'disabled'}>Automatisk progresjon</label>
-      <p class="adult-note" id="progression-note">${progressionNote()}</p></div>`;
+    <div class="progression-setting"><label class="sound-setting"><input type="checkbox" id="auto-progress" aria-describedby="progression-note" ${state.autoProgress ? 'checked' : ''} ${profile?.grade ? '' : 'disabled'}>Automatisk progresjon</label>
+      <p class="adult-note" id="progression-note">${progressionNote()}</p>
+      ${profile?.grade ? progressionTracks(profile.grade,excluded) : ''}</div>`;
 }
 
 function adultTopicSummary() {
@@ -1768,32 +1807,55 @@ function adultView() {
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
     <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button></div></details><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, 'adult-dialog', d => {
       if (CHANNEL === 'preview') checkPublishedRelease(d);
+      const refreshPractice = selector => {
+        const fieldset=d.querySelector('#practice-options');
+        const expanded=fieldset.querySelector('.progression-tracks')?.open;
+        fieldset.innerHTML=practiceOptions();
+        if (expanded && fieldset.querySelector('.progression-tracks')) fieldset.querySelector('.progression-tracks').open=true;
+        if (selector) fieldset.querySelector(selector)?.focus({preventScroll:true});
+        d.querySelector('#adult-topic-summary').innerHTML=adultTopicSummary();
+      };
       d.addEventListener('change', e => {
         if (e.target.name === 'level') {
           const value=e.target.value;
-          if (value==='all' || value==='grade'&&profile?.grade) state.mix=value;
+          if (value==='all' || value==='grade'&&profile?.grade) {
+            if (state.autoProgress) return;
+            state.mix=value;
+          }
           else if (levelsForGrade(profile?.grade).includes(Number(value))) {
             state.level=Number(value);
             state.mix=null;
           } else return;
           state.progressRounds = 0;
           save();
-          d.querySelector('#practice-options').innerHTML = practiceOptions();
-          d.querySelector('input[name=level]:checked')?.focus({preventScroll:true});
-          d.querySelector('#adult-topic-summary').innerHTML = adultTopicSummary();
+          refreshPractice('input[name=level]:checked');
         }
         if (e.target.id === 'player-grade' && profile) {
           profile = { ...profile, grade:profileDetails({ grade:e.target.value }).grade };
           state.progressRounds = 0;
           alignPracticeLevel(profile.grade);
           save({ edit:true });
-          d.querySelector('#practice-options').innerHTML = practiceOptions();
-          d.querySelector('#adult-topic-summary').innerHTML = adultTopicSummary();
+          refreshPractice();
         }
         if (e.target.id === 'auto-progress' && profile?.grade) {
           state.autoProgress = e.target.checked;
+          if (state.autoProgress) state.mix = null;
           state.progressRounds = 0;
+          alignPracticeLevel(profile.grade);
           save();
+          refreshPractice('#auto-progress');
+        }
+        if (e.target.name === 'progression-track' && profile?.grade) {
+          const {grade}=profile, level=Number(e.target.value), choices=levelsForGrade(grade);
+          if (!choices.includes(level)) return;
+          const excluded=new Set(state.progressionExcluded[grade]??[]);
+          if (e.target.checked) excluded.delete(level);
+          else if (excluded.size<choices.length-1) excluded.add(level);
+          state.progressionExcluded={...state.progressionExcluded,[grade]:[...excluded]};
+          state.progressRounds=0;
+          alignPracticeLevel(grade);
+          save();
+          refreshPractice(`input[name="progression-track"][value="${level}"]`);
         }
         if (e.target.id === 'round-length' && ROUND_LENGTHS.includes(Number(e.target.value))) {
           state.roundLength = Number(e.target.value);
@@ -2089,7 +2151,7 @@ document.addEventListener('click', e => {
     finishBetaTestAction();
   }
   if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
-  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
+  if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
 });
 
 document.addEventListener('submit', event => {
@@ -2110,7 +2172,11 @@ document.addEventListener('submit', event => {
 });
 
 document.addEventListener('change', event => {
-  if (event.target.matches('.avatar-option input, .level-option input, .setup-reward input, .profile-field select, #round-length')) {
+  if (event.target.name==='practice'||event.target.name==='progression-track') {
+    const form=event.target.closest('[data-setup-form]');
+    if (form) syncSetupTracks(form);
+  }
+  if (event.target.matches('.avatar-option input, .level-option input, .setup-reward input, .profile-field select, #round-length, .progression-setting input')) {
     sounds.play('select',state.sound);
   }
 });

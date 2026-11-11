@@ -1,5 +1,5 @@
 import {connectWaterfront,regionalAnnex,regionSurface,riverAt,riverWidth,specialEntrances} from './regions.js';
-import {randomGenerator,REGION_PLACES} from './worlds.js';
+import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
 
 const WIDTH=11;
 export const STREET_TURN_RADIUS=2.35;
@@ -84,6 +84,9 @@ function layoutStreets(layout,requiredLots) {
   let graph;
   const attempts=[[15.2,0],[14.3,0],[14.3,1],[13.6,0],[13.6,1],[13.6,2],[13.1,0],[13.1,2],[13.1,3]];
   if (layout.grand) attempts.push([12.9,0],[12.9,1],[12.9,2],[12.9,3],[12.9,4]);
+  if (requiredLots>=LARGE_REGION_PLACES) {
+    attempts.push(...Array.from({length:12},(_,i)=>[12.9,5+i]));
+  }
   for (const [spacing,shift] of attempts) {
     const candidate=streetGraph(layout,spacing,shift);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
@@ -170,6 +173,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   };
   origin.perimeter.forEach(add);
   track=true;
+  const balanceBanks=layout.theme==='city'&&requiredLots>=LARGE_REGION_PLACES;
+  const bankOf=site=>site.x<riverAt(layout,site.z)?0:1;
 
   for (const {index,kind} of buildings) {
     latestPaths=new Map();
@@ -197,7 +202,11 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
       continue;
     }
 
-    // Prefer parcels close to a street which is already visible on the map.
+    const banks=[0,0];
+    if (balanceBanks) for (const plot of plots) {
+      if (!plot.waterfront&&!plot.airfield) banks[bankOf(plot)]++;
+    }
+    // Keep the centre compact, then let new districts take turns across the river.
     let choice=null;
     for (const lot of available) {
       if (usedLots.has(lot)) continue;
@@ -206,7 +215,10 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         const path=pathToStreet(links,[edge.a,edge.b],active);
         if (!path) continue;
         const starter=lot===origin&&usedLots.size===0?-5:0;
-        const score=path.length*6+gap(lot,origin)*.18+lot.weight+starter+(lot.westFirst===(yaw!==0)?0:.65);
+        const bank=balanceBanks?bankOf(lot):0;
+        const imbalance=banks[bank]-banks[1-bank];
+        const riverBias=usedLots.size>=3&&imbalance>1 ? imbalance*9 : 0;
+        const score=path.length*6+gap(lot,origin)*.18+lot.weight+starter+riverBias+(lot.westFirst===(yaw!==0)?0:.65);
         if (!choice||score<choice.score) choice={lot,edge,yaw,path,score};
       }
     }

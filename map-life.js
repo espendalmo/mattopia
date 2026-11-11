@@ -3,7 +3,7 @@ import {visitor,dome,tube,pointOnSite} from './scenery.js';
 
 const modulo=(value,n)=>{const remainder=value%n;return remainder<0?remainder+n:remainder;};
 // Names and voices stay consistent while a child explores the map.
-export function mapCharacterInfo(scene,key) {
+export function mapCharacterInfo(scene,key,discovery) {
   if (typeof key!=='string') return null;
   if (scene.discoveries?.[key]) return scene.discoveries[key];
   const index=Number(key.split(':')[1]);
@@ -13,12 +13,18 @@ export function mapCharacterInfo(scene,key) {
   const seed=mapStorySeed(scene.seed,key);
   const lunar=scene.id==='moon';
   const dog=actor?.parts.some(piece=>piece.animalKind==='dog');
-  if (!dog&&(actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer)) {
+  if (!dog&&(actor?.kind==='walk'||key.startsWith('resident:')||actor?.footballPlayer||actor?.kind==='slide')) {
     const kind=part?.characterKind??(lunar?'astronaut':'human');
     const {first,last,stories}=personStories[kind]??personStories.human;
     const name=`${first[seed%first.length]} ${last[(seed>>>8)%last.length]}`;
+    const found=actor?.encounter?.key===discovery?scene.discoveries?.[discovery]:null;
+    if (found) return {name,status:'Har oppdaget noe',story:`Se hva jeg fant! ${found.name}. ${found.story}`,
+      sound:kind,voice:seed%24};
     const status=kind==='alien'?'En venn fra verdensrommet':kind==='astronaut'?'På månebesøk':'På oppdagelsestur';
     let story=stories[(seed>>>16)%stories.length];
+    if (actor?.kind==='slide') story=lunar
+      ? 'Skal slå sin egen rekord i støvrutsjebanen. Må bare finne ut hvor støvet har gjemt stoppeklokka.'
+      : 'Har tenkt å ta rutsjebanen én gang til. Det har visst vært planen hele ettermiddagen.';
     if (actor?.peeking) story='Leker gjemsel bak steinen. Har blitt veldig flink til å gjemme alt unntatt antennene.';
     if (actor?.footballPlayer) {
       const team=lunar?'Månespark':'Elvespark';

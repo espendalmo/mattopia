@@ -1,4 +1,4 @@
-# Mattopia 1.33.0
+# Mattopia 1.34.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.33.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.34.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -50,6 +50,16 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.34.0
+
+- Velg spor for automatisk progresjon i veiviseren eller under **For voksne → Spiller og øving**. Valgene lagres per spiller og trinn og gjelder fra neste nye runde. Nye profiler på 3. trinn kan vente med «Ganging og deling», som starter uten hake. Fri blanding er et eget valg og er av under automatisk progresjon.
+- Elvebyen og Palmeøya har fått mer særpreg i blant annet bakeriet, skolen, brannstasjonen, butikkene og strandhusene. Alle tre kart får seks nye byggvalg hver, inkludert Elvebadet, Mangoparken og Støvsuget med animerte rutsjebaner.
+- Nye kart har plass til 40 bygg innenfor samme terreng. Elvebyen utvikler begge elvebreddene. Påbegynte kart fra forrige utgave får tilgang til de nye byggevalgene og fortsetter med sitt opprinnelige antall byggetrinn.
+- Gruver, uthus, UFO-vrak og andre kartfunn har flere modeller. Trykk på en figur med spørsmålstegn for å lese om funnet i nærheten.
+- Svevebiler har tydeligere motorflammer. Kjøretøy kan kjøre forbi når det er nok plass, og bruker hornet på noen forbikjøringer.
+- Tog og monorail kan få underjordiske stopp etter hvert som byen vokser. Måneterrenget avrundes i oversiktsbildet.
+- Eplos finalemelding ligger under fullskjermknappene.
 
 ## Nytt i 1.33.0
 

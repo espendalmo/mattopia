@@ -4,7 +4,7 @@ import {projectScene,worldBuildingPreview} from '../projects.js';
 import {freshWorld} from '../worlds.js';
 import {projectCameras,projectFaces} from '../project-view.js';
 import {entityAt} from '../project-picking.js';
-import {residentPoint,walkingClock,lunarSkyCamera} from '../scene-motion.js';
+import {residentPoint,walkingClock,lunarSkyCamera,lunarCurvature,lunarSurfaceY} from '../scene-motion.js';
 import {mapCharacterInfo,footballMoment,footballActors} from '../map-life.js';
 import {actor,actorPose,createTraffic,MAX_ACTORS,vehicle,visitor} from '../scenery.js';
 
@@ -51,7 +51,7 @@ test('Picking follows moving figures and a foreground building occludes padded h
 
 test('Curious walkers pause briefly and then continue along their existing path',()=>{
   const times=Array.from({length:700},(_,i)=>i*.1);
-  const clocks=times.map(t=>walkingClock(t,.2));
+  const clocks=times.map(t=>walkingClock(t,{first:19.1,period:74,pause:3.6}));
   assert.ok(clocks.some(clock=>clock.thinking));
   for (let i=1;i<clocks.length;i++) assert.ok(clocks[i].time>=clocks[i-1].time-1e-8);
   assert.ok(clocks.at(-1).time>55);
@@ -60,6 +60,34 @@ test('Curious walkers pause briefly and then continue along their existing path'
   const sky=lunarSkyCamera({x:100,y:-40,anchorX:2,anchorZ:3,zoom:2},10,0);
   assert.ok(sky.x>0&&sky.x<20);
   assert.ok(sky.width>640&&sky.width<700);
+});
+
+test('Wondering walkers stop beside a real find and tell the child which one it was',()=>{
+  for (const theme of ['city','moon','island']) {
+    const scene=projectScene(theme,{...freshWorld(()=>.45),order:[0,1,2,3,4,5,6,7],progress:24});
+    const index=scene.ambient.findIndex(actor=>actor.encounter);
+    assert.ok(index>=0);
+    const walker=scene.ambient[index], encounter=walker.encounter;
+    const find=scene.discoveries[encounter.key];
+    assert.ok(find);
+    assert.ok(encounter.period>=62);
+    const thinking=actorPose(walker,encounter.first+.4);
+    assert.equal(thinking.thought,1);
+    assert.ok(Math.hypot(thinking.x-find.x,thinking.z-find.z)<7.2);
+    assert.equal(actorPose(walker,encounter.first+5).thought,0);
+    const info=mapCharacterInfo(scene,`actor:${index}`,encounter.key);
+    assert.equal(info.status,'Har oppdaget noe');
+    assert.ok(info.story.includes(find.name));
+    assert.notEqual(mapCharacterInfo(scene,`actor:${index}`).story,info.story);
+  }
+});
+
+test('The moon curves gently at wide zoom and the centre stays level',()=>{
+  assert.equal(lunarCurvature(2.3),0);
+  assert.equal(lunarCurvature(.75),1);
+  assert.equal(lunarSurfaceY(16,4,-11,1),4);
+  assert.ok(lunarSurfaceY(105,4,0,1)<lunarSurfaceY(58,4,0,1));
+  assert.equal(lunarSurfaceY(0,4,-105,1),lunarSurfaceY(105,4,0,1));
 });
 
 test('Football passes, a helmet bump and dizzy stars share the same small scene',()=>{
@@ -153,4 +181,20 @@ test('Three crossing routes clear their queue and a waiting hovercar stops its f
     previous=poses;
   }
   assert.ok(hoverWaited&&travel.every(distance=>distance>150));
+});
+
+test('A hovercar passes a slower bus on a clear stretch and toots during some passes',()=>{
+  const path=[[0,0],[45,0],[45,18],[0,18]];
+  const bus=actor(vehicle('bus','#799da6'),path,{kind:'bus',ground:0,speed:1.9,phase:.07});
+  const hover=actor(vehicle('hover','#d590af'),path,{kind:'hover',ground:.2,speed:3.3,phase:.02});
+  const traffic=createTraffic([bus,hover]);
+  let climbed=false,passed=false,horn=false;
+  for (let i=0;i<3600;i++) {
+    const [b,h]=traffic(i/30);
+    if (h.y>1.9) climbed=true;
+    if (climbed&&h.y<.5&&h.z<2&&b.z<2&&h.x>b.x+2) passed=true;
+    if (h.cue==='horn') horn=true;
+    if (Math.abs(b.y-h.y)<1.65) assert.ok(Math.hypot(b.x-h.x,b.z-h.z)>1.4);
+  }
+  assert.ok(climbed&&passed&&horn);
 });

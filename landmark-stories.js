@@ -82,7 +82,29 @@ const moonStories={
   spaceField:'Laget Månespark trener her. En ball i hjelmen gir av og til en liten privat stjernehimmel.',
 };
 
+const districtStories={
+  riverSlides:'Den siste svingen er den våteste. Badevakta har begynt å ta med paraply.',
+  breadWorks:'Den store bolla på taket er pynt. Byens duer har bedt om å få det skriftlig.',
+  bookCastle:'Noen glemte et bokmerke i boka på taket. Det var visst en hel stige.',
+  riverAquarium:'Fisken som heter Bjarne kan svømme baklengs. Den gjør det helst når ingen ser på.',
+  clockSpire:'Hvis klokkene viser ulik tid, velger bakeren den som sier at det er bollepause.',
+  glassWorks:'Glassblåseren kan lage en vase av nesten hva som helst. Han har foreløpig bare øvd på glass.',
+  mangoSlides:'Mangofargen gjør ingenting med farten. Det har de undersøkt ganske grundig.',
+  surfMuseum:'Det lengste surfebrettet var for langt for museet. Nå sitter det på utsiden og ser inn.',
+  sunhatHotel:'Vaktmesteren får alltid spørsmålet om taket kan blåse av. Han sier det sitter godt på hodet.',
+  coralAquarium:'Tre fisker her heter Nemo. Det ble litt kluss da de fikk post.',
+  coconutTower:'Kokosnøtta er hul. Når det blåser, tror halve øya at det er noen som snorker inni den.',
+  icePalace:'Isen på taket smelter aldri. Det er upraktisk for dem som venter med skje.',
+  dustSlides:'Ingen trenger badebukse her. De fleste trenger en støvsuger etterpå.',
+  cometCafe:'Kakaokoppen har lokk. Sist var det selve kometen som ikke klarte å holde på marshmallowene.',
+  roverWash:'En rover kom inn med så mye støv at de trodde den var et helt nytt krater.',
+  craterCinema:'Her svever popkornet mot taket. Bakerste rad har med seg hov.',
+  moonPost:'Merk pakken med planet og krater. «Ved siden av en stor stein» har vist seg å være litt upresist.',
+  sunMirror:'Solspeilet er stort nok til at alle i byen kan sjekke romhjelmen sin samtidig.',
+};
+
 function originalLandmarkStory(theme,index,kind) {
+  if (districtStories[kind]) return districtStories[kind];
   if (theme==='moon'&&moonStories[kind]) return moonStories[kind];
   if (kind==='railwayStation') return 'Toget stopper på perrongen. Se om du får øye på toget igjen på den andre siden av tunnelen.';
   if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
@@ -126,7 +148,7 @@ const localStories={
 
 export function landmarkStory(theme,index,kind,seed) {
   const original=originalLandmarkStory(theme,index,kind);
-  if (!Number.isInteger(seed)) return original;
+  if (districtStories[kind]||!Number.isInteger(seed)) return original;
   const alternatives=localStories[theme]??[];
   const pick=mapStorySeed(seed,`${theme}:${index}:${kind}`);
   if (original&&pick%3===0) return original;

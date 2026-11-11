@@ -1,8 +1,8 @@
 import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
-import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, curriculumTopic, createCurriculumTask, validCurriculumTask, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.33.0';
+import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, GRADE_LEVELS, curriculumTopic, createCurriculumTask, validCurriculumTask, levelForGrade, nextLevelForGrade, levelsForGrade} from './curriculum.js';
+export const VERSION='1.34.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;
@@ -175,8 +175,15 @@ export function advanceRound(round){
 }
 export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,...(r.mix&&{mix:r.mix}),length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
+export function practiceLevelForGrade(state, grade) {
+  const level=levelForGrade(grade,state.level);
+  const excluded=state.progressionExcluded?.[grade]??[];
+  if (!state.autoProgress||!excluded.includes(level)) return level;
+  return nextLevelForGrade(grade,level,excluded)??levelsForGrade(grade).findLast(choice=>!excluded.includes(choice))??level;
+}
+
 export function progressionPreview(state, grade) {
-  const level = !state.mix && state.autoProgress && nextLevelForGrade(grade, state.level);
+  const level = !state.mix && state.autoProgress && nextLevelForGrade(grade, state.level, state.progressionExcluded?.[grade]);
   return level ? {level, count:state.progressRounds} : null;
 }
 
@@ -187,7 +194,7 @@ export function advancePractice(state, grade, finishedLevel) {
   return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
 }
 
-export function freshState(){return{version:1,level:1,roundLength:DEFAULT_ROUND_LENGTH,mix:null,autoProgress:false,progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function freshState(){return{version:1,level:1,roundLength:DEFAULT_ROUND_LENGTH,mix:null,autoProgress:false,progressionExcluded:{},progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>{
@@ -208,6 +215,14 @@ export function restoreState(raw){
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&validRoundLength(length)&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<length&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===length)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0)}:null;
   const total=Number.isSafeInteger(raw.roundsCompleted)&&raw.roundsCompleted>=history.length?raw.roundsCompleted:history.length;
-  const autoProgress=raw.autoProgress===true, progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:fallback.roundLength,autoProgress,progressRounds,mix:['grade','all'].includes(raw.mix)?raw.mix:null,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  const mix=['grade','all'].includes(raw.mix)?raw.mix:null;
+  const autoProgress=!mix&&raw.autoProgress===true;
+  const progressRounds=autoProgress&&Number.isInteger(raw.progressRounds)&&raw.progressRounds>=0&&raw.progressRounds<PROGRESSION_ROUNDS ? raw.progressRounds : 0;
+  const progressionExcluded=Object.fromEntries(Object.entries(GRADE_LEVELS).flatMap(([grade,levels])=>{
+    const values=raw.progressionExcluded?.[grade];
+    if (!Array.isArray(values)) return [];
+    const excluded=levels.filter(level=>values.includes(level)).slice(0,levels.length-1);
+    return excluded.length?[[grade,excluded]]:[];
+  }));
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:fallback.roundLength,autoProgress,progressionExcluded,progressRounds,mix,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }

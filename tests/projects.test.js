@@ -8,7 +8,7 @@ import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite } fro
 import { AIRPORT_HELIPAD, districtRail } from '../transport.js';
 import {landmarkAt} from '../project-picking.js';
 import {seasonForDate} from '../seasons.js';
-import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, GRAND_REGION_CATALOG, LUNAR_REGION_CATALOG, RAIL_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
+import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
 import {planRegion,regionLayout,regionSurface,regionVisibility,riverAt,riverWidth} from '../regions.js';
 import {planStreetRegion,STREET_TURN_RADIUS} from '../street-grid.js';
 import {prepareRoadTunnels,regionRoads,roundedStreetPaths} from '../region-roads.js';
@@ -100,7 +100,7 @@ test('A 1.14 world keeps its landscape, selected landmark and expansion order', 
     assert.deepEqual(state.worlds[id][0],map);
     const next=currentWorld(state,id);
     assert.equal(next.layout,3);
-    assert.equal(worldStatus(next).capacity,GRAND_REGION_PLACES);
+    assert.equal(worldStatus(next).capacity,LARGE_REGION_PLACES);
     assert.notEqual(next.seed,initial.seed);
     assert.notDeepEqual(worldLayout(id,next.seed),worldLayout(id,initial.seed));
     assert.equal(worldStatus(next).built,0);
@@ -580,24 +580,67 @@ test('The city helicopter circles and the island helicopter lands only on a comp
   assert.notEqual(actorPose(rotor,17).sin,actorPose(rotor,17.1).sin);
 });
 
-test('New regions keep older lots intact and complete after 30 buildings',()=>{
+test('New regions complete after 40 buildings and keep earlier saves intact',()=>{
   for (const theme of WORLD_IDS) {
     const empty=freshWorld(()=>6163/2**32);
-    const order=worldChoices(empty,theme).slice(0,GRAND_REGION_PLACES);
-    const catalogSize=theme==='moon'?LUNAR_REGION_CATALOG:GRAND_REGION_CATALOG;
+    const order=worldChoices(empty,theme).slice(0,LARGE_REGION_PLACES);
+    const catalogSize=theme==='moon'?LARGE_LUNAR_CATALOG:LARGE_REGION_CATALOG;
     assert.equal(worldChoices(empty,theme).length,catalogSize-1);
     const active={...empty,order,progress:order.length*3};
     assert.equal(worldStatus(active).full,true);
     const scene=projectScene(theme,active);
-    assert.equal(Object.keys(scene.landmarks).length,GRAND_REGION_PLACES);
+    assert.equal(Object.keys(scene.landmarks).length,LARGE_REGION_PLACES);
+    if (theme==='city') {
+      const layout=regionLayout(theme,active.seed,true,LARGE_REGION_PLACES);
+      const west=Object.values(scene.landmarks).filter(plot=>plot.x<riverAt(layout,plot.z)).length;
+      assert.ok(west>=13&&west<=27,'both riverbanks are developed');
+    }
     for (let i=37;i<catalogSize;i++) {
       const preview=worldBuildingPreview(theme,i,empty);
       assert.ok(preview.parts.length>0);
       assert.ok(projectFaces(preview).every(face=>face.points.flat().every(Number.isFinite)));
     }
     const old={...empty,catalog:2,seed:9,order:Array.from({length:24},(_,i)=>i),progress:72};
-    const restored=restoreState({...freshState(),roundsCompleted:162,worlds:{[theme]:[old,active]}});
-    assert.deepEqual(restored.worlds[theme],[old,active]);
+    const grand={...empty,catalog:3,seed:22,order:Array.from({length:GRAND_REGION_PLACES},(_,i)=>i),progress:90};
+    assert.equal(worldStatus(grand).capacity,GRAND_REGION_PLACES);
+    assert.equal(worldPoolSize(grand,theme),catalogSize);
+    assert.equal(worldStatus(grand).total,90);
+    const earlier={...grand,order:[0],progress:3};
+    assert.ok(worldBuildingOptions(theme,earlier).includes(theme==='moon'?48:44));
+    const restored=restoreState({...freshState(),roundsCompleted:282,worlds:{[theme]:[old,grand,active]}});
+    assert.deepEqual(restored.worlds[theme],[old,grand,active]);
+  }
+});
+
+test('Each new slide park grows in stages and has a rider going down the slide',()=>{
+  for (const [theme,index,kind] of [['city',44,'riverSlides'],['island',44,'mangoSlides'],['moon',48,'dustSlides']]) {
+    const map={...freshWorld(()=>.56),order:[index],progress:3};
+    assert.equal(worldBuilding(theme,index,map).kind,kind);
+    assert.ok(!projectScene(theme,{...map,progress:2}).ambient.some(actor=>actor.kind==='slide'));
+    const scene=projectScene(theme,map);
+    const rider=scene.ambient.find(actor=>actor.kind==='slide');
+    assert.ok(rider);
+    const samples=Array.from({length:103},(_,i)=>actorPose(rider,i*.1));
+    assert.ok(samples.some((point,i)=>i>0&&point.y>0&&samples[i-1].y-point.y>.04&&Math.hypot(
+      samples[i-1].x-point.x,samples[i-1].z-point.z)>.01));
+    assert.ok(samples.every(pose=>Object.values(pose).every(Number.isFinite)));
+  }
+});
+
+test('Growing railway districts can add a real lower rail segment and a surface subway entrance',()=>{
+  for (const theme of ['city','moon']) {
+    const map={...freshWorld(()=>31022/2**32),order:[0,3,RAIL_PLACE,44,45,46,47,48,49,1,2,4,5,6,7,8,9,10,11,12,13,14,15]};
+    const layout=regionLayout(theme,map.seed,true,LARGE_REGION_PLACES);
+    const buildings=map.order.map(index=>({index,kind:worldBuilding(theme,index,map).kind}));
+    const plan=planStreetRegion(layout,buildings,LARGE_REGION_PLACES);
+    const rail=districtRail(layout,plan.plots[2],plan);
+    assert.ok(rail?.undergroundStops.length);
+    assert.ok(rail.points.some(point=>point.y<regionSurface(layout,point.x,point.z).y-2.3));
+    assert.equal(Object.keys(rail.entries).length,rail.undergroundStops.length);
+    assert.ok(rail.parts.some(part=>part.entity==='subway:0'));
+    const samples=Array.from({length:980},(_,i)=>actorPose(rail.actors[0],i*.1));
+    assert.ok(samples.some((point,i)=>i>0&&point.y< -500&&point.x===samples[i-1].x&&point.z===samples[i-1].z));
+    assert.ok(samples.some(point=>point.y>1&&point.sound));
   }
 });
 

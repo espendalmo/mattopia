@@ -22,10 +22,12 @@ export function lightPulse(phase,seconds=0) {
   return 0;
 }
 
-export function walkingClock(seconds,phase=0) {
-  const period=25.6,pause=2.8,offset=phase*period;
-  const rested=t=>Math.floor(t/period)*pause+Math.max(0,t%period-(period-pause));
-  return {time:seconds-rested(seconds+offset)+rested(offset),thinking:(seconds+offset)%period>=period-pause};
+export function walkingClock(seconds,encounter) {
+  if (!encounter||seconds<encounter.first) return {time:seconds,thinking:false};
+  const {first,period,pause}=encounter;
+  const elapsed=seconds-first, within=elapsed%period;
+  const rest=Math.floor(elapsed/period)*pause+Math.min(pause,within);
+  return {time:seconds-rest,thinking:within<pause};
 }
 
 export function lunarSkyCamera(camera,scale,seconds=0) {
@@ -33,4 +35,15 @@ export function lunarSkyCamera(camera,scale,seconds=0) {
   return {x:camera.x*.075-camera.anchorX*scale*.022+Math.sin(seconds*.027)*2.2,
     y:camera.y*.075+camera.anchorZ*scale*.016+Math.cos(seconds*.023)*1.4,
     width:640*(1+Math.log(Math.max(.5,camera.zoom))*.075)};
+}
+
+export function lunarCurvature(zoom) {
+  const t=Math.max(0,Math.min(1,(1.42-zoom)/.67));
+  return t*t*(3-2*t);
+}
+
+export function lunarSurfaceY(x,y,z,strength=0) {
+  if (!strength) return y;
+  const distance=Math.max(0,Math.hypot(x,z)-32);
+  return y-Math.min(35,distance*distance*.0052)*strength;
 }

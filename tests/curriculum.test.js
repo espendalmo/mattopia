@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCurriculumTask, levelsForGrade, levelForGrade, validCurriculumTask } from '../curriculum.js';
-import { LEVELS, topicOf, createRound, restoreState, freshState, answerRound, advanceRound, roundSummary, advancePractice, progressionPreview, randomGenerator } from '../core.js';
+import { LEVELS, topicOf, createRound, restoreState, freshState, answerRound, advanceRound, roundSummary, advancePractice, practiceLevelForGrade, progressionPreview, randomGenerator } from '../core.js';
 
 test('Every grade has a menu of working tracks, distinct choices, hints and resumable rounds', () => {
   const levels = new Set();
@@ -110,5 +110,24 @@ test('Free mixtures cover different topics and grades, and survive a resume',()=
   assert.equal(progressionPreview(state,3),null);
   const saved=restoreState(JSON.parse(JSON.stringify({...state,active:round})));
   assert.equal(saved.mix,'all');
+  assert.equal(saved.autoProgress,false);
   assert.deepEqual(saved.active.tasks.map(task=>task.practiceLevel),levels);
+});
+
+test('Automatic progression skips excluded tracks, including their preview exercises',()=>{
+  const state=restoreState({...freshState(),level:3,autoProgress:true,progressRounds:2,
+    progressionExcluded:{3:[4,4,999],4:[41]}});
+  assert.deepEqual(state.progressionExcluded,{3:[4],4:[41]});
+  const preview=progressionPreview(state,3);
+  assert.deepEqual(preview,{level:31,count:2});
+  for (let seed=0;seed<20;seed++) {
+    const round=createRound(3,seed,false,{preview,length:5});
+    assert.ok(round.tasks.every(task=>!['multiply','divide'].includes(task.type)));
+    assert.ok(round.tasks.filter(task=>task.role==='preview').every(task=>task.practiceLevel===31));
+  }
+  assert.equal(advancePractice(state,3,3).level,31);
+  assert.equal(practiceLevelForGrade({...state,level:4},3),31);
+  assert.equal(practiceLevelForGrade({...state,level:4},4),4);
+  assert.equal(practiceLevelForGrade({...state,level:4,autoProgress:false},3),4);
+  assert.equal(progressionPreview({...state,level:32},3),null);
 });

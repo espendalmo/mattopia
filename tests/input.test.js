@@ -288,6 +288,38 @@ test('Wizard preferences apply to the new profile and the next round', () => {
   assert.ok(h.run("currentWorld(state,'moon')"));
 });
 
+test('The wizard offers per-grade exclusions, and free mixing cannot stay active with progression',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`globalThis.FormData=class extends Map { constructor(form) { super(Object.entries(form.values)); } };
+    const form=(values,excluded=[])=>({values,closest:()=>null,querySelectorAll:()=>excluded.map(value=>({value}))});
+    stepSetup(form({name:'Ada',grade:'3',avatar:'fox'}),1);`);
+  assert.match(h.root.innerHTML,/Spor i automatisk progresjon/);
+  assert.match(h.root.innerHTML,/name="progression-track" value="4"\s*>Ganging og deling/);
+  h.run(`stepSetup(form({practice:'auto',level:'3',length:'5'},['4']),1);
+    stepSetup(form({reward:'plant'}),1);
+    let changePractice;
+    const practicePanel={innerHTML:'',querySelector:()=>null},summary={};
+    showDialog=(_markup,_css,activate)=>activate({
+      addEventListener:(_event,listener)=>{ changePractice=listener; },
+      querySelector:selector=>selector==='#practice-options'?practicePanel:summary
+    });
+    adultView();`);
+  assert.equal(h.run('state.autoProgress'),true);
+  assert.equal(h.run('state.progressionExcluded[3][0]'),4);
+  assert.match(h.run('practiceOptions()'),/name="level" value="all"\s+disabled/);
+  h.run(`changePractice({target:{name:'level',value:'all'}});`);
+  assert.equal(h.run('state.mix'),null);
+  h.run(`changePractice({target:{id:'auto-progress',checked:false}});
+    changePractice({target:{name:'level',value:'all'}});`);
+  assert.equal(h.run('state.mix'),'all');
+  h.run(`changePractice({target:{id:'auto-progress',checked:true}});
+    changePractice({target:{name:'progression-track',value:'3',checked:false}});`);
+  assert.equal(h.run('state.mix'),null);
+  assert.equal(h.run('state.autoProgress'),true);
+  assert.equal(h.run('state.level'),31);
+  assert.equal(h.run('restoreState(state).progressionExcluded[3].includes(4)'),true);
+});
+
 test('The wizard offers new and original avatars and an illustrated card for every reward', () => {
   const h=harness({roundFixture:false});
   const profileStep=h.run(`profileFields({name:'Sam',grade:10,avatar:'skateboard'})`);
@@ -394,7 +426,7 @@ test('Shorter rounds show their actual length and add exactly one building stage
     assert.equal(h.run("worldStatus(currentWorld(state,'city')).completed"), 1);
     assert.equal(h.run('restoreState(state).history.at(-1).length'), length);
     assert.match(h.root.innerHTML, new RegExp(`aria-label="${length} oppgaver fullført"`));
-    assert.match(h.root.innerHTML, /Nytt byggesteg · 1 av 90/);
+    assert.match(h.root.innerHTML, /Nytt byggesteg · 1 av 120/);
     assert.match(h.root.innerHTML, /data-reveal/);
     assert.match(h.root.innerHTML, /data-project-latest>Vis igjen/);
     h.run('startRound()');
@@ -494,7 +526,7 @@ test('Eplo greets a named player, describes progress and changes the pause encou
   h.run(`state=selectRewardMode(state,'city',()=>.38);
     state=replaceCurrentWorld(state,'city',{...currentWorld(state,'city'),order:[0,3],progress:4});
     showPause();`);
-  assert.match(h.run('pauseMarkup'),/1 av 30 bygg\. Neste steg er på Fotballbanen/);
+  assert.match(h.run('pauseMarkup'),/1 av 40 bygg\. Neste steg er på Fotballbanen/);
   assert.match(h.run('pauseMarkup'),/data-project-preview="city"/);
 });
 

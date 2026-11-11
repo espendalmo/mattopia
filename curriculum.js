@@ -43,11 +43,11 @@ export function levelForGrade(grade, level) {
   return choices.includes(level) ? level : ({3:2, 4:41}[grade] || choices[0]);
 }
 
-export function nextLevelForGrade(grade, level) {
+export function nextLevelForGrade(grade, level, excluded=[]) {
   if (!Object.hasOwn(GRADE_LEVELS, grade)) return null;
   const choices = GRADE_LEVELS[grade];
   const index = choices.indexOf(level);
-  return index >= 0 ? choices[index+1] || null : null;
+  return index >= 0 ? choices.slice(index+1).find(choice=>!excluded.includes(choice)) ?? null : null;
 }
 
 export const CURRICULUM_TOPICS = {
