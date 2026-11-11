@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCurriculumTask, levelsForGrade, levelForGrade, validCurriculumTask } from '../curriculum.js';
-import { LEVELS, topicOf, createRound, restoreState, freshState, answerRound, advanceRound, roundSummary, advancePractice, progressionPreview } from '../core.js';
+import { LEVELS, topicOf, createRound, restoreState, freshState, answerRound, advanceRound, roundSummary, advancePractice, progressionPreview, randomGenerator } from '../core.js';
 
 test('Every grade has a menu of working tracks, distinct choices, hints and resumable rounds', () => {
   const levels = new Set();
@@ -61,9 +61,31 @@ test('Optional progression introduces one then two tasks, moves after 24 answers
   }
   assert.equal(state.level,52);
   assert.equal(state.progressRounds,0);
-  assert.equal(progressionPreview(state,5),null);
-  assert.equal(advancePractice(state,5,52),state);
+  assert.deepEqual(progressionPreview(state,5),{level:53,count:0});
+  const last={...state,level:53};
+  assert.equal(progressionPreview(last,5),null);
+  assert.equal(advancePractice(last,5,53),last);
   assert.equal(advancePractice({...manual,autoProgress:true},5,1).progressRounds,0);
+});
+
+test('Money tasks keep the exact value when exchanging and subtract the cost when paying',()=>{
+  const rng=randomGenerator(72178);
+  for (let i=0;i<100;i++) {
+    for (const type of ['coinExchange','noteExchange']) {
+      const task=createCurriculumTask(type,rng,i);
+      assert.ok(validCurriculumTask(task));
+      assert.equal(Number(task.labels[task.answer])*task.visual.exchange,task.visual.pieces[0]);
+    }
+    for (const type of ['smallChange','moneyChange']) {
+      const task=createCurriculumTask(type,rng,i);
+      const [cost,paid]=[...task.prompt.matchAll(/(\d+) kr/g)].map(match=>Number(match[1]));
+      assert.equal(parseInt(task.labels[task.answer],10),paid-cost);
+      assert.deepEqual(task.visual.pieces,[paid]);
+    }
+  }
+  const active=createRound(32,42,false,{length:5});
+  assert.equal(active.tasks.length,5);
+  assert.deepEqual(restoreState(JSON.parse(JSON.stringify({...freshState(),level:32,active}))).active,active);
 });
 
 test('Free mixtures cover different topics and grades, and survive a resume',()=>{

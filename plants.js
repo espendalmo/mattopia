@@ -71,5 +71,5 @@ export function renderPlant(id, stage = 5, { mini = false } = {}) {
   <path d="M48.5 109h55v6q-26 10-55 0Z" fill="${pottery}"/>
   <ellipse cx="76" cy="109" rx="27.5" ry="6.3" fill="#efc4a2"/>
   <ellipse cx="76" cy="108.7" rx="23.5" ry="3.7" fill="${soil}"/><path d="M58 109h2m4 1h2m20-2h2m4 1h2" stroke="#c3a081" stroke-width="1.15" stroke-linecap="round"/>
-  ${growth}</svg>`;
+  <g class="plant-growth">${growth}</g></svg>`;
 }

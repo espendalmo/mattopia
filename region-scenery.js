@@ -6,6 +6,7 @@ import {prepareRoadTunnels,regionRoads} from './region-roads.js';
 import {constructionYard,landmarkVisitors,lunarEarth,rideModels} from './map-art.js';
 import {plotAccess,terrainFoundation} from './landmark-ground.js';
 import {districtRail,districtTram,helicopterModels} from './transport.js';
+import {terrainDiscoveries} from './map-discoveries.js';
 
 const SHADES={
   city:{ground:'#93ae77',shade:'#628c68',high:'#b2bd81',bank:'#c6c295',deep:'#5a93a8',shallow:'#85c5bf'},
@@ -218,13 +219,14 @@ function smallCrater(layout,tile,visibility,sky,rng) {
   }));
 }
 
-function landscapeDetails(layout,plan,full,sky,season) {
+function landscapeDetails(layout,plan,full,sky,season,finds) {
   const {theme,seed}=layout;
   const rng=randomGenerator((seed^0x36a9bf)>>>0);
   const spread=Array.from({length:320},()=>({x:(rng()-.5)*144,z:(rng()-.5)*135,seed:Math.floor(rng()*2**32)}));
   const marks=[];
   const routes=plan.paths.flat();
   for (const {x,z,seed:spotSeed} of spread) {
+    if (finds.some(site=>Math.hypot(x-site.x,z-site.z)<3.45)) continue;
     const visibility=regionVisibility(plan,x,z,full);
     if (visibility<.27) continue;
     const random=randomGenerator(spotSeed);
@@ -323,15 +325,17 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const tunnels=prepareRoadTunnels(layout,plan);
   const roads=regionRoads(layout,plan,isNewPlot);
   const roadBuild=roads.some(part=>part.roadBuild!==undefined);
+  const discoveries=terrainDiscoveries(layout,plan,status.full);
   const parts=[
     ...(id==='moon'&&horizon?lunarEarth(sky,horizon):[]),
     ...regionGround(layout,plan,sky,status.full,horizon,season),
     ...roads,
     ...tunnels,
-    ...landscapeDetails(layout,plan,status.full,sky,season),
+    ...landscapeDetails(layout,plan,status.full,sky,season,discoveries.sites),
+    ...discoveries.parts,
   ];
   let latest=[],last,finished=null,latestTarget=null;
-  const landmarks={},sites={},rides=[],visitors=[];
+  const landmarks={},sites={},rides=[];
   developments.forEach(({plot,steps},i)=>{
     const amount=Math.min(WORLD_BUILD_STEPS,map.progress-i*WORLD_BUILD_STEPS);
     const {name}=buildingInfo(plot.index);
@@ -363,15 +367,7 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
         parts.push(...tracks);
         latest=[...latest,...tracks];
       }
-      const crowd=landmarkVisitors(id,plot);
-      if (crowd.length&&visitors.length<3) {
-        const nearby=crowd.map(part=>({...part,x:part.x-plot.x,z:part.z-plot.z,y:part.y-plot.y}));
-        visitors.push({kind:'visitors',parts:nearby,pose(seconds) {
-          const t=seconds*1.43+plot.index;
-          return {x:plot.x+Math.sin(t)*.045,y:plot.y+.02+Math.sin(t*1.4)*.019,z:plot.z+Math.cos(t*.83)*.055,
-            cos:1,sin:0,stride:Math.sin(t*1.2)*.035,rollCos:1,rollSin:0,sound:0};
-        }});
-      } else parts.push(...crowd);
+      parts.push(...landmarkVisitors(id,plot));
       parts.push(...seasonalDetails(layout,plot,season));
     } else {
       const yard=constructionYard(layout,plot,amount,height);
@@ -384,14 +380,12 @@ export function expandedWorldScene(id,map,palette,buildingInfo,buildingParts,sea
   const street=locals.find(actor=>actor.kind==='road');
   const speakers=locals.filter(actor=>actor.voice).slice(0,id==='moon'?2:1);
   const essential=[...(rail?.actors??[]),...helicopter,...craft.slice(0,5),...speakers,
+    ...(discoveries.visitor?[discoveries.visitor]:[]),
     ...(street?[street]:[]),...locals.filter(actor=>['bus','offroad-rover','hover'].includes(actor.kind))];
-  const ambient=[...new Set([...essential,...visitors.slice(0,2),...rides,...locals,...visitors])].slice(0,MAX_ACTORS);
-  for (const visitor of visitors) if (!ambient.includes(visitor)) {
-    const origin=visitor.pose(0);
-    parts.push(...visitor.parts.map(part=>({...part,x:part.x+origin.x,y:part.y+origin.y,z:part.z+origin.z})));
-  }
+  const football=rides.filter(actor=>actor.footballPlayer||actor.kind.startsWith('football-'));
+  const ambient=[...new Set([...essential,...football,...rides,...locals])].slice(0,MAX_ACTORS);
   return {
-    id,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
+    id,seed:map.seed,junctions:plan.junctions,discoveries:discoveries.info,parts,latest,last,finished,landmarks,sites,roadBuild,latestTarget,world:true,illustrated:true,background:sky,yaw:-Math.PI/4,pitch:.6155,center:1.1,closeSize:76,
     ...viewBounds({...plan,transit:plan.transit?.filter(point=>Math.hypot(point.x-plan.origin.x,point.z-plan.origin.z)<55)},horizon),
     soundscape:{buildings:completedPlots.length,wheel:completedPlots.some(plot=>plot.kind==='wheel'),
       hotel:id==='island'&&completedPlots.some(plot=>['hotel','resort','sunsetHotel','glassHotel','megaResort'].includes(plot.kind)),fun:completedPlots.filter(plot=>['wheel','coaster','arcade','lunarArcade','islandArcade','tropicalPools'].includes(plot.kind)).length},

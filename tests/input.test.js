@@ -1,3 +1,5 @@
+import {constructionStory} from '../landmark-stories.js';
+import {mapCharacterInfo} from '../map-life.js';
 import {taskSuccessStep} from '../sound.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +20,7 @@ import {PRODUCTION_PATH} from '../update.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
 function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=new Map(),roundFixture=!hash,navigator={}}={}){
-  const events={},plays=[],builds=[],buildingSounds=[],animations=[],timers=[];
+  const events={},plays=[],builds=[],buildingSounds=[],characterSounds=[],animations=[],timers=[];
   const document={activeElement:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events[name]=fn;},
     removeEventListener:(name,fn)=>{if(events[name]===fn) delete events[name];}};
   const heading={focus(){document.activeElement=heading;}};
@@ -31,18 +33,18 @@ function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=n
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
   const location={pathname:'/mattopia-beta/',search:'',hash};
   const window={location,history:{replaceState(){location.hash='';}},addEventListener:(name,fn)=>{events[name]=fn;},scrollTo(){}};
-  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
+  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mapCharacterInfo,constructionStory,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
     requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),clearTimeout:id=>{if(timers[id-1]) timers[id-1].cancelled=true;},matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({
-      play:(...args)=>plays.push(args),playBuild:(...args)=>builds.push(args),playBuilding:(...args)=>buildingSounds.push(args),stopAmbience(){},stopBuild(){},resume(){},stop(){},
+      play:(...args)=>plays.push(args),playBuild:(...args)=>builds.push(args),playBuilding:(...args)=>buildingSounds.push(args),playCharacter:(...args)=>characterSounds.push(args),stopAmbience(){},stopBuild(){},resume(){},stop(){},
     }),
   });
   const run=code=>vm.runInContext(code,context);run(source);
   if (roundFixture) run(`state.sound=${sound}; state.active=createRound(1,42,true); state.active.tasks[0].mode='input'; view='round'; render();`);
   function click(digit){const button={disabled:false,dataset:{digit},closest:s=>s==='[data-digit]'?button:null};events.click({target:button});}
   function key(value,mods={}){events.keydown({key:value,...mods,preventDefault(){},target:{closest:()=>null}});}
-  return {run,click,key,events,plays,builds,buildingSounds,animations,timers,output,submit,erase,root,heading,document,count,check,location};
+  return {run,click,key,events,plays,builds,buildingSounds,characterSounds,animations,timers,output,submit,erase,root,heading,document,count,check,location};
 }
 
 test('Touch and physical keys update the same entry, click once per accepted digit and enforce the limit',()=>{
@@ -427,6 +429,26 @@ test('Finishing a building uses the landmark fanfare and confetti', () => {
   assert.equal(h.builds.at(-1)[2].finale,false);
 });
 
+test('Only the new completion of a small build or plant animates the finished reward',()=>{
+  for (const mode of ['bricks','plant']) {
+    const h=harness();
+    h.run(`state=selectRewardMode(state,'${mode}',()=>.3);
+      celebrateOnRender=true;
+      for (let i=0;i<4;i++) {
+        const awarded=awardPractice(state,'small-'+i,()=>.3);
+        state=awarded.state; completedReward=awarded.reward;
+      }`);
+    assert.doesNotMatch(h.run('rewardArt(true,completedReward)'),/reward-finished/);
+    h.run(`const finished=awardPractice(state,'small-4',()=>.3);
+      state=finished.state; completedReward=finished.reward;
+      state.active=null; view='complete'; render();`);
+    assert.match(h.root.innerHTML,/reward-finished/);
+    if (mode==='plant') assert.match(h.root.innerHTML,/class="plant-growth"/);
+    h.run('render();');
+    assert.doesNotMatch(h.root.innerHTML,/reward-finished/);
+  }
+});
+
 test('Finishing a whole project announces it and links to the matching collection entry', () => {
   for (const id of ['armor','city']) {
     const h=harness();
@@ -486,7 +508,7 @@ test('An empty map invites the first build and defaults to five exercises',()=>{
   assert.match(h.root.innerHTML,/5 oppgaver venter/);
 });
 
-test('The returning player is greeted by name in a dismissible bubble on the map',()=>{
+test('The returning player gets a separate greeting and map preview with one close button',()=>{
   const h=harness();
   h.run(`submitProfile('first',{name:'Ada',grade:3});
     state=selectRewardMode(state,'city',()=>.4);
@@ -495,9 +517,11 @@ test('The returning player is greeted by name in a dismissible bubble on the map
     localStorage.setItem(AWAY_KEY+'-'+profile.id,Date.now()-WELCOME_AFTER-1000);
     welcomeBack();`);
   const html=h.run('welcome');
-  assert.match(html,/Velkommen tilbake/);
-  assert.match(html,/eplo-bubble[\s\S]*Hei igjen, Ada!/);
-  assert.match(html,/data-action="dismiss-eplo"/);
+  assert.match(html,/class="dialog-header"[\s\S]*Velkommen tilbake[\s\S]*aria-label="Lukk velkomsten"/);
+  assert.equal((html.match(/data-action="close-dialog"/g)||[]).length,1);
+  assert.doesNotMatch(html,/data-action="dismiss-eplo"/);
+  assert.match(html,/eplo-bubble[\s\S]*Hei igjen, Ada![\s\S]*<figure class="welcome-preview">/);
+  assert.match(html,/<figcaption class="welcome-reward">Elvebyen<\/figcaption>[\s\S]*data-project-preview="city"[\s\S]*Utforsk kartet[\s\S]*data-action="welcome-start"/);
 });
 
 test('The building dropdown moves the camera and both selection methods play building sounds',()=>{
@@ -532,6 +556,83 @@ test('The building dropdown moves the camera and both selection methods play bui
   assert.deepEqual(JSON.parse(result),[[3,true],[0,false]]);
   assert.equal(h.plays.filter(([kind])=>kind==='select').length,2);
   assert.deepEqual(h.buildingSounds,[['city',3,'field',true],['city',0,'house',true]]);
+  h.run(`const resident=projectScene('city',currentWorld(state,'city')).parts.find(part=>part.entity?.startsWith('resident:'));
+    mapTap(resident.entity);`);
+  assert.equal(h.run('card.hidden'),false);
+  assert.match(h.run("nodes.get('[data-map-info-status]').textContent"),/oppdagelsestur/);
+  assert.ok(h.run("nodes.get('[data-map-info-story]').textContent.length")>20);
+  assert.equal(h.run('choices.value'),'');
+  assert.equal(h.buildingSounds.length,2);
+  assert.equal(h.characterSounds.length,1);
+  assert.equal(h.characterSounds[0][0],'human');
+});
+
+test('Explore the map can start a round, using the same building choice and resume flow',()=>{
+  const h=harness({channel:'preview'});
+  h.run(`state=selectRewardMode(freshState(),'city',()=>.3); view='home';
+    let modal, closes=0;
+    showDialog=(html,css)=>{modal={html,css};};
+    closeDialog=()=>{closes++;};
+    showProject('city');`);
+  assert.match(h.run('modal.html'),/data-action="map-start">Velg første bygg/);
+  const button={dataset:{action:'map-start'},closest:selector=>selector==='[data-action]'?button:null};
+  h.events.click({target:button});
+  assert.equal(h.run('closes'),1);
+  assert.equal(h.run('modal.css'),'world-chooser');
+  assert.equal(h.run('state.active'),null);
+  h.run(`const map=currentWorld(state,'city');
+    state=replaceCurrentWorld(state,'city',worldSelect(map,worldBuildingOptions('city',map)[0]));
+    showProject('city');`);
+  assert.match(h.run('modal.html'),/data-action="map-start">Start runden/);
+  h.events.click({target:button});
+  assert.equal(h.run('view'),'round');
+  const roundId=h.run('state.active.id');
+  h.run("showProject('city');");
+  assert.match(h.run('modal.html'),/data-action="map-start">Fortsett runden/);
+  h.events.click({target:button});
+  assert.equal(h.run('state.active.id'),roundId);
+  h.run("showProject('city',true);");
+  assert.doesNotMatch(h.run('modal.html'),/data-action="map-start"/);
+});
+
+test('Map fullscreen keeps a round shortcut and Escape restores the previous dialog view',()=>{
+  const h=harness({channel:'preview'});
+  h.run(`
+    const attributes=new Map(),classes=new Set(),handlers=new Map();
+    const expand={setAttribute:(key,value)=>attributes.set(key,value),focus(){},
+      addEventListener(name,fn){this[name]=fn;}};
+    const viewer={querySelector:key=>key==='[data-map-expand]'?expand:null};
+    const modal={scrollTop:87,querySelector:key=>key==='.project-viewer'?viewer:null,
+      classList:{toggle(name,enabled){enabled?classes.add(name):classes.delete(name);}},
+      addEventListener:(name,fn)=>handlers.set(name,fn)};
+    let markup, cancelPrevented=false;
+    showDialog=(html,_css,open)=>{markup=html;open(modal);};
+    state=selectRewardMode(freshState(),'moon',()=>.4);
+    showProject('moon');
+    expand.click();
+  `);
+  assert.match(h.run('markup'),/class="icon-button map-full-start" data-action="map-start"/);
+  assert.equal(h.run("classes.has('project-fullscreen')"),true);
+  assert.equal(h.run("attributes.get('aria-label')"),'Avslutt fullskjerm');
+  assert.equal(h.run('modal.scrollTop'),0);
+  h.run("handlers.get('cancel')({preventDefault(){cancelPrevented=true;}})");
+  assert.equal(h.run('cancelPrevented'),true);
+  assert.equal(h.run("classes.has('project-fullscreen')"),false);
+  assert.equal(h.run('modal.scrollTop'),87);
+});
+
+test('The round reward tells a different story at each stage of a map building',()=>{
+  const h=harness();
+  const stories=[];
+  for (const progress of [1,2,3]) {
+    h.run(`view='complete'; completedReward={mode:'moon',map:{...freshWorld(()=>.45),order:[18],progress:${progress}},added:true}; renderComplete();`);
+    const match=h.root.innerHTML.match(/class="build-story">([^<]+)<\/p>/);
+    assert.ok(match?.[1]);
+    stories.push(match[1]);
+  }
+  assert.equal(new Set(stories).size,3);
+  assert.match(h.root.innerHTML,/Ferdig på kartet/);
+  assert.match(stories.at(-1),/Månespark/);
 });
 
 test('Eplo celebrates a perfect round on the last task, before opening the reward',()=>{
@@ -541,7 +642,7 @@ test('Eplo celebrates a perfect round on the last task, before opening the rewar
     const sparks={innerHTML:'',replaceChildren(){this.innerHTML='';}};
     const classes=new Set();
     const companion={querySelector:selector=>selector==='.companion-message'?message:sparks,
-      classList:{add:name=>classes.add(name),remove:name=>classes.delete(name)}};
+      classList:{add:name=>classes.add(name),replace:(name,next)=>{classes.delete(name);classes.add(next);}}};
     const query=h.root.querySelector;
     h.root.querySelector=selector=>selector==='.companion-strip'?companion:query(selector);
     h.run(`
@@ -557,12 +658,14 @@ test('Eplo celebrates a perfect round on the last task, before opening the rewar
     assert.match(h.root.innerHTML,/class="companion-message"/);
     assert.equal(message.textContent==='Perfekt runde!',!wrong);
     assert.equal(classes.has('perfect-round'),!wrong);
+    assert.equal(h.plays.at(-1)[0],wrong?'task-success-7':'perfect');
     assert.equal((sparks.innerHTML.match(/<i /g)||[]).length,wrong||reduced?0:10);
     const dismiss=h.timers.find(timer=>timer.delay===3500);
     assert.equal(Boolean(dismiss),!wrong);
     dismiss?.fn();
     assert.equal(message.textContent,'Se hva du fikk til!');
     assert.equal(classes.has('perfect-round'),false);
+    assert.equal(classes.has('companion-returned'),!wrong);
     assert.equal(sparks.innerHTML,'');
     const next={dataset:{action:'next'},closest:selector=>selector==='[data-action]'?next:null};
     h.events.click({target:next});
@@ -571,27 +674,46 @@ test('Eplo celebrates a perfect round on the last task, before opening the rewar
   }
 });
 
-test('Idle home surprises rotate, puff away on touch, and stop when leaving home',()=>{
+test('Home Eplo stays visible, changes only while idle and returns after a puff',()=>{
   const h=harness();
-  const stage={hidden:true,dataset:{},replaceChildren(){this.innerHTML='';}};
+  const stage={dataset:{act:'idle'},innerHTML:''};
   const query=h.root.querySelector;
   h.root.querySelector=selector=>selector==='[data-home-surprise]'?stage:query(selector);
   h.run("view='home'; render();");
-  assert.match(h.root.innerHTML,/data-home-surprise aria-hidden="true" hidden/);
+  assert.match(h.root.innerHTML,/data-home-surprise data-act="idle" aria-hidden="true"/);
+  assert.equal((h.root.innerHTML.match(/class="buddy /g)||[]).length,1);
   assert.match(h.run('homeSurpriseProps.winter'),/winter-gear/);
   assert.match(h.run('homeSurpriseProps.yawn'),/yawn-breath/);
   assert.match(h.run('homeSurpriseProps.book'),/eplo-book/);
   const runTimer=delay=>h.timers.findLast(timer=>timer.delay===delay&&!timer.cancelled).fn();
+  h.events.pointerdown();
+  assert.equal(stage.dataset.act,'idle');
+  assert.ok(!h.plays.some(([kind])=>kind==='eplo-puff'));
   runTimer(12000);
-  assert.equal(stage.hidden,false);
+  assert.notEqual(stage.dataset.act,'idle');
   const first=stage.dataset.act;
+  assert.equal(h.plays.at(-1)[0],`eplo-${first}`);
+  assert.equal(h.plays.at(-1)[2].onlyWhileRunning,true);
   h.events.pointerdown();
   assert.equal(stage.dataset.act,'puff');
   assert.match(stage.innerHTML,/class="eplo-puff"/);
+  assert.equal(h.plays.at(-1)[0],'eplo-puff');
   runTimer(420);
-  assert.equal(stage.hidden,true);
+  assert.equal(stage.dataset.act,'idle');
+  assert.match(stage.innerHTML,/class="buddy "/);
+  assert.doesNotMatch(stage.innerHTML,/eplo-puff|juice-glass|sun-glasses/);
   runTimer(12000);
   assert.notEqual(stage.dataset.act,first);
+  assert.equal(stage.dataset.spot,undefined);
+  runTimer(6400);
+  assert.equal(stage.dataset.act,'puff');
+  runTimer(420);
+  assert.equal(stage.dataset.act,'idle');
+  for (const mode of ['plant','bricks','armor','city','moon','island']) {
+    h.run(`state=selectRewardMode(state,'${mode}',()=>.3); render();`);
+    assert.equal((h.root.innerHTML.match(/class="buddy /g)||[]).length,1);
+    assert.doesNotMatch(h.root.innerHTML,/class="garden-friend"/);
+  }
   h.run("view='round'; render();");
   assert.equal(h.events.pointerdown,undefined);
   assert.equal(h.timers.at(-1).cancelled,true);

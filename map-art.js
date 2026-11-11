@@ -1,3 +1,4 @@
+import {footballActors} from './map-life.js';
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
 import {regionSurface} from './regions.js';
 import {airportRunway,COASTER_TRACK,planeModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
@@ -99,18 +100,7 @@ export function rideModels(plot,stages) {
     const points=COASTER_TRACK.map(([x,y,z])=>pointOnSite([x,y+.11,z],plot));
     return ['#da866a','#70aeb0'].map((color,i)=>coasterActor(coasterCarModel(color,true),points,.23+i*.039));
   }
-  if (plot.kind==='field'||plot.kind==='spaceField') {
-    const space=plot.kind==='spaceField',radius=space?2.34:1.53;
-    return [-1,1].map((side,i)=>{
-      const path=[[side*radius,0],[side*.75,-1.02],[-side*.28,.3],[side*radius,1.08]].map(([x,z])=>{
-        const [a,,b]=pointOnSite([x,0,z],plot);
-        return [a,b];
-      });
-      return actor(visitor(space?'astronaut':'human',i?'#6b9bbc':'#d48078',i?'#b48466':'#edb78a',false),
-        path,{kind:'walk',ground:plot.y+(space?.52:.35),speed:1.24+i*.18,phase:.12+i*.48,corner:.54,
-          voice:space?'astronaut':'people'});
-    });
-  }
+  if (plot.kind==='field'||plot.kind==='spaceField') return footballActors(plot);
   const model=stages.flat().filter(part=>part.flight);
   if (model.length) {
     const kind=model[0].flight;
@@ -180,20 +170,21 @@ const VISITORS={
 };
 
 export function landmarkVisitors(theme,plot) {
-  const positions=VISITORS[plot.kind]??[];
+  const positions=VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
   const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
   const skins=['#deae85','#aa765b','#ebbf91'];
   const people=positions.flatMap(([x,y,z,yaw,seated],i)=>{
     const kind=theme==='moon'?(i===1?'alien':'astronaut'):'human';
-    const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated);
-    return placeParts(model,{x,y,z,yaw});
+    const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated,.83,(plot.index*3+i)%8);
+    const [px,py,pz]=pointOnSite([x,y,z],plot);
+    return placeParts(model,{x,y,z,yaw}).map(part=>({...part,entity:`resident:${plot.index}:${i}`,life:[px,py,pz,1+plot.index*.87+i*2.3]}));
   });
   const pools=plot.kind==='megaResort'?[[-1.64,.65,2.52],[2.06,.65,2.83]]
     :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
     :plot.kind==='beachClub'?[[2.28,.64,2.16]]:[];
-  for (const [x,y,z] of pools) people.push(...placeParts(swimmer('#dda97d','#d99c81'),{x,y,z,yaw:-.32}));
-  if (plot.kind==='field'||plot.kind==='spaceField') {
-    people.push(dome(.21,-.17,.235,.235,.224,'#f4e6cb',plot.kind==='field'?.365:.512));
+  for (const [i,[x,y,z]] of pools.entries()) {
+    const [px,py,pz]=pointOnSite([x,y,z],plot);
+    people.push(...placeParts(swimmer('#dda97d','#d99c81'),{x,y,z,yaw:-.32}).map(part=>({...part,characterKind:'human',entity:`resident:${plot.index}:${i+10}`,life:[px,py,pz,1+plot.index+i]})));
   }
   return placeParts(people,plot);
 }

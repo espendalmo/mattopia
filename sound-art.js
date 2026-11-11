@@ -160,6 +160,28 @@ const buildingKinds={
 const buildingVoices=Object.fromEntries(Object.entries(buildingKinds)
   .flatMap(([voice,kinds])=>kinds.map(kind=>[kind,voice])));
 
+const greetingPitches={human:[233,294,262],astronaut:[190,237,207],alien:[383,510,314],
+  animal:[516,444,627],vehicle:[116,151,132],discovery:[425,630,865]};
+
+export function characterClip(context,kind,variant) {
+  const pitches=greetingPitches[kind]??greetingPitches.human;
+  const pitch=2**((variant%8-3)*.057);
+  const rhythm=[[.02,.18],[.02,.13,.27],[.025,.245]][Math.floor(variant/8)%3];
+  return synthesize(context,.49,(time,_noise,low,mid)=>{
+    let voice=0;
+    for (const [i,start] of rhythm.entries()) {
+      const age=time-start;
+      const frequency=pitches[(i+variant)%pitches.length]*pitch;
+      const warble=kind==='alien'?1+.072*wave(age,17):1;
+      voice+=.46*chirp(age,.169,frequency*warble)+.19*chirp(age,.141,frequency*2.03);
+    }
+    const envelope=unit(time*42)*unit((.49-time)*15);
+    if (kind==='astronaut') voice=voice*.85+envelope*mid*.18+.12*chirp(time,.068,990);
+    if (kind==='vehicle') voice=voice*.76+envelope*low*.68;
+    return voice*envelope;
+  });
+}
+
 export function buildingClip(context,world,index,kind) {
   const voice=buildingVoices[kind]??(world==='moon'?'signal':world==='island'?'dining':'chime');
   const pitch=2**(((index*7)%11-5)/12);

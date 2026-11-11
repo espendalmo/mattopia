@@ -435,12 +435,12 @@ export function worldBuilding(id,index,map=null) {
   const custom=catalogBuilding(id,index,map);
   if (custom) {
     const [name,description,kind,family=kind]=custom;
-    return {name,description,kind,family,story:landmarkStory(id,index,kind)};
+    return {name,description,kind,family,story:landmarkStory(id,index,kind,map?.seed)};
   }
   const definition=PLACES[id]?.[index];
   if (!definition) return null;
   const [name,kind]=definition;
-  return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind)};
+  return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind,map?.seed)};
 }
 
 export function worldBuildingOptions(id,map) {
@@ -473,7 +473,7 @@ export function worldBuildingOptions(id,map) {
 function regionLandmarkParts(id,index,site,map) {
   const custom=catalogBuilding(id,index,map);
   let stages;
-  if (custom) stages=landmarkStages(id,custom[2],site);
+  if (custom) stages=landmarkStages(id,custom[2],site,index);
   else {
     const ground=id==='island'?.45:.04;
     const steps=landmark(id,index,PLACES[id][index],[0,0]).map(step=>at(step.parts,0,-ground,0));

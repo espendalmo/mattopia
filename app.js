@@ -1,3 +1,5 @@
+import {constructionStory} from './landmark-stories.js';
+import {mapCharacterInfo} from './map-life.js';
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
@@ -78,6 +80,9 @@ save();
 function icon(name, css = '') {
   const paths = {
     arrow: '<path d="M5 12h14m-6-6 6 6-6 6"/>',
+    expand: '<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>',
+    collapse: '<path d="M4 9h5V4m6 0v5h5M9 20v-5H4m11 5v-5h5"/>',
+    play: '<path d="M8 5.5 19 12 8 18.5Z" fill="currentColor"/>',
     close: '<path d="m6 6 12 12M18 6 6 18"/>',
     check: '<path d="m5 12 4 4L19 6"/>',
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/>',
@@ -344,7 +349,8 @@ function rewardArt(happy = false, reward = null, {showBuddy=true}={}) {
   const art = info.mode === 'bricks'
     ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
     : renderPlant(info.garden.plant, info.garden.stage);
-  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
+  const finished = happy && reward && info.full && celebrateOnRender;
+  return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}${finished?' reward-finished':''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
 }
 
 function mountProjectPreview(container) {
@@ -419,6 +425,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
     : scene.next ? `Neste byggesteg er «${scene.next}».`
     : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+  const roundAction=scene.world&&!demo&&!archivedMap&&!fromCollection;
   showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2>
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     ${fromCollection ? `<button class="secondary project-back" data-action="collection" data-project="${id}" ${galleryMap===null?'':`data-map="${galleryMap}"`} ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
@@ -435,8 +442,12 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <span class="eplo-avatar">${buddy()}</span>
           <div class="eplo-bubble"><small data-map-info-status></small><h3></h3><p data-map-info-description></p>
             <p><strong class="sr-only">Eplo</strong> <span data-map-info-story></span></p></div>
-          <button class="icon-button" type="button" data-map-info-close aria-label="Lukk bygginformasjonen">${icon('close')}</button>
+          <button class="icon-button" type="button" data-map-info-close aria-label="Lukk informasjonen">${icon('close')}</button>
         </section>`:''}
+        ${scene.world ? `<div class="map-stage-actions">
+          ${roundAction ? `<button type="button" class="icon-button map-full-start" data-action="map-start" aria-label="${startRoundLabel()}" title="${startRoundLabel()}">${icon('play')}</button>` : ''}
+          <button type="button" class="icon-button" data-map-expand aria-label="Vis kartet i fullskjerm" aria-pressed="false" title="Fullskjerm">${icon('expand')}</button>
+        </div>` : ''}
         ${demo ? mapEplo(projectCongratulations(id),true) : ''}
       </div>
       <div class="project-controls">
@@ -447,24 +458,61 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
           <button class="secondary" data-project-reset>Oversikt</button>
         </div>
       </div>
-      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på et bygg for å se hva som skjer der.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
+      <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på bygg, folk, kjøretøy og kartfunn.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
     <p id="project-milestone" class="project-milestone">${milestone()}</p>
+    ${roundAction ? `<div class="project-round-action"><button type="button" class="primary" data-action="map-start">${startRoundLabel()}${icon('arrow')}</button></div>` : ''}
     ${trail ? '<button class="secondary demo-new-map" data-demo-new>Nytt demokart</button>' : ''}`, 'project-dialog', dialog => {
     const viewer = dialog.querySelector('.project-viewer');
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
+    const expand=viewer.querySelector('[data-map-expand]');
+    if (expand) {
+      let fullScreen=false;
+      let previousScroll=0;
+      const showFullScreen=enabled=>{
+        fullScreen=enabled;
+        if (enabled) previousScroll=dialog.scrollTop;
+        dialog.classList.toggle('project-fullscreen',enabled);
+        expand.innerHTML=icon(enabled?'collapse':'expand');
+        expand.setAttribute('aria-pressed',String(enabled));
+        expand.setAttribute('aria-label',enabled?'Avslutt fullskjerm':'Vis kartet i fullskjerm');
+        expand.title=enabled?'Avslutt fullskjerm':'Fullskjerm';
+        dialog.scrollTop=enabled?0:previousScroll;
+        expand.focus({preventScroll:true});
+      };
+      expand.addEventListener('click',()=>showFullScreen(!fullScreen));
+      dialog.addEventListener('cancel',event=>{
+        if (!fullScreen) return;
+        event.preventDefault();
+        showFullScreen(false);
+      });
+    }
+
     let dispose,selection=null;
     const inspect=(index,{focus=false,playSound=false}={})=>{
       if (!card) return;
-      const site=index===null?null:scene.sites?.[index];
+      const character=mapCharacterInfo(scene,index);
+      const site=typeof index==='number'?scene.sites?.[index]:null;
       const building=site&&worldBuilding(id,index,map);
-      selection=building?index:null;
-      card.hidden=!building;
+      selection=building||character?index:null;
+      card.hidden=!building&&!character;
       selector.value=building?String(index):'';
       dispose?.inspect?.(selection,{focus});
+      if (character) {
+        if (playSound) {
+          sounds.play('select',state.sound);
+          sounds.playCharacter(character.sound,character.voice,state.sound);
+        }
+        card.querySelector('h3').textContent=character.name;
+        card.querySelector('[data-map-info-status]').textContent=character.status;
+        card.querySelector('[data-map-info-description]').textContent='';
+        card.querySelector('[data-map-info-story]').textContent=character.story;
+        card.querySelector('.eplo-avatar').innerHTML=buddy();
+        return;
+      }
       if (!building) return;
       if (playSound) {
         sounds.play('select',state.sound);
@@ -785,25 +833,36 @@ function mountHomeSurprise() {
   const stage = root.querySelector('[data-home-surprise]');
   if (!stage) return;
   const acts = Object.keys(homeSurpriseProps);
+  const pick = (options,previous) => {
+    const choices = options.filter(option => option !== previous);
+    return choices[Math.floor(Math.random() * choices.length)];
+  };
+  const cue = kind => {
+    if (!document.hidden && !document.querySelector('dialog[open]')) sounds.play(kind,state.sound,{onlyWhileRunning:true});
+  };
   let idleTimer, sceneTimer, previous;
+  const showDefault = () => {
+    stage.dataset.act = 'idle';
+    stage.innerHTML = `<div class="eplo-act">${buddy()}</div>`;
+  };
   const schedule = (delay=12000) => {
     clearTimeout(idleTimer);
     idleTimer = setTimeout(appear, delay);
   };
   const dismiss = () => {
-    if (stage.hidden || stage.dataset.act === 'puff') return;
+    if (stage.dataset.act === 'idle' || stage.dataset.act === 'puff') return;
     clearTimeout(sceneTimer);
     stage.dataset.act = 'puff';
     stage.innerHTML = homeSurpriseCloud;
-    sceneTimer = setTimeout(() => { stage.hidden = true; stage.replaceChildren(); }, 420);
+    cue('eplo-puff');
+    sceneTimer = setTimeout(showDefault, 420);
   };
   function appear() {
     if (document.hidden || document.querySelector('dialog[open]')) { schedule(); return; }
-    const choices = acts.filter(act => act !== previous);
-    previous = choices[Math.floor(Math.random() * choices.length)];
+    previous = pick(acts,previous);
     stage.dataset.act = previous;
     stage.innerHTML = `<div class="eplo-act">${buddy(previous !== 'yawn')}${homeSurpriseProps[previous]}</div>`;
-    stage.hidden = false;
+    cue(`eplo-${previous}`);
     sceneTimer = setTimeout(() => { dismiss(); schedule(20000); }, 6400);
   }
   const activity = () => { dismiss(); schedule(); };
@@ -829,10 +888,10 @@ function renderHome() {
   const choose = g.map && g.building === null && !g.full;
   const firstBuild = g.map && g.completed === 0;
   const archives = g.map ? (state.worlds?.[g.mode] ?? []).slice(0,-1) : [];
-  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : choose ? firstBuild ? 'Velg første bygg' : 'Velg neste bygg' : 'Start runden';
+  const cta = startRoundLabel(g);
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
     ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
-    <div class="home-reward">${rewardArt(false, next)}<div class="home-surprise" data-home-surprise aria-hidden="true" hidden></div></div><p class="home-eyebrow">${g.label}</p>
+    <div class="home-reward">${rewardArt(false, next,{showBuddy:false})}<div class="home-surprise" data-home-surprise data-act="idle" aria-hidden="true"><div class="eplo-act">${buddy()}</div></div></div><p class="home-eyebrow">${g.label}</p>
     <h1 tabindex="-1">${firstBuild ? 'Klar for å komme i gang?' : total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
     <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
     <button class="primary" data-action="start">${cta}${icon('arrow')}</button>
@@ -857,6 +916,13 @@ function showWorldChoices(id, choices) {
     const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt),map)));
     dialog.addEventListener('close', () => dispose.forEach(stop => stop()), {once:true});
   });
+}
+
+function startRoundLabel(info=rewardDetails()) {
+  if (state.active) return 'Fortsett runden';
+  if (state.focusBreakPending) return breakButtonLabel();
+  if (info.map && info.building === null && !info.full) return info.completed === 0 ? 'Velg første bygg' : 'Velg neste bygg';
+  return 'Start runden';
 }
 
 function startRound() {
@@ -1224,6 +1290,15 @@ function hintStage() { return state.active?.hintStages?.[state.active.index] || 
 function hintText(t) { return hintFor(t, hintStage() || 1); }
 
 function curriculumVisual(model) {
+  if (model.kind==='money') {
+    const piece=(value,extra='')=>`<span class="money-piece ${value>=50?'money-note':'money-coin'} ${extra}" data-money-value="${value}"><strong>${value}</strong><small>kr</small></span>`;
+    const label=model.pieces.map(value=>`${value} kroner`).join(', ');
+    const exchange=model.exchange?` Veksles til ${model.exchange}-kroner.`:'';
+    return `<div class="money-visual" role="img" aria-label="${label}.${exchange}">
+      <span class="money-pile" aria-hidden="true">${model.pieces.map(value=>piece(value)).join('')}</span>
+      ${model.exchange?`<span class="money-exchange" aria-hidden="true">${icon('arrow')}${piece(model.exchange)}<strong>× ?</strong></span>`:''}
+    </div>`;
+  }
   if (model.kind === 'grid') {
     const total = model.columns * model.rows;
     const label = model.split ? `${model.split} grønne og ${model.filled-model.split} gule brikker` : model.style === 'dots' ? `${model.filled} brikker`
@@ -1307,8 +1382,10 @@ function renderRound() {
   const progress = Array.from({ length }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
   let feedback;
   if (r.solved) {
-    const messages = ['Der satt den!', 'Godt tenkt!', 'Du fant det!', 'Fint jobbet!'];
-    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${messages[r.index % messages.length]}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
+    const messages = ['Bra, fortsett slik!', 'Du er flink!', 'Godt tenkt!', 'Bra jobba!',
+      'Så bra!', 'Du fikk det til!', 'Kjempebra!', 'Fint regnet!', 'Heia deg!', 'Det klarte du!', 'Godt jobba!', 'Veldig bra!'];
+    const message=messages[(state.roundsCompleted*5+r.index)%messages.length];
+    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
   } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
@@ -1335,6 +1412,7 @@ function renderComplete() {
   const g = rewardDetails(completedReward);
   const stage = g.added ? projectScene(g.mode, g.map || g.completed) : null;
   const projectStep = stage?.last;
+  const buildStory=g.map&&projectStep ? constructionStory(g.mode,stage.latestTarget?.kind,stage.finished?3:g.phase||1,g.map.seed,g.completed) : '';
   const finishedProject = g.project && g.full && g.added;
   const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
   const message = g.project
@@ -1346,7 +1424,7 @@ function renderComplete() {
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
   const next = g.mode === 'bricks' && upcomingBuild(g.build);
   const preview = next ? `<div class="next-build-card">${renderBuildSvg(next, {mini:true, preview:true})}<div>Neste bygg<strong>Hva tror du det blir?</strong></div></div>` : '';
-  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong></div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
+  const latest = projectStep ? `<div class="project-latest result-latest${stage.finished ? ' landmark-complete' : ''}"><div><small>${stage.finished&&g.map ? 'Ferdig på kartet' : finishedProject ? 'Bygget er fullført' : 'Nytt byggesteg'} · ${g.completed} av ${g.total}</small><strong>${escapeHtml(g.map&&stage.finished ? stage.finished+' er på plass!' : projectStep)}</strong>${buildStory ? `<p class="build-story">${escapeHtml(buildStory)}</p>` : ''}</div><button class="secondary" data-project-latest>Vis igjen</button></div>` : '';
   const mapIndex=g.map?playerMaps(g.mode).length-1:null;
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
   const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
@@ -1551,10 +1629,17 @@ function welcomeBack() {
   const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
   const art=rewardArt(false,next,{showBuddy:false});
   const greeting=eploNote(`${eploGreeting()} ${note}`);
-  const welcomeArt=isWorld(g.mode)
-    ? `<div class="project-map-stage welcome-map-stage">${art}${mapEplo(greeting)}</div>`
-    : `${art}${greeting}`;
-  showDialog(`<button class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button><h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>${welcomeArt}<p class="welcome-reward">${g.label}</p><button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`, 'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
+  showDialog(`<div class="dialog-header">
+      <h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>
+      <button type="button" class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>
+    </div>
+    ${greeting}
+    <figure class="welcome-preview">
+      <figcaption class="welcome-reward">${escapeHtml(g.label)}</figcaption>
+      ${art}
+    </figure>
+    <button class="primary" data-action="welcome-start">${cta} ${icon('arrow')}</button>`,
+    'welcome-dialog', g.project ? mountDialogProjectPreview : undefined);
 }
 
 function progressionNote() {
@@ -1589,12 +1674,16 @@ function adultTopicSummary() {
   return `<p class="adult-section-title">Øvd på · ${LEVELS[state.level].label}</p>${topics || '<p class="history-empty">Emnene vises når dere har fullført noen oppgaver.</p>'}<p class="adult-note">Siste tolv runder på valgt nivå. En oppgavetype er ikke nødvendigvis mestret selv om svaret er riktig.</p>`;
 }
 
+function rewardThumbnail(id) {
+  return `<span class="reward-choice-icon" aria-hidden="true">${rewardIllustration(id)}</span>`;
+}
+
 function projectOptions() {
   return `<details class="project-choice-list" ${projectById(state.rewardMode) ? 'open' : ''}>
     <summary>Store byggeprosjekter</summary><p class="adult-note">Hver runde gir ett byggesteg på prosjektet du velger.</p>
     ${Object.entries(PROJECTS).map(([id,project]) => `<label class="level-option">
       <input type="radio" name="reward-mode" value="${id}" ${state.rewardMode === id ? 'checked' : ''}>
-      <span class="reward-choice-icon brick-choice" aria-hidden="true">${project.icon}</span>
+      ${rewardThumbnail(id)}
       <span><strong>${project.name}</strong><small>${project.description} ${projectProgress(rewardDetails({mode:id}))}.</small></span>
     </label>`).join('')}
   </details>`;
@@ -1658,7 +1747,7 @@ function adultView() {
       <p class="adult-note" id="round-length-note">Gjelder fra neste nye runde. En fullført runde gir én stjerne og ett steg på det du bygger eller dyrker.</p></div>
     <fieldset class="adult-group" id="practice-options">${practiceOptions()}</fieldset>
     </div></details>
-    <details class="adult-details admin-section"><summary>Bygging og belønninger</summary><div class="admin-section-body"><fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}><span class="reward-choice-icon" aria-hidden="true">${icon('sprout')}</span><span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}><span class="reward-choice-icon brick-choice" aria-hidden="true">${icon('brick')}</span><span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
+    <details class="adult-details admin-section"><summary>Bygging og belønninger</summary><div class="admin-section-body"><fieldset class="adult-group reward-options"><legend>Hva vil barnet bygge videre på?</legend><label class="level-option"><input type="radio" name="reward-mode" value="plant" ${state.rewardMode === 'plant' ? 'checked' : ''}>${rewardThumbnail('plant')}<span><strong>Plante</strong><small>En spire som vokser og blomstrer.</small></span></label><label class="level-option"><input type="radio" name="reward-mode" value="bricks" ${state.rewardMode === 'bricks' ? 'checked' : ''}>${rewardThumbnail('bricks')}<span><strong>Klossebygging</strong><small>Fem store klosser blir en tilfeldig figur.</small></span></label>
       ${projectOptions()}<p class="adult-note">Du kan bytte mellom belønningene og fortsette på hvert prosjekt senere.</p></fieldset></div></details>
     <details class="adult-details admin-section"><summary>Lyd, hjelp og pauseleker</summary><div class="admin-section-body">
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
@@ -1740,7 +1829,7 @@ function submitAnswer(value) {
     const perfect = last && answered.results.every(result => result?.firstTry);
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     save(); render();
-    feedback(`task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
+    feedback(perfect ? 'perfect' : `task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
     flashAnswer(task, value, true);
     if (perfect) {
       const companion = root.querySelector('.companion-strip');
@@ -1757,7 +1846,7 @@ function submitAnswer(value) {
         }
         setTimeout(() => {
           message.textContent = previous;
-          companion.classList.remove('perfect-round');
+          companion.classList.replace('perfect-round','companion-returned');
           sparks?.replaceChildren();
         }, 3500);
       }
@@ -1823,7 +1912,7 @@ function retryAnswer() {
 }
 
 const ownClickSound=new Set([
-  'start','again','welcome-start','next','help','sound','erase','submit-number','pause',
+  'start','again','welcome-start','map-start','next','help','sound','erase','submit-number','pause',
   'focus-hide','focus-answer','focus-check','focus-continue','break-slot',
   'world-choose','project-open','project-demo','gallery-map','gallery-hero','select-profile',
 ]);
@@ -1872,7 +1961,7 @@ document.addEventListener('click', e => {
     (stage.querySelector('.project-peek, canvas[tabindex], [data-action=close-dialog]')??document.querySelector('.complete h1'))?.focus({preventScroll:true});
   }
   if (action === 'start' || action === 'again') startRound();
-  if (action === 'welcome-start') {
+  if (action === 'welcome-start' || action === 'map-start') {
     closeDialog();
     if (view !== 'round') startRound();
   }

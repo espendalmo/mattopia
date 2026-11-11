@@ -1,4 +1,4 @@
-# Mattopia 1.30.0
+# Mattopia 1.33.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.30.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.33.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -50,6 +50,45 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Nytt i 1.33.0
+
+- Utforsk kartet i fullskjerm i appvinduet. Lukk fullskjerm med ikonet eller Escape. Spilleknappen på det aktive kartet åpner samme rundevalg som ellers.
+- Nye kartfunn i alle tre kart, blant annet gruve, gullgraverleir, gammelt uthus, hestevogn, glitrende krystaller og UFO-vrak. Funnene følger kartets frø og terrenget som avdekkes.
+- Flere navn, historier og korte lyder når du trykker på folk, romvesener, kjøretøy og kartfunn. Se etter romvesenet som titter fram bak en stein.
+- Kjøretøy gir hverandre plass gjennom kryss. Når de har låst hverandre, kan ett kjøretøy rygge litt. Svevebilene får motorflammer mens de kjører.
+- Oppsummeringen etter hver runde forteller hva som skjer på det aktuelle byggesteget.
+- Praktiske pengeoppgaver fra 1. til 6. trinn. Sporene omfatter mynter, veksling, småkjøp, penger tilbake, stykkpris og budsjett. De inngår også i blanding og automatisk progresjon.
+- Tolv korte oppmuntringer varierer fra oppgave til oppgave og fra runde til runde.
+
+## Nytt i 1.32.0
+
+- Månebasen får et større visuelt løft: Saturn-ringer, tallerkentak, kapselhotell, krystallspir, romsopper og mer særpreg på de ulike byggene. Påbegynte kart beholder framdriften sin.
+- Mobil og iPad får 65 prosent større zoomområde og litt nærmere detaljvisning. Dette gjelder alle store byggeprosjekter, også superheltene.
+- Trykk på personer, romvesener og kjøretøy i alle tre kart for å lese navn og små tullete historier. Treffområdet er litt romsligere på berøringsskjermer.
+- Besøkende ved alle bygg beveger seg uavhengig av antallet kjøretøy. Vandrere kan stoppe for å tenke; spørsmålstegn vises i utforskvisningen.
+- Fotballspillere følger ballen, sparker og får av og til en ball i hjelmen med små stjerner rundt hodet. Gjelder både Elvebyen og Månebasen.
+- Flere romdrakter og romvesener, kraterutforsker og en rover-buss på månen. Buss og biler deler trafikkreglene.
+- Stjernehimmelen får forsiktig parallakse når kartet flyttes og zoomes. Redusert bevegelse respekteres.
+- Felles figurbevegelse og trefftesting er samlet slik at funksjonene kan brukes på alle kart. Mobil/iPad bør kontrolleres i beta før publisering.
+
+## Nytt i 1.31.1
+
+- Eplo får riktig avsatt plass ved snakkeboblen i pause- og velkomstvisninger, også ved superheltbygg.
+- Startsiden viser én Eplo på en fast plass. Små ablegøyer begynner først etter en stund uten aktivitet; et poff etterfølges av vanlig Eplo igjen.
+- 140 automatiske tester passerer. Visuell kontroll på iPhone/iPad gjenstår.
+
+## Nytt i 1.31.0
+
+- Eplo dukker opp på flere steder på startsiden. Hvert innslag har en liten lyd, og røykskyen har en poff-lyd.
+- «Perfekt runde!» har en egen seiersmelodi. Ferdige klossebygg og planter får en kort animasjon.
+- Fra «Utforsk kartet» kan du gå rett til en øvingsrunde eller fortsette der du slapp.
+- «Bygging og belønninger» bruker de samme illustrasjonene som veiviseren. Bakgrunnen bak «Velkommen tilbake» er mørkere.
+
+## Nytt i 1.30.1
+
+- Lille Eplo og den vanlige snakkeboblen toner inn igjen etter «Perfekt runde!».
+- «Velkommen tilbake» har ett lukkekryss ved tittelen og en egen plass til Eplos hilsen over forhåndsvisningen.
 
 ## Nytt i 1.30.0
 

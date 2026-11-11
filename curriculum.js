@@ -6,11 +6,14 @@ function track(label, description, ...types) {
 export const CURRICULUM_LEVELS = {
   11:track('Tall og mengder', 'Tell brikker, legg til og ta bort med tall til 10.', 'tally', 'tinyAdd', 'tinySubtract', 'compareQuantity'),
   21:track('Mønstre og former', 'Fortsett tallmønstre og tell sider på figurer.', 'pattern', 'shapeSides', 'tally', 'clockHours'),
+  22:track('Mynter og småkjøp', 'Tell mynter, veksle småbeløp og finn hvor mye du får tilbake.', 'coinTotal', 'coinExchange', 'smallChange'),
   31:track('Måling og kart', 'Finn punkter i rutenett og regn med lengde og masse.', 'coordinate', 'measure', 'coordinateMove'),
+  32:track('Penger og veksling', 'Veksle sedler, legg sammen priser og regn ut hva du får tilbake.', 'noteExchange', 'moneyChange', 'shoppingSum', 'moneyMissing'),
   41:track('Gangetabell og deling', 'Gangetabeller, like grupper og deling i praktiske situasjoner.', 'tables', 'sharing', 'arrayCount', 'groupsMissing'),
   42:track('Ruter og klosser', 'Finn hvor mange ruter en flate dekker, og hvor mange klosser en boks rommer.', 'arrayCount', 'boxUnits', 'pattern', 'compositeArea'),
   51:track('Brøk og desimaltall', 'Les brøker, finn en del av en mengde og sammenlign brøker.', 'fractionModel', 'fractionOf', 'fractionCompare', 'fractionDecimal', 'equivalentFraction'),
   52:track('Likninger og sjanse', 'Finn det ukjente tallet og regn ut sjansen for å trekke en bestemt farge.', 'oneStep', 'chance', 'chanceCompare'),
+  53:track('Handle og spare', 'Regn med stykkpris, flere like varer og penger du har igjen etter et kjøp.', 'bundleTotal', 'unitPrice', 'moneyBudget', 'moneyChange'),
   61:track('Desimaltall og prosent', 'Regn med desimaltall, brøk og prosent i hverdagen.', 'decimalSum', 'percentOf', 'fractionOf', 'decimalDifference'),
   62:track('Areal, omkrets og volum', 'Mål et rektangel, regn på en boks og finn diameteren til en sirkel.', 'area', 'perimeter', 'prism', 'diameter', 'angleRemainder'),
   71:track('Tall og regnerekkefølge', 'Regn med negative tall og uttrykk med flere regnearter.', 'integers', 'order', 'orderCompare'),
@@ -27,8 +30,8 @@ export const CURRICULUM_LEVELS = {
 };
 
 export const GRADE_LEVELS = {
-  1:[11, 1], 2:[1, 2, 21], 3:[1, 2, 3, 4, 31], 4:[4, 41, 42], 5:[51, 52],
-  6:[61, 62], 7:[71, 72, 73], 8:[81, 82, 83], 9:[91, 92], 10:[101, 102, 103],
+  1:[11, 1, 22], 2:[1, 2, 21, 22], 3:[1, 2, 3, 4, 31, 32], 4:[4, 41, 42, 32], 5:[51, 52, 53],
+  6:[61, 62, 53], 7:[71, 72, 73], 8:[81, 82, 83], 9:[91, 92], 10:[101, 102, 103],
 };
 
 export function levelsForGrade(grade) {
@@ -88,9 +91,81 @@ function number(title, prompt, answer, hint, method, solution, { wrong=[], unit=
 
 const grid = (columns, rows, filled=columns*rows, style='squares') => ({ kind:'grid', columns, rows, filled, style });
 const table = (headers, cells) => ({ kind:'table', headers, cells });
+const money = (pieces, exchange) => ({kind:'money',pieces,...(exchange && {exchange})});
 const equation = (a, b) => `${a}x ${b < 0 ? '−' : '+'} ${Math.abs(b)}`;
 
 const tasks = {
+  coinTotal:['finance', (_int,pick) => {
+    const pieces=[pick([1,5,10]),pick([1,5]),pick([1,5])];
+    const total=pieces.reduce((sum,coin)=>sum+coin,0);
+    return number('Hvor mange kroner?', 'Tell hvor mye myntene er verdt til sammen.',total,
+      'Se på tallet på hver mynt.', `Legg sammen ${pieces.join(' + ')}.`,
+      `${pieces.join(' + ')} = ${total} kr.`,{unit:' kr',visual:money(pieces)});
+  }],
+  coinExchange:['finance', (_int,pick) => {
+    const [amount,coin]=pick([[5,1],[10,1],[10,5],[20,5],[20,10]]);
+    const count=amount/coin;
+    return number('Hvor mange mynter?', `Veksle ${amount} kr til ${coin}-kroner.`,count,
+      'Pengene skal være verdt like mye etter at du har vekslet.',
+      `Tell ${coin} kr om gangen til du kommer til ${amount} kr.`,
+      `${count} mynter som er verdt ${coin} kr hver, blir ${amount} kr.`,{minimum:1,visual:money([amount],coin)});
+  }],
+  smallChange:['finance', (int,pick) => {
+    const paid=pick([10,20]),price=int(3,paid-1),change=paid-price;
+    return number('Hva får du tilbake?', `Et klistremerke koster ${price} kr. Du betaler med ${paid} kr.`,change,
+      `Start med ${paid} kr. Bruk ${price} kr.`, 'Hvor mange kroner har du igjen?',
+      `${paid} − ${price} = ${change} kr.`,{unit:' kr',visual:money([paid])});
+  }],
+  noteExchange:['finance', (_int,pick) => {
+    const [amount,coin]=pick([[50,5],[50,10],[100,5],[100,10],[100,20],[200,10],[200,20]]);
+    const count=amount/coin;
+    return number('Hvor mange mynter?', `Veksle en ${amount}-lapp til ${coin}-kroner.`,count,
+      `Hver mynt er verdt ${coin} kr. Alle myntene skal bli ${amount} kr til sammen.`,
+      `Hvor mange grupper på ${coin} er det plass til i ${amount}?`,
+      `${amount} ÷ ${coin} = ${count} mynter.`,{minimum:1,visual:money([amount],coin)});
+  }],
+  moneyChange:['finance', (int,pick) => {
+    const paid=pick([50,100,200]);
+    const price=int(12,paid-4);
+    const item=pick(['En billett','En is','En notatbok','En fruktpose','En refleks']);
+    const change=paid-price;
+    return number('Hva får du tilbake?', `${item} koster ${price} kr. Du betaler med ${paid} kr.`,change,
+      'Se på prisen og hvor mye du betaler.', `Tell fra ${price} kr opp til ${paid} kr, eller regn minus.`,
+      `${paid} − ${price} = ${change} kr.`,{unit:' kr',visual:money([paid])});
+  }],
+  shoppingSum:['finance', (int,pick) => {
+    const a=int(9,48),b=int(7,37);
+    const [first,second]=pick([['En blyant','et viskelær'],['En bolle','en juice'],['En is','et eple'],['En refleks','et klistremerke']]);
+    return number('Hva blir summen?', `${first} koster ${a} kr, og ${second} koster ${b} kr.`,a+b,
+      'Du skal betale for begge varene.', `Legg sammen ${a} kr og ${b} kr.`,
+      `${a} + ${b} = ${a+b} kr.`,{unit:' kr'});
+  }],
+  moneyMissing:['finance', (int,pick) => {
+    const goal=pick([50,100,150,200]),saved=int(14,goal-4);
+    return number('Hvor mye mangler?', `Du sparer til noe som koster ${goal} kr. Du har ${saved} kr.`,goal-saved,
+      'Tenk på hvor langt det er fra det du har til det du trenger.',
+      `Tell opp fra ${saved}, eller regn ${goal} − ${saved}.`,
+      `${goal} − ${saved} = ${goal-saved} kr.`,{unit:' kr'});
+  }],
+  bundleTotal:['finance', (int,pick) => {
+    const quantity=int(2,6),price=int(12,44),item=pick(['billetter','klippekort','reflekser','notatbøker']);
+    return number('Hva koster alle?', `Du kjøper ${quantity} ${item}. Hver koster ${price} kr.`,quantity*price,
+      `Legg sammen ${quantity} like beløp.`, `Du kan regne ${quantity} × ${price}.`,
+      `${quantity} × ${price} = ${quantity*price} kr.`,{unit:' kr',step:price});
+  }],
+  unitPrice:['finance', (int,pick) => {
+    const quantity=int(2,6),price=int(11,35),item=pick(['boller','blyanter','is','reflekser']);
+    const total=quantity*price;
+    return number('Hva koster én?', `${quantity} ${item} koster ${total} kr til sammen. Alle har samme pris.`,price,
+      `Del prisen likt på de ${quantity} varene.`, `Regn ${total} ÷ ${quantity}.`,
+      `${total} ÷ ${quantity} = ${price} kr per stykk.`,{unit:' kr'});
+  }],
+  moneyBudget:['finance', (int,pick) => {
+    const budget=pick([100,200,500]),a=int(14,Math.floor(budget*.55)),b=int(11,budget-a-4);
+    return number('Hvor mye har du igjen?', `Du har ${budget} kr. Du bruker ${a} kr på mat og ${b} kr på en billett.`,budget-a-b,
+      'Finn først hvor mye du bruker til sammen.', `Legg sammen ${a} og ${b}, og trekk summen fra ${budget}.`,
+      `${budget} − ${a+b} = ${budget-a-b} kr.`,{unit:' kr',visual:money([budget])});
+  }],
   compareQuantity:['quantities', int => {
     const a=int(2,7),b=a+int(1,3);
     return number('Hvilket tall er størst?', `Se på ${a} og ${b}.`,b,'Tenk på hvor mange brikker hvert tall betyr.',
@@ -481,6 +556,9 @@ export function validCurriculumTask(task) {
       && (visual.split===undefined || whole(visual.split,1,visual.filled-1) && visual.style==='dots'),
     shape:() => whole(visual.sides,3,6),
     point:() => whole(visual.x,1,4) && whole(visual.y,1,4),
+    money:() => Array.isArray(visual.pieces) && visual.pieces.length>=1 && visual.pieces.length<=5
+      && visual.pieces.every(piece=>[1,5,10,20,50,100,200,500].includes(piece))
+      && (visual.exchange===undefined || [1,5,10,20].includes(visual.exchange)),
     table:() => Array.isArray(visual.headers) && visual.headers.length === 2 && visual.headers.every(v=>text(v,20))
       && Array.isArray(visual.cells) && visual.cells.length <= 6
       && visual.cells.every(row=>Array.isArray(row) && row.length === 2 && row.every(v=>text(v,20)||whole(v,-1000,1000))),

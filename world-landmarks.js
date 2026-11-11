@@ -1,3 +1,4 @@
+import {lunarArchitecture} from './lunar-architecture.js';
 import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSite,placeParts,vehicle} from './scenery.js';
 import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 
@@ -1059,6 +1060,8 @@ const art={
   railwayStation:()=>transitStation(false),monorailStation:()=>transitStation(true),
   tramStation:tramDepot,lighthouse:theme=>lighthouse(theme==='island'),hangar,casino,needleTower,telescopeArray,
   prismTower:()=>lunarHighrise(0),novaTower:()=>lunarHighrise(1),haloTower:()=>lunarHighrise(2),
+  solarObservatory:solarGarden,waterSpire:()=>utility('oxygen'),quantumLab:craterLab,signalSpire:()=>radioTower(true),
+  batteryVault:generator,gravityPark:greatPark,iceVault:craterLab,satelliteHub:()=>radioTower(true),cometPort:()=>rocketPort(true),
 };
 
 export const RAIL_LANDMARKS={
@@ -1084,6 +1087,15 @@ export const NEW_LANDMARKS={
   },
   moon:{
     0:['Rakettbasen','En rakett med serviceplattform og signalmerker.','rocketPort'],
+    2:['Solseilfeltet','Speil, solpaneler og en ringantenne fanger energien fra sola.','solarObservatory'],
+    5:['Akvapiren','Et vanntårn med flygende tallerkentak og turkise tanker.','waterSpire'],
+    6:['Kvantelaboratoriet','Et laboratorium med svevende tallerkentak og lysende prøvebeholdere.','quantumLab'],
+    8:['Signalspiret','En spiss sender med en stor gyllen signalring.','signalSpire'],
+    10:['Plasmabatteriet','En reaktor med blågrønne energiringer.','batteryVault'],
+    11:['Tyngdeparken','Lysende romsopper og et lite sveveeksperiment.','gravityPark'],
+    13:['Frosthvelvet','Et islager med blå krystallspir og kapseltanker.','iceVault'],
+    14:['Satellitthuben','Et tårn som sender vitser og værmeldinger ut i verdensrommet.','satelliteHub'],
+    15:['Kometporten','En turkis rakett og lysende innflygingsmerker.','cometPort'],
     1:['Måneboligene','Tre boligkupler med tunneler imellom.','habitat'],
     3:['Rovergarasjen','To månebiler står klare ved portene. En glassbro binder garasjens tårn sammen.','roverGarage'],
     4:['Biodomen','En grønn kuppel med planter og vekstlys.','biodome'],
@@ -1139,8 +1151,8 @@ export const EXPANDED_LANDMARKS={
     27:['Orbitalporten','En turkis rakett med en kontrollkuppel ved siden av.','orbitalPort','rocketPort'],
     28:['Stjerneboligene','Tre runde boliger samlet rundt en felles kuppel.','ringHabitat','habitat'],
     29:['Meteorarkaden','En arkadehall med lilla vegger og blå lys.','lunarArcade'],
-    30:['Kuppelhagen','Stier og planter rundt en liten dam på månen.','moonGarden'],
-    31:['Aurora Hotel','Et glasshotell med takterrasse og lys ved inngangen.','auroraHotel','moonHotel'],
+    30:['Kuppelhagen','Store, lysende romsopper og et sveveeksperiment i parken.','moonGarden'],
+    31:['Aurora Hotel','Et romhotell med tallerkenrestaurant i toppen og en lysbro.','auroraHotel','moonHotel'],
     32:['Speilfeltet','Blå solcellepaneler samlet i et eget energifelt.','solarGarden'],
     33:['Månestudioet','Et radiotårn som sender musikk hjem til jorda.','lunarRadio'],
     34:['Støvkafeen','Et sted å ta en kopp kakao under stripete markiser.','dustCafe'],
@@ -1181,9 +1193,9 @@ export const GRAND_LANDMARKS={
     42:['Islaboratoriet','Her undersøkes is fra kratrene.','craterLab'],
     43:['Måneåkeren','Drivhus og grønne vekster under glass.','biodome'],
     44:['Måneflyplassen','Se romferga ta av fra den opplyste rullebanen og lande igjen.','shuttlePort','flight'],
-    45:['Prismetårnet','To glasstårn med en lysbro mellom etasjene.','prismTower'],
-    46:['Novaspiret','En høy boligblokk med en lysende antenne.','novaTower'],
-    47:['Halotårnene','To futuristiske tårn med grønt glass og runde tak.','haloTower'],
+    45:['Prismetårnet','Et blått glasstårn med krystallspir, gyllen ring og lysbro.','prismTower'],
+    46:['Novaspiret','Et høyt, lilla spir med skrå Saturn-ring og lysende antenne.','novaTower'],
+    47:['Halotårnene','To grønnblå tårn med tallerkentak og lysende ringer.','haloTower'],
   },
   island:{
     37:['Korallfyret','Et korallrødt fyr viser vei mellom revene.','lighthouse'],
@@ -1196,4 +1208,7 @@ export const GRAND_LANDMARKS={
   },
 };
 
-export const landmarkStages=(theme,style,site)=>art[style]?.(theme,site);
+export const landmarkStages=(theme,style,site,index=site?.index)=>{
+  const stages=art[style]?.(theme,site);
+  return stages&&theme==='moon'?lunarArchitecture(style,stages,index):stages;
+};

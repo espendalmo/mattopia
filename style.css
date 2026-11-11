@@ -48,15 +48,15 @@ dialog{border:1px solid var(--line);border-radius:28px;box-shadow:0 25px 80px #1
 .new-brick{animation:place-brick .65s cubic-bezier(.2,.8,.25,1) both;transform-box:fill-box;transform-origin:center}
 .completion-garden.completion-build{width:340px;max-width:100%}
 .completion-build .earned-star svg{fill:none;stroke:#8b6825;stroke-width:1.8}
-.reward-choice-icon{display:grid;place-items:center;width:37px;height:40px;border-radius:12px;background:#e4efd9;color:#4b7750;flex-shrink:0}
-.reward-choice-icon svg{width:26px;height:26px}.reward-choice-icon.brick-choice{background:#e3eef9;color:#477ba4}
+.reward-choice-icon{display:block;width:62px;flex-shrink:0;border:1px solid #34494f;border-radius:8px;overflow:hidden}
+.reward-choice-icon svg{display:block;width:100%;height:auto}
 .reward-options .level-option{gap:10px}.reward-options .level-option small{font-size:12px}
 .build-collection{padding-top:17px;margin-top:17px;border-top:1px solid var(--line)}
 .mini-builds{display:flex;justify-content:center;align-items:flex-end;gap:12px}.mini-builds .brick-figure{width:53px;height:53px}
 .build-collection p{color:var(--muted);font-size:12px;line-height:1.5;margin:8px 0 0}
 @keyframes place-brick{0%{opacity:0;transform:translateY(-26px) rotate(-4deg)}75%{opacity:1;transform:translateY(2px) rotate(0)}100%{opacity:1;transform:translateY(0) rotate(0)}}
 @media(max-width:600px){.brick-art .garden-friend{transform:scale(.88);transform-origin:left bottom}.home:has(.brick-art){margin-top:18px}.reward-options .level-option{padding:13px 11px}}
-@media(max-width:360px){.brick-art .garden-friend{transform:scale(.76)}.reward-choice-icon{width:30px}.reward-choice-icon svg{width:23px;height:23px}}
+@media(max-width:360px){.brick-art .garden-friend{transform:scale(.76)}.reward-choice-icon{width:48px}}
 @media(prefers-reduced-motion:reduce){.new-brick{animation:none}}
 
 /* Keep the missing/solved number the same size as its neighbours. */
@@ -420,14 +420,16 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   .retry-sheet, .retry-sheet::backdrop { animation: none; }
 }
 
-.welcome-dialog { max-width: 400px; text-align: center; }
-.welcome-close { position: absolute; top: 12px; right: 12px; z-index: 3; background: var(--paper); }
-.welcome-dialog .map-eplo-close { background: var(--paper); }
-.welcome-dialog .garden-art { margin: 0 auto 12px; width: min(100%, 245px); }
-.welcome-dialog h2 { margin-bottom: 12px; font-size: clamp(1.8rem, 7vw, 2.4rem); }
-.welcome-dialog p { color: var(--muted); line-height: 1.5; }
-.welcome-dialog .welcome-reward { color: var(--green); font-weight: 700; }
-.welcome-dialog .primary { margin-top: 18px; }
+.welcome-dialog { max-width: 400px; padding: clamp(14px, 5vw, 24px); text-align: left; }
+.welcome-dialog::backdrop { background: rgb(12 32 25 / 73%); }
+.welcome-dialog .dialog-header { gap: 10px; margin-bottom: 12px; }
+.welcome-dialog h2 { font-size: clamp(1.3rem, 6vw, 1.85rem); line-height: 1.16; }
+.welcome-close { width: 44px; height: 44px; background: var(--paper); }
+.welcome-preview { margin: 12px 0 0; }
+.welcome-dialog .welcome-reward { margin-bottom: 6px; color: var(--green); font-size: .9rem; font-weight: 750; }
+.welcome-preview .garden-art { display: grid; place-items: center; height: auto; width: 100%; }
+.welcome-preview :is(.growing-plant, .brick-figure) { position: static; width: auto; max-width: 100%; height: min(122px, 24svh); }
+.welcome-dialog .primary { margin: 14px auto 3px; min-height: 54px; padding-block: 10px; }
 
 .missing-part {
   min-width: 50px;
@@ -680,7 +682,8 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   font-weight: 750;
 }
 .project-peek svg { width: 15px; height: 15px; }
-.welcome-dialog .project-peek { margin-top: 24px; }
+.welcome-preview .project-peek { width: 100%; margin: 0; }
+.welcome-preview .project-peek canvas { height: clamp(112px, 23svh, 156px); }
 .pause-dialog .project-peek canvas { height: clamp(130px, 30dvh, 180px); }
 .completion-garden.completion-project { width: min(100%, 410px); height: auto; margin-bottom: 18px; }
 .completion-project .earned-star svg { fill: none; stroke: #8b6825; stroke-width: 1.8; }
@@ -690,6 +693,15 @@ dialog h2[tabindex="-1"]:focus { outline: none; }
   padding: clamp(12px, 2.3vw, 23px);
 }
 .project-dialog .dialog-header { margin-bottom: 10px; }
+.project-round-action {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 9px 0 5px;
+  margin-top: 8px;
+  background: var(--paper);
+}
+.project-round-action .primary { min-height: 52px; margin: 0 auto; padding: 9px 15px; font-size: 1rem; }
 .project-dialog .dialog-header p, .project-viewer p, .project-milestone {
   margin-top: 5px;
   color: var(--muted);
@@ -1057,7 +1069,7 @@ canvas.lunar-starfield,
 
 .eplo-note {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 11px;
   padding: 11px 14px 11px 10px;
   border: 1px solid #d7e3cf;
@@ -1066,22 +1078,27 @@ canvas.lunar-starfield,
   color: var(--ink);
   text-align: left;
 }
-.eplo-avatar { position: relative; flex: 0 0 57px; height: 53px; }
+.eplo-avatar { position: relative; width: 57px; flex: 0 0 57px; height: 53px; }
 .eplo-avatar .buddy { position: absolute; inset: 0 auto auto 0; margin: 0; scale: .4; transform-origin: top left; }
+.eplo-note .eplo-bubble { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .eplo-note strong, .eplo-hint-name { color: var(--green); font-weight: 800; }
 .eplo-note p, .complete .eplo-note p { margin: 3px 0 0; color: var(--ink); font-size: .91rem; line-height: 1.46; }
+.welcome-dialog .eplo-note { gap: 8px; padding: 7px 10px; }
+.welcome-dialog .eplo-bubble { min-width: 0; overflow-wrap: anywhere; }
+.welcome-dialog .eplo-note p { font-size: .86rem; line-height: 1.4; }
 .pause-dialog .eplo-note { margin: 14px 0; }
 .pause-dialog .eplo-note p { margin: 3px 0 0; }
 .pause-dialog .pause-context { margin: 14px 0; }
 .eplo-finale { margin: 13px auto; border-color: #e6d6a5; background: linear-gradient(115deg,#edf5e5,#fff5d8); }
 .companion-stage { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.companion-strip.perfect-round {
+.companion-strip:is(.perfect-round, .companion-returned) {
   position: sticky;
   top: 0;
   z-index: 3;
   flex-shrink: 0;
   pointer-events: none;
 }
+.companion-strip.companion-returned { border-radius: 18px; background: var(--paper); }
 .perfect-round .companion-stage {
   position: absolute;
   inset: clamp(22px, 8dvh, 58px) 0 auto;
@@ -1135,18 +1152,12 @@ canvas.lunar-starfield,
 .home-surprise {
   position: absolute;
   z-index: 2;
-  inset: auto auto -33px max(-10px, calc((100% - 410px) / 2 - 12px));
+  inset: auto auto 8px max(6px, calc((100% - 410px) / 2 + 10px));
   width: 142px;
   height: 132px;
-  transform: scale(.82);
+  transform: scale(.9);
   transform-origin: bottom left;
   pointer-events: none;
-}
-.home-reward:has(.home-surprise:not([hidden])) .garden-friend { visibility: hidden; }
-.home-reward:has(.home-surprise:not([hidden])) + .home-eyebrow {
-  position: relative;
-  z-index: 3;
-  text-shadow: 0 1px 4px var(--paper), 0 0 3px var(--paper);
 }
 .eplo-act { position: relative; width: 100%; height: 100%; }
 .home-surprise .buddy { margin: 0; transform: none; }
@@ -1162,9 +1173,31 @@ canvas.lunar-starfield,
 .yawn-breath { position: absolute; right: 9px; top: 21px; color: #52788b; font-weight: 800; letter-spacing: 2px; }
 .eplo-book { position: absolute; left: 29px; top: 82px; width: 84px; height: 52px; }
 @media (max-width: 360px) {
-  .home-surprise { bottom: -29px; transform: scale(.75); }
+  .home-surprise { transform: scale(.81); }
 }
 @media (prefers-reduced-motion: no-preference) {
+  .reward-finished.brick-art > .brick-figure {
+    transform-origin: 50% 79%;
+    animation: finished-build .88s .64s ease-out both;
+  }
+  .reward-finished .plant-growth {
+    transform-box: view-box;
+    transform-origin: 54.3% 70.3%;
+    animation: finished-plant 1.2s .66s ease-in-out both;
+  }
+  @keyframes finished-build {
+    0%, 100% { transform: none; }
+    34% { transform: translateY(-11px) rotate(-4deg) scale(1.055); }
+    63% { transform: translateY(0) rotate(3deg) scale(.98); }
+    81% { transform: translateY(-3px) rotate(-1deg); }
+  }
+  @keyframes finished-plant {
+    0%, 100% { transform: none; }
+    29% { transform: rotate(-8deg) scale(1.045); }
+    63% { transform: rotate(6deg) scale(1.02); }
+    84% { transform: rotate(-2deg); }
+  }
+  .companion-returned .companion-stage { animation: eplo-arrive 260ms ease-out both; }
   .perfect-round .companion-stage { animation: perfect-stage 3.5s ease both; }
   .perfect-round .companion-buddy { animation: perfect-bounce .82s .13s ease-out both; }
   .perfect-round p { animation: perfect-bubble .52s .16s ease-out both; }
@@ -1208,7 +1241,8 @@ canvas.lunar-starfield,
     72% { opacity: .95; transform: translate(var(--spark-x),var(--spark-y)) rotate(30deg) scale(1.1); }
     100% { opacity: 0; transform: translate(var(--spark-x),calc(var(--spark-y) - 8px)) rotate(55deg) scale(.52); }
   }
-  .eplo-act { animation: surprise-appear .38s cubic-bezier(.22,.8,.4,1.23) both; }
+  .home-surprise:not([data-act="idle"]) .eplo-act { animation: surprise-appear .38s cubic-bezier(.22,.8,.4,1.23) both; }
+  .home-surprise[data-act="idle"] .eplo-act { animation: eplo-arrive 180ms ease-out both; }
   [data-act="juice"] .juice-glass { animation: eplo-sip 2.15s .38s ease-in-out 2; }
   [data-act="shades"] .sun-glasses { animation: eplo-shades 2.6s .35s ease-in-out 2; }
   [data-act="yawn"] .buddy-smile { animation: eplo-yawn 2.8s .55s ease-in-out both; }
@@ -1284,7 +1318,6 @@ canvas.lunar-starfield,
   pointer-events: none;
 }
 .map-eplo-overlay .eplo-note { margin: 0; padding: 6px 10px; gap: 6px; font-size: .83rem; }
-.map-eplo-overlay .eplo-avatar { width: 37px; flex-basis: 37px; }
 .map-eplo-overlay .eplo-note p { margin: 1px 0 0; }
 .completion-project .map-eplo-overlay { width: min(320px, calc(100% - 64px)); }
 @media (prefers-reduced-motion: no-preference) {
@@ -1389,9 +1422,6 @@ canvas.lunar-starfield,
 }
 .map-eplo-overlay:not(.map-eplo-standalone) .map-eplo-close { top: 0; right: 0; }
 .map-eplo-overlay:not(.map-eplo-standalone) .eplo-note p { font-size: .82rem; line-height: 1.35; }
-.welcome-map-stage { margin: 12px 0; }
-.welcome-map-stage .project-peek { margin: 0; }
-.welcome-dialog > .eplo-note { margin: 10px 0; }
 .adult-dialog .adult-intro { margin-bottom: 15px; }
 .adult-dialog .admin-section { padding: 7px 0; }
 .adult-dialog .admin-section-body { padding: 8px 0 12px; }
@@ -1416,3 +1446,85 @@ canvas.lunar-starfield,
 @media (pointer: coarse) {
   html, body, dialog, .task-scroll { touch-action: pan-x pan-y; }
 }
+
+/* Small local moments stay inside the map, clear of its controls. */
+.project-thoughts { position: absolute; inset: 0; overflow: hidden; pointer-events: none; border-radius: 15px; }
+.project-thoughts span { position: absolute; left: 0; top: 0; min-width: 23px; height: 27px; padding: 1px 5px;
+  color: #544573; background: #fff6dc; border: 1.5px solid #b9abcf; border-radius: 12px 12px 12px 3px;
+  font-size: 18px; font-weight: 800; line-height: 23px; text-align: center; box-shadow: 0 2px 6px #0003; }
+.project-thoughts span[hidden] { display: none; }
+
+.map-stage-actions {
+  position: absolute;
+  z-index: 5;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+}
+.map-stage-actions .icon-button {
+  width: 46px;
+  height: 46px;
+  color: var(--ink);
+  border: 1px solid #d4e0d6;
+  background: #fcfdf8;
+  box-shadow: 0 2px 8px #14282322;
+}
+.map-stage-actions .map-full-start { display: none; }
+.project-dialog.project-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+}
+.project-fullscreen > :not(.project-viewer),
+.project-fullscreen .project-viewer > :not(.project-map-stage) { display: none; }
+.project-fullscreen .project-viewer,
+.project-fullscreen .project-map-stage { width: 100%; height: 100%; }
+.project-fullscreen .project-map-stage > canvas:not(.project-fireworks) { height: 100%; border: 0; border-radius: 0; }
+.project-fullscreen .map-stage-actions {
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+}
+.project-fullscreen .map-stage-actions .map-full-start { display: inline-grid; color: #fff; background: var(--green); border-color: var(--green); }
+.project-fullscreen .map-info-card {
+  left: max(10px, env(safe-area-inset-left));
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+.result-latest > div { flex: 1 1 205px; min-width: 0; }
+.complete .result-latest .build-story { margin: 5px 0 0; font-size: .88rem; line-height: 1.4; }
+
+.money-visual, .money-pile, .money-exchange {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.money-visual { min-height: 76px; gap: 13px; }
+.money-piece {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 3px;
+  color: #443824;
+  border: 2px solid #b79654;
+  background: #f6e3ad;
+  box-shadow: inset 0 0 0 3px #fff5d1;
+}
+.money-piece strong { font-size: 1.38rem; line-height: 1; }
+.money-piece small { font-size: .72rem; }
+.money-coin { width: 54px; height: 54px; align-items: center; border-radius: 50%; }
+.money-note { min-width: 91px; min-height: 47px; align-items: center; padding: 7px 11px; border-radius: 8px; }
+.money-note[data-money-value="50"] { color: #24574d; border-color: #7aa998; background: #d4e8cb; box-shadow: inset 0 0 0 3px #e9f4df; }
+.money-note[data-money-value="100"] { color: #244d6a; border-color: #7a9fae; background: #cce5ed; box-shadow: inset 0 0 0 3px #e5f3f8; }
+.money-note[data-money-value="200"], .money-note[data-money-value="500"] { color: #604676; border-color: #a78ab8; background: #e8d9ef; box-shadow: inset 0 0 0 3px #f6ebf8; }
+.money-exchange svg { width: 23px; height: 23px; color: var(--green); }
+.money-exchange > strong { font-size: 1.16rem; }

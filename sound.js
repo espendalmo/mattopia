@@ -1,4 +1,4 @@
-import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,soundClip} from './sound-art.js';
+import {ambienceBuffer,ACTIVITY_SOUNDS,buildingClip,characterClip,soundClip} from './sound-art.js';
 import {fireworkBursts} from './project-fireworks.js';
 
 // Original, local melodies: [MIDI pitch, start, duration, gain].
@@ -16,6 +16,15 @@ SOUND_PATTERNS.landmark=[[64,.8,.14,.043],[67,.9,.17,.05],[72,1.01,.2,.055],[76,
 SOUND_PATTERNS.tap=[[79,0,.061,.012]];
 SOUND_PATTERNS.back=[[72,0,.082,.013,68]];
 SOUND_PATTERNS.hint=[[72,0,.11,.023],[81,.075,.17,.025,83]];
+SOUND_PATTERNS.perfect=[[76,0,.13,.055],[81,.09,.16,.062],[85,.19,.18,.065],
+  [88,.30,.34,.057],[81,.30,.30,.032],[69,.30,.31,.023]];
+SOUND_PATTERNS['eplo-juice']=[[66,0,.09,.018,60],[70,.12,.12,.022,75]];
+SOUND_PATTERNS['eplo-shades']=[[76,0,.12,.021,80],[83,.085,.18,.021]];
+SOUND_PATTERNS['eplo-stars']=[[79,0,.10,.019],[84,.09,.11,.020],[88,.18,.15,.018]];
+SOUND_PATTERNS['eplo-winter']=[[74,0,.08,.016],[71,.07,.08,.017],[76,.15,.13,.020]];
+SOUND_PATTERNS['eplo-yawn']=[[72,0,.29,.022,60],[66,.22,.14,.013,70]];
+SOUND_PATTERNS['eplo-book']=[[74,0,.065,.017,69],[77,.095,.11,.016]];
+SOUND_PATTERNS['eplo-puff']=[[67,0,.105,.023,51],[80,0,.055,.010,72]];
 SOUND_PATTERNS.finale=[[60,.45,.18,.043],[67,.55,.19,.045],[72,.72,.23,.055],[76,.91,.27,.054],
   [79,1.09,.28,.049],[84,1.29,.67,.06],[79,1.29,.64,.036],[76,1.29,.65,.029],[60,1.29,.65,.032]];
 const successRoots=[65,67,69,70,72,74,76,77];
@@ -28,7 +37,8 @@ for (const [i,root] of successRoots.entries()) {
     [root,.156,.25,.022],
   ];
 }
-const lightSounds=new Set(['key','select','open','next','build','tap','back','hint']);
+const lightSounds=new Set(['key','select','open','next','build','tap','back','hint',
+  ...Object.keys(SOUND_PATTERNS).filter(kind=>kind.startsWith('eplo-'))]);
 const worlds=new Set(['city','moon','island']);
 export const AMBIENCE_LEVEL=.75;
 const floor=.0001;
@@ -209,7 +219,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function melody(kind,now,build=false) {
     for (const [midi,offset,duration,volume,endMidi] of SOUND_PATTERNS[kind]) {
       const source=context.createOscillator(),gain=context.createGain(),start=now+offset;
-      source.type=kind==='finish'||kind==='finale'||kind==='key'?'triangle':'sine';
+      source.type=kind==='finish'||kind==='finale'||kind==='perfect'||kind==='key'?'triangle':'sine';
       source.frequency.setValueAtTime(440*2**((midi-69)/12),start);
       if (endMidi) source.frequency.exponentialRampToValueAtTime(440*2**((endMidi-69)/12),start+duration*.75);
       gain.gain.setValueAtTime(floor,start);
@@ -236,7 +246,9 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       session=null;
     }
   }
-  function play(kind,enabled=true) {
+  function play(kind,enabled=true,{onlyWhileRunning=false}={}) {
+    // A timed surprise should never queue a cue until a later tap unlocks audio.
+    if (onlyWhileRunning&&context?.state!=='running') return;
     if (!lightSounds.has(kind)) stopVoices();
     if (!enabled||!SOUND_PATTERNS[kind]) return;
     const token=generation;
@@ -247,19 +259,28 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     }).catch(()=>{});
   }
 
-  function playBuilding(world,index,kind,enabled=true) {
-    if (!enabled||!worlds.has(world)) return;
+  function playInspection(key,kind,makeClip,enabled,volume) {
+    if (!enabled) return;
     stopBuilding(true);
     const token=generation,building=buildingGeneration;
     unlock().then(()=>{
       if (!context||token!==generation||building!==buildingGeneration) return;
-      const key=`${world}:${index}:${kind}`;
       if (!buildingClips.has(key)) {
-        buildingClips.set(key,buildingClip(context,world,index,kind));
+        buildingClips.set(key,makeClip(context));
         if (buildingClips.size>48) buildingClips.delete(buildingClips.keys().next().value);
       }
-      sample(kind,context.currentTime+.075,.16,{building:true,buffer:buildingClips.get(key)});
+      sample(kind,context.currentTime+.075,volume,{building:true,buffer:buildingClips.get(key)});
     }).catch(()=>{});
+  }
+
+  function playBuilding(world,index,kind,enabled=true) {
+    if (worlds.has(world)) playInspection(`${world}:${index}:${kind}`,kind,
+      audio=>buildingClip(audio,world,index,kind),enabled,.16);
+  }
+
+  function playCharacter(kind,voice,enabled=true) {
+    const variant=Math.max(0,Math.trunc(voice)||0)%24;
+    playInspection(`character:${kind}:${variant}`,kind,audio=>characterClip(audio,kind,variant),enabled,.135);
   }
 
   function playBuild(scene,enabled=true,{finale=false,tail=true}={}) {
@@ -286,5 +307,5 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (tail&&scene?.world) startAmbience(scene,{delay:finished?2.08:workStart+3.38,duration:5.4});
   }
 
-  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playBuild,stopBuild};
+  return {play,stop,resume,startAmbience,stopAmbience,activity,playBuilding,playCharacter,playBuild,stopBuild};
 }

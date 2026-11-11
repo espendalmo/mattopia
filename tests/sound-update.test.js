@@ -14,8 +14,29 @@ test('Sound off creates no audio context; rapid new feedback replaces previous n
 });
 test('The encouraging retry melody and completion fanfare are distinct and bounded',()=>{
   assert.notDeepEqual(SOUND_PATTERNS.success,SOUND_PATTERNS.retry);
+  assert.notDeepEqual(SOUND_PATTERNS.perfect,SOUND_PATTERNS['task-success-7']);
   for(const notes of Object.values(SOUND_PATTERNS))for(const[midi,start,duration,gain]of notes){assert.ok(midi>=48&&midi<=96);assert.ok(start>=0&&duration>0&&start+duration<2);assert.ok(gain>0&&gain<=.08);}
   assert.ok(SOUND_PATTERNS.retry.at(-1)[4]>SOUND_PATTERNS.retry.at(-1)[0]);
+});
+
+test('Timed Eplo sounds wait for an already running audio context and respect mute',async()=>{
+  let created=0,played=0;
+  const context={state:'suspended',currentTime:0,destination:{},
+    resume(){this.state='running';return Promise.resolve();},
+    createOscillator:()=>({frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){},start(){played++;},stop(){}}),
+    createGain:()=>({gain:{setValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}})};
+  const player=createSoundPlayer(()=>{created++;return context;},()=>null);
+  const idle={onlyWhileRunning:true};
+  player.play('eplo-shades',true,idle);
+  assert.equal(created,0);
+  player.play('open');
+  await Promise.resolve();
+  const before=played;
+  player.play('eplo-shades',false,idle);
+  player.play('eplo-puff',true,idle);
+  await Promise.resolve();
+  assert.equal(played-before,SOUND_PATTERNS['eplo-puff'].length);
+  player.stop();
 });
 test('Key clicks are short and quiet, respect mute, and do not cut off an encouraging melody',async()=>{
   let created=0,stopped=0,started=0;
@@ -63,6 +84,16 @@ test('Building cues are short and distinct, and only the latest selection plays'
   p.stopBuild({fade:true});
   await Promise.resolve();
   assert.equal(played.length,2,'closing the map cancels a queued building cue');
+  p.playCharacter('alien',4,false);
+  p.playCharacter('alien',4);
+  p.playCharacter('astronaut',18);
+  await Promise.resolve();
+  assert.equal(played.length,3,'only the latest inspected character greets the player');
+  p.playCharacter('alien',4);
+  await Promise.resolve();
+  assert.equal(played.length,4);
+  assert.notDeepEqual(played[2].buffer.data,played[3].buffer.data);
+  assert.ok(played.slice(2).every(({buffer})=>buffer.duration<=.55&&buffer.data.some(value=>Math.abs(value)>.1)));
 });
 
 test('World ambience is quiet, loops once, and stops even if its audio context resumes late',async()=>{
