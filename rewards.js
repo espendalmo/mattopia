@@ -1,6 +1,6 @@
 import { PLANTS, plantById } from './plants.js';
 import { projectById, restoreProjects } from './projects.js';
-import { isWorld, currentWorld, ensureWorld, replaceCurrentWorld, restoreWorlds, worldAdvance, worldStatus } from './worlds.js';
+import { isWorld, currentWorld, ensureWorld, replaceCurrentWorld, restoreWorlds, worldAdvance, worldStatus, WORLD_BUILD_STEPS } from './worlds.js';
 
 // Local, code-drawn toy bricks. A piece is earned only by finishing a round.
 const PALETTE = { blue:'#398bd4', red:'#df5149', yellow:'#efc546', green:'#60a86d', orange:'#ec9a43', purple:'#9877bd', white:'#e8eee9', black:'#52626a', pink:'#e483a5', tan:'#c99a6e', teal:'#42aba4' };
@@ -94,7 +94,7 @@ export const BUILD_MODELS = [
     {x:42,y:69,w:57,h:71,color:'teal',shape:'roof'},
     {x:102,y:58,w:47,h:82,color:'red',shape:'roof'},
   ]},
-  { id:'owl', name:'en ugle', done:'Ugla er ferdig!', pieces:[
+  { id:'owl', name:'en ugle', done:'Uglen er ferdig!', pieces:[
     {x:49,y:168,w:99,h:22,color:'tan',print:'paws'},
     {x:55,y:117,w:85,h:51,color:'orange',print:'feathers'},
     {x:27,y:124,w:29,h:37,color:'purple'},
@@ -140,6 +140,8 @@ export const BUILD_MODELS = [
 const ids = BUILD_MODELS.map(m=>m.id);
 export const modelById = id => BUILD_MODELS.find(m=>m.id===id);
 const count = n => Number.isSafeInteger(n)&&n>=0;
+export const PERFECT_ROUNDS_PER_BONUS=3;
+const HERO_BONUS_BRICKS=3;
 
 function shuffle(items,rng) {
   const a=[...items];
@@ -208,14 +210,19 @@ function nextPlant(garden, rng) {
 
 export function restoreRewards(raw,total=0) {
   const plantRounds = count(raw?.plantRounds) && raw.plantRounds <= total ? raw.plantRounds : total;
-  const projects=restoreProjects(raw?.projects,total);
+  const perfectRounds=count(raw?.perfectRounds)?Math.min(raw.perfectRounds,total):0;
+  const buildBonusesUsed=count(raw?.buildBonusesUsed)?Math.min(raw.buildBonusesUsed,Math.floor(perfectRounds/PERFECT_ROUNDS_PER_BONUS)):0;
+  const bonusBuildSteps=count(raw?.bonusBuildSteps)?Math.min(raw.bonusBuildSteps,buildBonusesUsed*(WORLD_BUILD_STEPS-1)):0;
+  const bonusHeroBricks=count(raw?.bonusHeroBricks)?Math.min(raw.bonusHeroBricks,buildBonusesUsed*HERO_BONUS_BRICKS):0;
+  const projects=restoreProjects(raw?.projects,total,bonusHeroBricks);
   return {
     rewardMode:raw?.rewardMode==='bricks'||projectById(raw?.rewardMode)?raw.rewardMode:'plant',
     plantRounds,
     garden:restoreGarden(raw?.garden, plantRounds),
     brickBuild:restoreBuild(raw?.brickBuild),
     projects,
-    worlds:restoreWorlds(raw?.worlds,projects,total),
+    worlds:restoreWorlds(raw?.worlds,projects,total+bonusBuildSteps),
+    perfectRounds, buildBonusesUsed, bonusBuildSteps, bonusHeroBricks,
     lastRewardRoundId:typeof raw?.lastRewardRoundId==='string'?raw.lastRewardRoundId:null,
   };
 }
@@ -234,39 +241,57 @@ export function prepareReward(state,rng=Math.random) {
   if(build.pieces===modelById(build.model).pieces.length)build=nextBuild(build,rng);
   return {...state,brickBuild:build};
 }
-export function awardPractice(state,roundId,rng=Math.random) {
+export function awardPractice(state,roundId,rng=Math.random,perfect=false) {
   if(!roundId||state.lastRewardRoundId===roundId)return {state,reward:null};
+  if (perfect) state={...state,perfectRounds:(state.perfectRounds??0)+1};
   const mode=state.rewardMode, project=projectById(mode);
+  const earned=Math.floor((state.perfectRounds??0)/PERFECT_ROUNDS_PER_BONUS);
+  const used=state.buildBonusesUsed??0;
+  const available=earned>used;
+  const bonus=amount=>amount?{bonus:true,bonusSteps:amount}:{};
+  const spend=amount=>amount?{buildBonusesUsed:used+1}:{};
   if (isWorld(mode)) {
     const prepared=ensureWorld(state,mode,rng);
     const before=currentWorld(prepared,mode);
-    const map=worldAdvance(before,mode);
-    return {state:{...replaceCurrentWorld(prepared,mode,map),lastRewardRoundId:roundId},
-      reward:{mode,map,completed:worldStatus(map).completed,added:map!==before}};
+    let map=worldAdvance(before,mode);
+    const after=worldStatus(map);
+    const extra=map!==before&&after.phase>0&&available ? WORLD_BUILD_STEPS-after.phase : 0;
+    if (extra) map={...map,progress:map.progress+extra};
+    return {state:{...replaceCurrentWorld(prepared,mode,map),lastRewardRoundId:roundId,...spend(extra),
+      ...(extra&&{bonusBuildSteps:(state.bonusBuildSteps??0)+extra})},
+      reward:{mode,map,completed:worldStatus(map).completed,added:map!==before,...bonus(extra)}};
   }
   if (project) {
     const before=state.projects[mode]||0;
-    const completed=Math.min(project.total,before+1);
-    return {state:{...state,projects:{...state.projects,[mode]:completed},lastRewardRoundId:roundId},
-      reward:{mode,completed,added:completed>before}};
+    const next=Math.min(project.total,before+1);
+    const extra=available?Math.min(HERO_BONUS_BRICKS,project.total-next):0;
+    const completed=next+extra;
+    return {state:{...state,projects:{...state.projects,[mode]:completed},lastRewardRoundId:roundId,...spend(extra),
+      ...(extra&&{bonusHeroBricks:(state.bonusHeroBricks??0)+extra})},
+      reward:{mode,completed,added:completed>before,...bonus(extra)}};
   }
   if(state.rewardMode!=='bricks') {
     const plantRounds=(state.plantRounds||0)+1;
     let garden = restoreGarden(state.garden, state.plantRounds || 0);
     if (garden.stage === 5) garden = nextPlant(garden, rng);
-    garden = { ...garden, stage:garden.stage + 1 };
+    const extra=Number(available&&garden.stage<4);
+    garden = { ...garden, stage:garden.stage + 1 + extra };
     if (garden.stage === 5 && !garden.collection.includes(garden.plant)) {
       garden.collection = [...garden.collection, garden.plant];
     }
-    return { state:{ ...state, plantRounds, garden, lastRewardRoundId:roundId }, reward:{ mode:'plant', garden } };
+    return {state:{...state,plantRounds,garden,lastRewardRoundId:roundId,...spend(extra)},
+      reward:{mode:'plant',garden,...bonus(extra)}};
   }
   let build=ensureBuild(state.brickBuild,rng);
   const model=modelById(build.model);
   if(build.pieces===model.pieces.length)build=nextBuild(build,rng);
-  build={...build,pieces:build.pieces+1};
-  const complete=build.pieces===modelById(build.model).pieces.length;
+  const max=modelById(build.model).pieces.length;
+  const extra=Number(available&&build.pieces+1<max);
+  build={...build,pieces:build.pieces+1+extra};
+  const complete=build.pieces===max;
   if(complete)build=reserveNextBuild({...build,collection:[...build.collection,build.model].slice(-20),unlocked:[...new Set([...build.unlocked,build.model])],completed:build.completed+1},rng);
-  return {state:{...state,brickBuild:build,lastRewardRoundId:roundId},reward:{mode:'bricks',build,complete}};
+  return {state:{...state,brickBuild:build,lastRewardRoundId:roundId,...spend(extra)},
+    reward:{mode:'bricks',build,complete,...bonus(extra)}};
 }
 
 function tint(hex,amount) {
@@ -386,7 +411,7 @@ export function renderPuzzleBrick(color,mark='') {
   return `<svg class="puzzle-brick${color?'':' puzzle-shadow'}" viewBox="${PUZZLE_BOX.join(' ')}" aria-hidden="true" focusable="false">${art}</svg>`;
 }
 
-export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}) {
+export function renderBuildSvg(build,{animate=false,mini=false,preview=false,newPieces=1}={}) {
   const model=modelById(build?.model);if(!model)return '';
   const pieces=Math.max(0,Math.min(model.pieces.length,build.pieces));
   const label=preview ? 'Omrisset av neste bygg' : `${model.name}, ${pieces} av ${model.pieces.length} klosser på plass`;
@@ -407,5 +432,5 @@ export function renderBuildSvg(build,{animate=false,mini=false,preview=false}={}
     <ellipse cx="${(left+right)/2}" cy="${DEPTH/2-1}" rx="${(right-left)/2+6}" ry="${DEPTH/2+4}" fill="#dae5da"/>
     <ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2-2}" ry="${DEPTH/2}" fill="#c5d4ca"/>
   </g>`;
-  return `${svg}${brickMaterials(finish,built.map(({p})=>p.color))}${base}${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${built.map(({p,i})=>brick(p,false,animate&&i===pieces-1,false,finish)).join('')}</svg>`;
+  return `${svg}${brickMaterials(finish,built.map(({p})=>p.color))}${base}${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${built.map(({p,i})=>brick(p,false,animate&&i>=pieces-newPieces,false,finish)).join('')}</svg>`;
 }

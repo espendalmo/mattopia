@@ -13,7 +13,7 @@ const oval=Array.from({length:16},(_,i)=>{
 });
 const curved=new Set(['park','garden','greatPark','bandstand','palmGarden','moonGarden','biodome','habitat','ringHabitat',
   'moonHotel','rocketPort','orbitalPort','telescope','tropicalPools','beachClub','coaster']);
-const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison',
+const square=new Set(['school','sawmill','factory','airstrip','solar','solarGarden','prison','residence',
   'field','spaceField','launch','pool','dance']);
 const paved=new Set(['busStation','airport','airstrip','shuttlePort','factory','sawmill','hoverDealer','roverGarage','moonWorkshop','moonCargo','cargoDepot',
   'railwayStation','monorailStation']);
@@ -88,7 +88,7 @@ export function plotAccess(layout,plot,foundation) {
   const dx=entry.x-plot.x,dz=entry.z-plot.z;
   const front=dx*s+dz*c,across=dx*c-dz*s;
   const drive=paved.has(plot.kind);
-  const endX=foundation.x+(drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
+  const endX=foundation.x+(plot.kind==='residence'?0:drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
   const rim=foundation.outline;
   let endZ=foundation.z+foundation.d*.5;
   if (rim) {
@@ -98,12 +98,14 @@ export function plotAccess(layout,plot,foundation) {
     });
     if (edges.length) endZ=Math.max(...edges);
   }
-  const startZ=front-(layout.theme==='island'?.85:1.05);
-  if (startZ-endZ<.34) return null;
+  const direction=plot.beach?-1:1;
+  if (plot.beach) endZ=foundation.z-foundation.d*.5;
+  const startZ=front-direction*(layout.theme==='island'?.85:1.05);
+  if (direction*(startZ-endZ)<.34) return null;
   const startX=across+(endX-across)*.26;
   const path=Array.from({length:7},(_,i)=>{
     const t=i/6,ease=t*t*(3-2*t);
-    const [x,,z]=pointOnSite([startX+(endX-startX)*ease,0,startZ+(endZ-startZ+.06)*t],plot);
+    const [x,,z]=pointOnSite([startX+(endX-startX)*ease,0,startZ+(endZ-startZ+direction*.06)*t],plot);
     return {x,z,y:roadElevation(layout,x,z)*(1-ease)+(plot.y+.155)*ease};
   });
   return {path,drive};

@@ -14,6 +14,7 @@ import * as curriculum from '../curriculum.js';
 import * as projects from '../projects.js';
 import * as worlds from '../worlds.js';
 import {hintFor} from '../learning.js';
+import {text as msg} from '../i18n.js';
 import {rewardIllustration} from '../illustrations.js';
 import {seasonForDate,seasonMark} from '../seasons.js';
 import {PRODUCTION_PATH} from '../update.js';
@@ -33,7 +34,7 @@ function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=n
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
   const location={pathname:'/mattopia-beta/',search:'',hash};
   const window={location,history:{replaceState(){location.hash='';}},addEventListener:(name,fn)=>{events[name]=fn;},scrollTo(){}};
-  const context=vm.createContext({...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mapCharacterInfo,constructionStory,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
+  const context=vm.createContext({msg,AbortController,...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mapCharacterInfo,constructionStory,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
     requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),clearTimeout:id=>{if(timers[id-1]) timers[id-1].cancelled=true;},matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({
@@ -257,6 +258,40 @@ test('First setup imports existing practice and later profiles get independent s
   assert.equal(reopened.run('state.level'),1);
   assert.equal(reopened.run('state.roundsCompleted'),0);
   assert.equal(JSON.parse(stored.get(core.STORAGE_KEY)).roundsCompleted,4);
+});
+
+test('A profile name appears safely in a residence choice and stays with the selected house',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`submitProfile('first',{name:'',grade:3});
+    state=selectRewardMode(state,'island',()=>.41);
+    state.roundsCompleted=6;
+    const map={...currentWorld(state,'island'),order:[0,3],progress:6};
+    state=replaceCurrentWorld(state,'island',map);
+    let choices;
+    showDialog=html=>{choices=html;};
+    startRound();`);
+  assert.doesNotMatch(h.run('choices'),/sitt palass/);
+  h.run(`submitProfile('edit',{name:'Ada & <Luna>',grade:3});
+    startRound();`);
+  assert.match(h.run('choices'),/Ada &amp; &lt;Luna&gt; sitt palass/);
+  const button={dataset:{action:'world-choose',project:'island',building:String(worlds.RESIDENCE_PLACE)}};
+  h.events.click({target:{closest:selector=>selector==='[data-action]'?button:null}});
+  assert.equal(h.run("currentWorld(state,'island').residenceName"),'Ada & <Luna>');
+  assert.ok(h.run('state.active'));
+});
+
+test('The completion screen tells the player how the bonus affected each build',()=>{
+  const h=harness({roundFixture:false});
+  for (const [mode,message] of [
+    ['plant',/1 ekstra vekststeg/],['bricks',/1 ekstra kloss\./],
+    ['armor',/3 ekstra klosser/],['moon',/reiste bygget seg i rekordfart/],
+  ]) {
+    h.run(`state=selectRewardMode({...freshState(),perfectRounds:2,roundsCompleted:3},${JSON.stringify(mode)},()=>.41);
+      { const result=awardPractice(state,'bonus-test',()=>.41,true); state=result.state; completedReward=result.reward; }
+      view='complete'; render();`);
+    assert.match(h.root.innerHTML,/class="completion-bonus"/);
+    assert.match(h.root.innerHTML,message);
+  }
 });
 
 test('Changing a grade filters future tracks and preserves the ongoing round', () => {
@@ -630,14 +665,16 @@ test('Explore the map can start a round, using the same building choice and resu
 test('Map fullscreen keeps a round shortcut and Escape restores the previous dialog view',()=>{
   const h=harness({channel:'preview'});
   h.run(`
-    const attributes=new Map(),classes=new Set(),handlers=new Map();
+    const attributes=new Map(),classes=new Set(),handlers=new Map(),styles=new Map(),viewportEvents=new Map();
+    window.visualViewport={width:298,height:482,offsetLeft:41,offsetTop:16,
+      addEventListener(name,fn){viewportEvents.set(name,fn);}};
     const expand={setAttribute:(key,value)=>attributes.set(key,value),focus(){},
       addEventListener(name,fn){this[name]=fn;}};
     const viewer={querySelector:key=>key==='[data-map-expand]'?expand:null};
-    const modal={scrollTop:87,querySelector:key=>key==='.project-viewer'?viewer:null,
+    const modal={scrollTop:87,style:{setProperty:(key,value)=>styles.set(key,value)},querySelector:key=>key==='.project-viewer'?viewer:null,
       classList:{toggle(name,enabled){enabled?classes.add(name):classes.delete(name);}},
       addEventListener:(name,fn)=>handlers.set(name,fn)};
-    let markup, cancelPrevented=false;
+    let markup, cancelPrevented=false, gesturePrevented=false;
     showDialog=(html,_css,open)=>{markup=html;open(modal);};
     state=selectRewardMode(freshState(),'moon',()=>.4);
     showProject('moon');
@@ -647,6 +684,12 @@ test('Map fullscreen keeps a round shortcut and Escape restores the previous dia
   assert.equal(h.run("classes.has('project-fullscreen')"),true);
   assert.equal(h.run("attributes.get('aria-label')"),'Avslutt fullskjerm');
   assert.equal(h.run('modal.scrollTop'),0);
+  assert.equal(h.run("styles.get('--map-viewport-left')"),'41px');
+  assert.equal(h.run("styles.get('--map-viewport-width')"),'298px');
+  h.run("window.visualViewport.offsetTop=27; viewportEvents.get('scroll')();");
+  assert.equal(h.run("styles.get('--map-viewport-top')"),'27px');
+  h.run("handlers.get('gesturestart')({cancelable:true,preventDefault(){gesturePrevented=true;}});");
+  assert.equal(h.run('gesturePrevented'),true);
   h.run("handlers.get('cancel')({preventDefault(){cancelPrevented=true;}})");
   assert.equal(h.run('cancelPrevented'),true);
   assert.equal(h.run("classes.has('project-fullscreen')"),false);
@@ -749,4 +792,67 @@ test('Home Eplo stays visible, changes only while idle and returns after a puff'
   h.run("view='round'; render();");
   assert.equal(h.events.pointerdown,undefined);
   assert.equal(h.timers.at(-1).cancelled,true);
+});
+
+test('Confirmation dialogs place their initial focus on the title instead of the retain button',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`submitProfile('first',{name:'Ada',grade:3});
+    const title={setAttribute(name,value){this[name]=value;}};
+    const modal={setAttribute(){},querySelector:selector=>selector==='#dialog-title'?title:null,
+      addEventListener(){},showModal(){document.activeElement=title;}};
+    document.createElement=()=>modal;
+    document.body={append(){}};
+    confirmProfileDeletion();`);
+  assert.equal(h.run('document.activeElement===title'),true);
+  assert.equal(h.run('title.tabIndex'),-1);
+  assert.equal(h.run('title.autofocus'),'');
+  assert.doesNotMatch(h.run('modal.innerHTML'),/<button[^>]*autofocus/);
+  const reset={dataset:{action:'reset'},closest:selector=>selector==='[data-action]'?reset:null};
+  h.events.click({target:reset});
+  assert.match(h.run('modal.innerHTML'),/Slette historikken/);
+  assert.doesNotMatch(h.run('modal.innerHTML'),/<button[^>]*autofocus/);
+});
+
+test('The edit wizard starts with current settings and saves a new plan without losing the current round',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`submitProfile('first',{name:'Ada',grade:3,avatar:'fox'},
+    {level:2,autoProgress:true,progressionExcluded:{3:[4]},roundLength:5,rewardMode:'moon'});
+    state.active=createRound(2,12); const active=state.active;
+    const moonMap=currentWorld(state,'moon');
+    let markup; showDialog=html=>{markup=html;}; showProfileForm('edit');`);
+  assert.match(h.run('markup'),/data-setup-form/);
+  assert.match(h.run('markup'),/value="Ada"/);
+  assert.equal(h.run('setup.autoProgress'),true);
+  assert.equal(h.run('setup.progressionExcluded[3][0]'),4);
+  h.run(`submitProfile('edit',{name:'Ada',grade:3,avatar:'fox'},
+    {level:33,autoProgress:false,mix:'grade',progressionExcluded:{3:[4]},roundLength:8,rewardMode:'city'});`);
+  assert.equal(h.run('state.active===active'),true);
+  assert.equal(h.run("currentWorld(state,'moon')===moonMap"),true);
+  assert.equal(h.run('state.level'),33);
+  assert.equal(h.run('state.mix'),'grade');
+  assert.equal(h.run('state.roundLength'),8);
+  assert.equal(h.run('state.rewardMode'),'city');
+});
+
+test('A Beta map demo keeps the same step controls available across fullscreen changes',()=>{
+  const h=harness({channel:'preview'});
+  h.run(`
+    const controls={};
+    const stage={append(node){node.parentElement=this;}};
+    const expand={setAttribute(){},focus(){},addEventListener(name,fn){this[name]=fn;}};
+    const mockButton=()=>({addEventListener(){},focus(){}});
+    const previous=mockButton(),next=mockButton(),finish=mockButton(),finale={};
+    const nodes={'.project-map-stage':stage,'.demo-controls':controls,'[data-map-expand]':expand,
+      '[data-demo-step="-1"]':previous,'[data-demo-step="1"]':next,'[data-demo-finish]':finish,
+      '[data-demo-finale]':finale,'[data-demo-new]':mockButton()};
+    const viewer={querySelector:key=>nodes[key]??null,prepend(node){node.parentElement=this;}};
+    viewer.prepend(controls);
+    const modal={querySelector:key=>key==='.project-viewer'?viewer:nodes[key]??null,
+      classList:{toggle(){}},addEventListener(){}};
+    showDialog=(_html,_css,open)=>open(modal); showProject('island',true);
+    expand.click();
+  `);
+  assert.equal(h.run('controls.parentElement===stage'),true);
+  h.run('expand.click();');
+  assert.equal(h.run('controls.parentElement===viewer'),true);
 });

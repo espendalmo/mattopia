@@ -13,6 +13,7 @@ SOUND_PATTERNS.next=[[74,0,.085,.011],[79,.046,.09,.009]];
 SOUND_PATTERNS.build=[[67,0,.06,.015],[84,.07,.105,.014]];
 SOUND_PATTERNS.landmark=[[64,.8,.14,.043],[67,.9,.17,.05],[72,1.01,.2,.055],[76,1.13,.22,.052],
   [84,1.27,.44,.062],[79,1.27,.41,.038],[72,1.27,.46,.029],[60,1.27,.49,.033]];
+SOUND_PATTERNS['build-stage']=[[62,0,.17,.035],[57,.11,.27,.026]];
 SOUND_PATTERNS.tap=[[79,0,.061,.012]];
 SOUND_PATTERNS.back=[[72,0,.082,.013,68]];
 SOUND_PATTERNS.hint=[[72,0,.11,.023],[81,.075,.17,.025,83]];
@@ -203,11 +204,11 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   function activity(kind,intensity=1) {
     const clip=ACTIVITY_SOUNDS[kind];
     if (!clip||!ambience||!context) return false;
-    if (ambience.world!=='moon'&&['rocket','monorail','rover','astronaut','alien'].includes(kind)) return false;
+    if (ambience.world!=='moon'&&['rocket','monorail','monorail-start','rover','astronaut','alien'].includes(kind)) return false;
     const now=context.currentTime;
     if (now<ambience.start||now>ambience.end-.8) return false;
     const [length,volume,rest]=clip;
-    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||kind!=='tram-bell'&&now-ambience.lastCue<.31) return false;
+    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||!['tram-bell','train-start','monorail-start'].includes(kind)&&now-ambience.lastCue<.31) return false;
     try {
       sample(kind,now,volume*Math.max(0,Math.min(1,intensity))/.07,{destination:ambience.gain,voice:false});
       ambience.heard.set(kind,now);
@@ -287,7 +288,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     if (!enabled) return;
     stopVoices();
     const finished=Boolean(scene?.finished);
-    const kind=finale?'finale':finished?'landmark':'finish';
+    const kind=finale?'finale':finished?'landmark':scene?.world?'build-stage':'finish';
     const token=generation,build=++buildGeneration;
     const workStart=finished ? .06 : scene?.roadBuild ? .76 : .36;
     unlock().then(()=>{

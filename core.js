@@ -1,8 +1,9 @@
+import {text as msg} from './i18n.js';
 import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, GRADE_LEVELS, curriculumTopic, createCurriculumTask, validCurriculumTask, levelForGrade, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.34.0';
+export const VERSION='1.40.0';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;
@@ -11,17 +12,17 @@ const validRoundLength=length=>ROUND_LENGTHS.includes(length);
 export const PROGRESSION_ROUNDS=3;
 export const STORAGE_KEY = CHANNEL === 'preview' ? 'tallvenn-preview-v1' : 'tallvenn-v1';
 export const LEVELS = {
-  1:{label:'Tall til 20', description:'Tiervenner, pluss, minus og tall som mangler.', max:20,
+  1:{label:msg('track.1.label'), description:msg('track.1.description'), max:20,
     pattern:['remove','ten','count','add','place','ten','subtract','missing']},
-  2:{label:'Tall til 100', description:'Tiere, enere og regning med tierovergang.', max:100,
+  2:{label:msg('track.2.label'), description:msg('track.2.description'), max:100,
     pattern:['remove','ten','count','place','shift','add','subtract','missing']},
-  3:{label:'Tall til 999', description:'Hundrere, tiere og enere, med pluss og minus.', max:999,
+  3:{label:msg('track.3.label'), description:msg('track.3.description'), max:999,
     pattern:['place','ten','count','shift','remove','add','subtract','missing']},
-  4:{label:'Ganging og deling', description:'Små tall og brikker i like store grupper.', max:100,
+  4:{label:msg('track.4.label'), description:msg('track.4.description'), max:100,
     pattern:['add','subtract','multiply','divide','multiply','divide','missing','multiply']},
   ...CURRICULUM_LEVELS,
 };
-export const TOPICS={place:'Tall og plassverdi',ten:'Tiervenner',count:'Tallrekka',add:'Pluss',subtract:'Minus',missing:'Tall som mangler',multiply:'Ganging',divide:'Deling',...CURRICULUM_TOPICS};
+export const TOPICS={place:msg('topic.place'),ten:msg('topic.ten'),count:msg('topic.count'),add:msg('topic.add'),subtract:msg('topic.subtract'),missing:msg('topic.missing'),multiply:msg('topic.multiply'),divide:msg('topic.divide'),...CURRICULUM_TOPICS};
 const taskTypes = new Set(Object.values(LEVELS).flatMap(level => level.pattern));
 const validLevel = x => Object.hasOwn(LEVELS, Number(x));
 export function topicOf(task) {

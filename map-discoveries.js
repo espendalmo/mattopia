@@ -1,5 +1,5 @@
 import {box,beam,rounded,roof,tube,dome,placeParts,pointOnSite,visitor,actor} from './scenery.js';
-import {regionSurface,regionVisibility} from './regions.js';
+import {regionSurface,regionVisibility,regionalFootprint} from './regions.js';
 import {randomGenerator} from './worlds.js';
 
 const timber='#8d705b';
@@ -7,48 +7,79 @@ const iron='#57616d';
 const gold='#f2cb72';
 const rock=(x,z,w,d,h,color,y=-.13,phase=0)=>({shape:'boulder',x,z,w,d,h,color,y,phase});
 
-const arch=[[-1.01,-1.1],[1.01,-1.1],[.96,.38],[.53,.92],[-.47,.98],[-.98,.42]];
-const wedge=[[-1.2,-1.1],[1.24,-1.1],[.95,.18],[.33,.76],[-.8,.59]];
-const squared=[[-.86,-1.1],[.86,-1.1],[.8,.79],[-.8,.79]];
+function groundFace(outline,color,colors) {
+  const [x,y,z]=outline[0];
+  return {shape:'terrain',outline,x,y,z,h:0,color,colors};
+}
 
-function opening(color,variant) {
-  return {shape:'plate',x:0,y:1.11,z:.95,w:2.2,d:.01,h:2.05,color,
-    profile:[arch,wedge,squared][variant]};
+const tone=hex=>hex.slice(1).match(/../g).map(value=>parseInt(value,16)/255);
+const smooth=n=>{const t=Math.max(0,Math.min(1,n));return t*t*(3-2*t);};
+
+export function mineTerrain(site,x,z) {
+  const a=x-site.x,b=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
+  const u=a*c-b*s,v=a*s+b*c;
+  const rise=2.15*smooth((-.45-v)/1.6)*smooth((v+4.8)/1.55)*smooth((3.55-Math.abs(u))/1.85);
+  const depth=.64*smooth((3.65-v)/2.1)*smooth((v+1.48)/1.2)*smooth((2.3-Math.abs(u))/1.08);
+  return rise-depth;
 }
 
 function mine(moon,variant) {
-  const stone=(moon?['#8d89ab','#8a7d9e','#a19caf']:['#8c9581','#a09776','#889295'])[variant];
-  const low=variant===1;
-  const parts=[rock(-1.25,.18,2.06,2.02,low?1.66:2.29,stone,-.13,variant),
-    rock(1.29,.06,2.14,2.15,low?2.01:2.41,stone,-.2,1.8+variant),
-    rock(-.03,-.42,3.86,2.62,low?1.97:2.64,stone,-.24,.62+variant),opening('#242936',variant),
-    rock(.11,.25,low?3.31:2.82,1.6,.64,moon?'#a6a1bc':'#a6aa91',low?1.42:1.96,1.25+variant)];
+  const palette=moon?['#9e97b3','#827691','#544f68','#29283f']:['#a59e86','#837c67','#655749','#362e2a'];
+  const lintel=moon?'#afa7bf':'#b1ab93';
+  const shapes=[
+    [[-1.15,-.43],[-1.17,.72],[-.84,1.53],[-.42,1.89],[.42,1.89],[.87,1.58],[1.19,.81],[1.15,-.43]],
+    [[-1.27,-.43],[-1.26,.68],[-.93,1.11],[-.61,1.45],[.36,1.63],[.92,1.38],[1.24,.85],[1.3,-.43]],
+    [[-1.08,-.43],[-1.08,.7],[-1.08,1.41],[-.7,1.77],[.7,1.77],[1.08,1.41],[1.08,.7],[1.08,-.43]],
+  ];
+  const profile=shapes[variant];
+  const ribs=[1.25,.49,-.37,-1.01].map((z,i)=>profile.map(([x,y])=>[x*(1-i*.061),y-i*.08,z]));
+  const outside=ribs[0].map(([x,y,z],i)=>[x*1.32,y+(i===0||i===7?-.04:.34),z-.17]);
+  const shell=profile.slice(1).flatMap((_,i)=>{
+    const rim=groundFace([ribs[0][i],ribs[0][i+1],outside[i+1],outside[i]],i%3===0?lintel:palette[0]);
+    const walls=ribs.slice(1).map((back,j)=>groundFace(
+      [ribs[j][i],back[i],back[i+1],ribs[j][i+1]],palette[j+1],
+      [tone(palette[j]),tone(palette[j+1]),tone(palette[j+1]),tone(palette[j])]));
+    return [rim,...walls];
+  });
+  const shadow=ribs[1].map(([x,y])=>[x*1.045,y+.01,.73]);
+  const darkness=shadow.map((_,i)=>groundFace([[0,.65,.73],shadow[i],shadow[(i+1)%shadow.length]],'#111017',
+    [tone('#0b0a10'),tone('#26232c'),tone('#26232c')]));
+  const rear=ribs.at(-1);
+  const center=[0,.56,-1.01];
+  const ground=[
+    ...rear.map((point,i)=>groundFace([center,rear[(i+1)%rear.length],point],palette[3])),
+    ...ribs.slice(1).map((back,i)=>groundFace([ribs[i][0],ribs[i][7],back[7],back[0]],palette[i+1])),
+    groundFace([[-1.48,.083,3.63],[1.48,.083,3.63],ribs[0][7],ribs[0][0]],palette[1]),
+  ];
+  const banks=[rock(-1.67,.29,1.51,2.58,1.93,palette[0],-.39,variant+.3),
+    rock(1.7,.34,1.5,2.44,2.14,palette[1],-.4,variant+1.45),
+    rock(.31,-.72,3.19,2.94,.83,palette[0],1.41,variant+3),
+    rock(-1.88,1.41,1.1,1.84,.89,palette[0],-.43,variant+.6),
+    rock(1.87,1.77,1.25,1.74,.78,palette[1],-.35,variant)];
+  const entry=[...shell,...ground,...banks,...darkness];
   if (moon) {
-    const tints=[['#86d8de','#a3a2e0'],['#d9a4de','#b57ed6'],['#e8c3a1','#9bb8e7']][variant];
-    return [...parts,...[-1,1].flatMap((side,i)=>[
-      dome(side*1.29,1.27,.42+variant*.13,.32,.22,tints[i],.08),
-      rock(side*1.67,1.31,.58,.59,.28,stone),
-      sparkle(side*1.28,.44,1.32,i+variant,tints[i]),
-    ]),...(variant===2?[rock(-.4,1.25,.53,.35,.29,'#ab9ab6'),rock(.42,1.7,.61,.44,.19,stone)]:[])];
+    const colors=[['#9adcdd','#ab9be4'],['#e6a9d9','#ab82d9'],['#e9c1a4','#9fbcde']][variant];
+    return [...entry,...[-1,1].flatMap((side,i)=>[
+      ...crystalFacets(side*(.66+i*.12),.34,.29,.68+variant*.13,colors[i],-.42,i+variant),
+      ...crystalFacets(side*1.49,1.46,.34,.64,colors[1-i],-.35,i+3),
+    ])];
   }
-  if (variant===1) return [...parts,
-    ...[-.7,.4].map((x,i)=>beam([x,.06,1.15],[x+(i?.27:-.16),1.91,1.15],.19,timber)),
-    beam([-1.03,1.64,1.18],[.97,.44,1.18],.19,'#a48965'),
-    rock(-1.47,1.39,.77,.81,.51,'#a39476'),rock(1.36,1.4,.91,.66,.42,'#899380'),
-    box(1.13,1.15,.16,.18,1.49,timber,.02),box(1.13,1.27,.52,.087,.25,gold,1.11)];
-  if (variant===2) return [...parts,
-    ...[-1,1].flatMap(side=>Array.from({length:6},(_,i)=>box(side*(.99-i*.017),1.07,.3,.48,.278,
-      ['#a7a8a0','#a1a295','#888f87'][i%3],.08+i*.28))),
-    box(0,1.02,2.22,.49,.28,'#a9a697',1.89),
-    ...[-.44,.44].map(x=>beam([x,.065,1.01],[x,.065,2.54],.079,iron)),
-    ...[-.66,-.23,.21,.6].map((x,i)=>rock(x,1.73+i*.24,.38,.44,.24,'#9e9180'))];
-  return [...parts,...[-1,1].flatMap(side=>[
-    beam([side*1.04,.02,1.02],[side*.88,2.06,1.02],.24,timber),
-    beam([side*.34,.046,.61],[side*.34,.055,2.68],.092,iron),
-  ]),beam([-1.05,2.05,1.04],[1.05,2.05,1.04],.28,timber),
-    ...Array.from({length:5},(_,i)=>box(0,.97+i*.39,1.02,.155,.085,timber,.017)),
-    rounded(.18,2.18,.78,.85,.43,'#8b775e',.15),tube(.18,2.18,.91,.94,.09,iron,.55),
-    dome(.18,2.18,.47,.48,.17,gold,.62),dome(-1.54,1.18,.25,.25,.28,gold,1.12)];
+  const frame=variant===2?ribs[0].slice(1).map((point,i)=>beam(ribs[0][i],point,.19,lintel)):[
+    beam([-1.18,-.44,1.32],[-1.12,1.7,1.32],.21,timber),
+    beam([1.18,-.44,1.32],[1.12,1.7,1.32],.21,timber),
+    beam([-1.18,1.71,1.31],[1.18,1.71,1.31],.24,timber),
+  ];
+  const ramp=z=>-.42+.505*smooth((z-1.25)/2.38);
+  return [...entry,...frame,
+    ...[-.37,.37].flatMap(x=>[
+      beam([x,-.55,-.7],[x,-.41,1.25],.067,iron),
+      ...[1.25,1.7,2.15,2.6,3.05].map(z=>beam([x,ramp(z)+.06,z],[x,ramp(z+.45)+.06,z+.45],.074,iron)),
+    ]),
+    ...[1.37,1.78,2.18,2.59,3,3.41].map(z=>box(0,z,1.05,.14,.08,timber,ramp(z)+.03)),
+    ...(variant===1?[beam([-.9,-.01,1.37],[.85,1.17,1.37],.145,'#9c805f')]
+      :[rounded(.18,2.42,.78,.77,.38,'#8b775e',ramp(2.42)+.09),tube(.18,2.42,.86,.85,.095,iron,ramp(2.42)+.44)]),
+    dome(-1.15,1.54,.25,.25,.28,gold,1.13),
+  ];
 }
 
 function prospectorCamp(variant) {
@@ -172,29 +203,49 @@ function sparkle(x,y,z,phase,color='#d8f4ed') {
     profile:[[0,.235],[.065,.068],[.23,0],[.065,-.068],[0,-.235],[-.065,-.068],[-.23,0],[-.065,.068]]};
 }
 
+function crystalFacets(x,z,width,height,color,y,phase) {
+  const count=phase%2?5:6;
+  const lean=width*(phase%3-1)*.29;
+  const ring=(level,scale,offset)=>Array.from({length:count},(_,i)=>{
+    const angle=i*Math.PI*2/count+phase*.41;
+    return [x+Math.cos(angle)*width*.5*scale+offset,y+height*level,z+Math.sin(angle)*width*.43*scale];
+  });
+  const foot=ring(0,.83,0),shoulder=ring(.68,1,lean),crown=ring(.94,.33,lean*1.42);
+  const peak=[x+lean*1.53,y+height,z+width*.04];
+  const rgb=tone(color);
+  const shades=[.65,.82,1,1.13,.91,1.06].map(shade=>'#'+rgb.map(value=>
+    Math.min(255,Math.round(value*255*shade)).toString(16).padStart(2,'0')).join(''));
+  const crystal=foot.flatMap((point,i)=>{
+    const j=(i+1)%count;
+    return [groundFace([point,shoulder[i],shoulder[j],foot[j]],shades[i]),
+      groundFace([shoulder[i],crown[i],crown[j],shoulder[j]],shades[(i+2)%count]),
+      groundFace([crown[i],peak,crown[j]],shades[(i+3)%count])];
+  });
+  const front=shoulder.reduce((best,point)=>point[2]>best[2]?point:best);
+  return [...crystal,sparkle(front[0],front[1]+height*.12,front[2]+.09,phase*1.37,'#b5cedd')];
+}
+
 function crystals(variant) {
   const clusters=[
     [[-.96,-.31,.78,1.47,'#ac85d8'],[.1,.13,1.16,2.43,'#83cfcf'],[.96,-.41,.86,1.64,'#e6a6ba'],[-.35,.81,.56,.93,'#a8c3f0']],
     [[-1.35,.11,1.19,1.74,'#ecc28a'],[-.46,-.72,.68,1.18,'#dc928f'],[.67,-.49,1.24,2.81,'#e29dc3'],[1.48,.48,.67,1.11,'#e6ae83'],[.21,.95,.38,.72,'#f0d4b4']],
     [[-1.16,-.42,.81,1.81,'#8f9de3'],[-.67,.63,.85,.87,'#afc2e6'],[.36,-.43,1.12,2.47,'#9088d5'],[1.32,.2,.73,1.71,'#77b9d9'],[.21,1.13,.48,.89,'#82c8c6']],
   ][variant];
-  return [rock(0,0,4.1,2.8,.58,'#8586a5',-.13,variant),...clusters.flatMap(([x,z,w,h,color],i)=>[
-    {shape:'cone',x,y:.19,z,w,d:w,h,color},sparkle(x+.14,h*.76+.2,z+w*.28,i*1.7,color),
-  ])];
+  return [rock(0,0,4.1,2.8,.58,'#8586a5',-.13,variant),...clusters.flatMap(([x,z,w,h,color],i)=>crystalFacets(x,z,w,h,color,.19,i+variant*3))];
 }
 
-function saucer(variant) {
+function saucer(variant,site,layout) {
   const [rise,tip,bank,stretch,turn,metal,glass]=[
-    [.31,-.57,.26,1,.02,'#a6bbc2','#7fbbcd'],
-    [.13,.35,-.64,.88,-.39,'#b1a6c4','#86a1da'],
-    [.38,.59,.38,1.13,.77,'#99a7bc','#79bcb8'],
+    [.2,-.57,.26,1,.02,'#a6bbc2','#7fbbcd'],
+    [.03,.35,-.64,.88,-.39,'#b1a6c4','#86a1da'],
+    [.27,.59,.38,1.13,.77,'#99a7bc','#79bcb8'],
   ][variant];
   const rotate=([x,y,z])=>{
     const a=x*Math.cos(bank)-y*Math.sin(bank),b=x*Math.sin(bank)+y*Math.cos(bank);
     const c=z*Math.cos(tip)+b*Math.sin(tip);
     return [a*Math.cos(turn)+c*Math.sin(turn),rise+b*Math.cos(tip)-z*Math.sin(tip),c*Math.cos(turn)-a*Math.sin(turn)];
   };
-  const cutoff=.12;
+  const cutoff=.046;
   const panels=[];
   const disk=(rows,palette,dx=0,dz=0)=>{
     const rings=rows.map(([radius,y])=>Array.from({length:16},(_,i)=>{
@@ -227,8 +278,24 @@ function saucer(variant) {
     return y<cutoff+.04?null:{...dome(x,z,.17,.19,.14,i%2?'#e9aa81':'#86d6d6',y),life:[0,0,0,-2-i*.43]};
   }).filter(Boolean);
   const antenna=[rotate([-.51,.93,-.26]),rotate([-1.35,1.57,-.39])];
+  const heading=Math.atan2(low[0],low[2]);
+  const drift=(side,along)=>{
+    const x=Math.sin(heading)*along+Math.cos(heading)*side,z=Math.cos(heading)*along-Math.sin(heading)*side;
+    const [a,,b]=pointOnSite([x,0,z],site);
+    return [x,regionSurface(layout,a,b).y-site.y+.025,z];
+  };
+  const sand=['#aaa1b6','#b7adc0','#b2a8bb','#a9a1b5'];
+  const scatter=[...Array.from({length:9},(_,i)=>{
+    const at=1.02+i*.31,next=at+.35,width=.86+i*.18;
+    const middle=Math.sin(i*.69+variant)*.21;
+    const outline=[drift(middle-width,at),drift(middle-width*1.03,next),drift(middle+width,next),drift(middle+width*.88,at)];
+    return groundFace(outline,sand[(i+variant)%sand.length]);
+  }),...Array.from({length:26},(_,i)=>{
+    const point=drift(Math.sin(i*2.17+variant)*(1+i*.042),1.4+(i%11)*.23);
+    return rock(point[0],point[2],.16+(i%5)*.07,.25+(i%4)*.09,.075+(i%4)*.075,sand[i%sand.length],point[1]-.055,i);
+  })];
   return [
-    rock(low[0],low[2],3.14,1.18,.39,'#a29bb0',-.13,variant),...panels,...lights,
+    ...scatter,rock(low[0]*.99,low[2]*.96,3.01,1.69,.55,'#aba2b7',-.15,variant),...panels,...lights,
     ...(antenna.every(point=>point[1]>cutoff)?[beam(...antenna,.083,iron),sparkle(...antenna[1],1.3,'#f0b09e')]:[]),
     ...[-.75,.25,.84].map((dx,i)=>rock(low[0]+dx,low[2]+.23+i*.17,.65-i*.12,.61,.21+i*.09,'#a9a1b6',-.07,i)),
     rock(edge[0]-.29,edge[2]+.37,.42,.38,.22,'#8e8ca5',-.015,variant),
@@ -243,25 +310,37 @@ function hidingRock(variant) {
 
 const catalog={
   city:[
-    {model:variant=>mine(false,variant),names:['Den gamle gullgruva','Knekten gruve','Gruva ved elva'],stories:['Gruvevogna står klar. Den siste gullgraveren tok visst med seg både gull og matpakke.','Noen har satt et skilt ved inngangen. «Tilbake når jeg finner den andre støvelen.»','Se etter sporene i bakken. De siste skinnene ble lagt av en som målte i støvellengder.']},
-    {model:prospectorCamp,names:['Gullgravernes leir','Teltet ved bekken','Panneplassen'],stories:['Panna er full av grus. Gullgraveren var bedre til å steke pannekaker.','Det ligger en rusten spade her. Eieren tok en kaffepause for veldig lenge siden.','Noen har glemt en kiste og en panne. Kanskje de hadde tenkt å komme tilbake før middag.']},
-    {model:oldWell,names:['Ønskebrønnen','Brønnen i skogen','Mosebrønnen'],stories:['Byens eldste ønske var en større bolle. Det gikk i oppfyllelse hos bakeren.','Bøtta henger der ennå. Fuglene bruker taket som møteplass.','Hvis du roper «hei» ned i brønnen, sier den «hei» tilbake. Den har gode manerer.']},
+    {model:variant=>mine(false,variant),mine:true,names:['Den gamle gullgruven','Knekten gruve','Gruven ved elven'],stories:['Gruvevognen står klar. Den siste gullgraveren tok visst med seg både gull og matpakke.','Noen har satt et skilt ved inngangen. «Tilbake når jeg finner den andre støvelen.»','Se etter sporene i bakken. De siste skinnene ble lagt av en som målte i støvellengder.']},
+    {model:prospectorCamp,names:['Gullgravernes leir','Teltet ved bekken','Panneplassen'],stories:['Pannen er full av grus. Gullgraveren var bedre til å steke pannekaker.','Det ligger en rusten spade her. Eieren tok en kaffepause for veldig lenge siden.','Noen har glemt en kiste og en panne. Kanskje de hadde tenkt å komme tilbake før middag.']},
+    {model:oldWell,names:['Ønskebrønnen','Brønnen i skogen','Mosebrønnen'],stories:['Byens eldste ønske var en større bolle. Det gikk i oppfyllelse hos bakeren.','Bøtten henger der ennå. Fuglene bruker taket som møteplass.','Hvis du roper «hei» ned i brønnen, sier den «hei» tilbake. Den har gode manerer.']},
   ],
   island:[
-    {model:shed,names:['Det skjeve uthuset','Kokosskuret','Snekkerens gamle bod'],stories:['Takplatene ligger litt hulter til bulter. En gekko har overtatt som vaktmester.','Her oppbevarte de kokosnøtter. Nå bor det en krabbe i den minste kassa.','Døra knirker selv når den står stille. Kanskje den bare kjeder seg.']},
-    {model:oldCart,names:['Den glemte hestevogna','Kokosvogna','Vogna med løst hjul'],stories:['Det ene hjulet har stukket av. Det kom heldigvis ikke lenger enn én meter.','Vogna fraktet kokosnøtter opp fra stranda. De rullet hjem av seg selv.','Det ligger en kasse igjen. På lokket står det «Viktig. Ikke rist».']},
-    {model:wreck,names:['Den lille strandbåten','Vraket i sanda','Krabbekapteinens skute'],stories:['Noen har gitt den gamle båten nytt navn. Nå heter den Krabbeekspressen.','Flaska ved båten inneholder en beskjed. «Send flere boller.»','Det er en kiste ved siden av masta. Den er akkurat passe stor til én kokosnøtt.']},
+    {model:shed,names:['Det skjeve uthuset','Kokosskuret','Snekkerens gamle bod'],stories:['Takplatene ligger litt hulter til bulter. En gekko har overtatt som vaktmester.','Her oppbevarte de kokosnøtter. Nå bor det en krabbe i den minste kassen.','Døren knirker selv når den står stille. Kanskje den bare kjeder seg.']},
+    {model:oldCart,names:['Den glemte hestevognen','Kokosvogna','Vognen med løst hjul'],stories:['Det ene hjulet har stukket av. Det kom heldigvis ikke lenger enn én meter.','Vognen fraktet kokosnøtter opp fra stranden. De rullet hjem av seg selv.','Det ligger en kasse igjen. På lokket står det «Viktig. Ikke rist».']},
+    {model:wreck,names:['Den lille strandbåten','Vraket i sanden','Krabbekapteinens skute'],stories:['Noen har gitt den gamle båten nytt navn. Nå heter den Krabbeekspressen.','Flasken ved båten inneholder en beskjed. «Send flere boller.»','Det er en kiste ved siden av masten. Den er akkurat passe stor til én kokosnøtt.']},
   ],
   moon:[
     {model:crystals,names:['Glitterkløfta','Prismesteinene','Krystallhagen'],stories:['Krystallene blinker når du ser på dem en stund. En astronaut trodde de prøvde å si hei.','Ingen vet hvorfor den rosa krystallen lyser. Forskerne kaller den Disko.','Tre farger i én liten steinrøys. En rover prøvde å bruke den som trafikklys.']},
-    {model:saucer,names:['Den glemte UFO-en','Tallerkenen i støvet','UFO 404'],stories:['UFO-en landet litt skjevt. Føreren har lagt igjen en lapp. «Tilbake etter lunsj.»','Lampene lyser fremdeles. Kanskje nødblinken varer i hundre måneår.','Noen mistet en flygende tallerken. Ingen har funnet resten av serviset.']},
-    {model:variant=>mine(true,variant),names:['Kratersprekka','Den lilla månehula','Ekkoporten'],stories:['Det lyser svakt innenfor åpningen. Kanskje noen har satt igjen en romlykt.','Hula lager ekko. Det er praktisk når du vil le av din egen vits to ganger.','En rover fikk så vidt plass til de to forhjulene. Resten ventet pent utenfor.']},
+    {model:saucer,smokes:true,names:['Den glemte UFO-en','Tallerkenen i støvet','UFO 404'],stories:['UFO-en landet litt skjevt. Føreren har lagt igjen en lapp. «Tilbake etter lunsj.»','Lampene lyser fremdeles. Kanskje nødblinken varer i hundre måneår.','Noen mistet en flygende tallerken. Ingen har funnet resten av serviset.']},
+    {model:variant=>mine(true,variant),mine:true,names:['Kratersprekka','Den lilla månehulen','Ekkoporten'],stories:['Det lyser svakt innenfor åpningen. Kanskje noen har satt igjen en romlykt.','Hulen lager ekko. Det er praktisk når du vil le av din egen vits to ganger.','En rover fikk så vidt plass til de to forhjulene. Resten ventet pent utenfor.']},
     {model:hidingRock,peek:true,names:['Den mistenkelige månesteinen','Titteberget','Stein med hemmelighet'],stories:['Var det en antenne bak steinen? Stå stille et lite øyeblikk.','Her har noen satt igjen bitte små fotspor. De går bare én vei.','En astronaut mente at steinen vinket. Forskerne vil gjerne ha et bilde.']},
   ],
 };
 
+function crashSmoke(site,variant) {
+  const color='#9b96ab';
+  return {kind:'smoke',parts:[dome(0,0,.42,.38,.35,color),dome(.16,.08,.36,.34,.25,'#a9a2b5',.25),
+    dome(.29,.15,.4,.37,.29,'#b1a9bb',.43)],pose(seconds) {
+    const time=(seconds+variant*1.2)%8.9;
+    const rise=Math.min(1,time/3.3);
+    const [x,y,z]=pointOnSite([-.46+rise*.96,.98+rise*1.96,.11+rise*.32],site);
+    const a=seconds*.36;
+    return {x,y:time>3.3?-540:y,z,cos:Math.cos(a),sin:Math.sin(a),stride:0,rollCos:1,rollSin:0,sound:0};
+  }};
+}
+
 function peekActor(site,seed) {
-  return {kind:'walk',peeking:true,parts:visitor('alien','#b1a4ca',undefined,false,.78,seed%8),pose(seconds) {
+  return {kind:'walk',peeking:true,characterSlot:902,parts:visitor('alien','#b1a4ca',undefined,false,.78,seed%8),pose(seconds) {
     const time=(seconds+seed%17)%38;
     const visible=time>=5&&time<9.3;
     const peek=Math.max(0,Math.min(1,(time-5)*2,(9.3-time)*2));
@@ -302,7 +381,7 @@ export function discoveryGuides(walkers,sites,layout,plan) {
   const occupied=new Set();
   const max=plan.plots.length>=14?2:1;
   const guided=walkers.map(walker=>{
-    if (occupied.size>=max||walker.kind!=='walk'||!walker.voice||!walker.route) return walker;
+    if (occupied.size>=max||walker.kind!=='walk'||!walker.voice||!walker.route||walker.wander) return walker;
     const match=nearbyFind(walker,sites.filter(site=>!occupied.has(site.key)),layout);
     if (!match) return walker;
     occupied.add(match.site.key);
@@ -323,14 +402,14 @@ export function discoveryGuides(walkers,sites,layout,plan) {
         return tiles.every(([u,v])=>{
           const tile=regionSurface(layout,u,v);
           return !tile.water&&Math.abs(tile.y-site.y)<1.4
-            &&!plan.plots.some(plot=>Math.hypot(u-plot.x,v-plot.z)<6.5);
+            &&!plan.plots.some(plot=>plot.residence?regionalFootprint(plot,u,v,.8):Math.hypot(u-plot.x,v-plot.z)<6.5);
         });
       });
       if (!clear) continue;
       const guide=actor(visitor(moon?'alien':'human','#87ada4',undefined,false,.83,site.choice%8),points,
         {kind:'walk',voice:moon?'alien':'people',elevation:(x,z)=>regionSurface(layout,x,z).y+.06,speed:.75,phase:.17,corner:.52});
       const match=nearbyFind(guide,[site],layout);
-      if (match) return [...guided,curiousWalker(guide,match)];
+      if (match) return [...guided,curiousWalker({...guide,characterSlot:903},match)];
     }
   }
   return guided;
@@ -340,7 +419,13 @@ export function terrainDiscoveries(layout,plan,full) {
   const options=catalog[layout.theme];
   const seed=(layout.seed^0x607d08ef)>>>0;
   const finds=[];
-  const routes=[...plan.paths.flat(),...(plan.transit??[])];
+  const roads=plan.paths.flatMap(path=>path.slice(1).map((b,i)=>[path[i],b]));
+  const nearRoad=(x,z,clearance)=>roads.some(([a,b])=>{
+    const dx=b.x-a.x,dz=b.z-a.z;
+    const t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1)));
+    return Math.hypot(x-a.x-dx*t,z-a.z-dz*t)<clearance;
+  });
+  const tracks=plan.transit??[];
   const plots=[...plan.plots,...Object.values(layout.berths),...(layout.airfield?[layout.airfield]:[])];
   for (let band=0;band<15;band++) {
     const radius=10+band*3.95;
@@ -353,8 +438,9 @@ export function terrainDiscoveries(layout,plan,full) {
       const z=plan.origin.z+Math.sin(angle)*radius;
       if (Math.abs(x)>63||Math.abs(z)>61||regionVisibility(plan,x,z,full)<.66) continue;
       if (finds.some(site=>Math.hypot(x-site.x,z-site.z)<7.3)) continue;
-      if (plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;
-      if (routes.some(point=>Math.hypot(x-point.x,z-point.z)<4.9)) continue;
+      if (plots.some(plot=>plot.residence?regionalFootprint(plot,x,z,type.mine?5:3.9)
+        :Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;
+      if (nearRoad(x,z,type.mine?7.15:6.25)||tracks.some(point=>Math.hypot(x-point.x,z-point.z)<5.3)) continue;
       const samples=[[-2.5,-2.5],[-2.5,2.5],[2.5,-2.5],[2.5,2.5],[0,0]]
         .map(([dx,dz])=>regionSurface(layout,x+dx,z+dz));
       if (samples.some(tile=>tile.water||tile.bank<.55||layout.theme==='moon'&&tile.basin< -1.9)) continue;
@@ -366,14 +452,16 @@ export function terrainDiscoveries(layout,plan,full) {
   }
   const info={},parts=[];
   let visitor;
+  const smoke=[];
   for (const site of finds) {
     const key=site.key=`discovery:${site.index}`;
     const {names,stories,model,peek}=site.type;
     const variant=(Math.floor(site.index/(32*options.length))+seed%3)%3;
     info[key]={name:names[variant],story:stories[variant],x:site.x,z:site.z,
       status:'Kartfunn',sound:'discovery',voice:site.choice};
-    parts.push(...placeParts(model(variant),site).map(part=>({...part,entity:key})));
+    parts.push(...placeParts(model(variant,site,layout),site).map(part=>({...part,entity:key})));
+    if (site.type.smokes&&smoke.length<2) smoke.push(crashSmoke(site,variant));
     if (peek&&!visitor) visitor=peekActor(site,site.choice);
   }
-  return {parts,info,sites:finds,visitor};
+  return {parts,info,sites:finds,visitor,smoke};
 }

@@ -1,4 +1,4 @@
-# Mattopia 1.34.0
+# Mattopia 1.40.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.34.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.40.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -50,6 +50,65 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 ## iPad og iPhone
 
 Åpne den publiserte adressen i Safari. Bruk **Del → Legg til på Hjem-skjerm**. Åpne den installerte appen på nett én gang og la den laste ferdig. Deretter kan øvingen brukes uten nett. Nettleseren må støtte og tillate service workers og lokal lagring. Framgang kan være separat i Safari og i den installerte appen.
+
+## Rediger norske tekster
+
+Åpne `locale-nb.js` i en teksteditor og endre teksten til høyre for nøkkelen. Filen inneholder sentrale tekster i veiviseren, profilredigeringen, oppgavene, hjelpen og kartvisningen. Behold nøklene, anførselstegnene og eventuelle plassholdere som `{count}`. Noen faglige alternativer, stedsnavn, historier og hjelpetekster i innstillingene ligger fortsatt i modulene der de brukes.
+
+Ta vare på filen eller legg ved den redigerte utgaven til neste versjon. Kopier den til kildemappen før du bygger samme versjon, slik at både beta og vanlig utgave får teksten. I senere versjoner fletter du inn de endrede verdiene i den nye språkfilen, så nye nøkler blir med. Last opp hele pakken med et nytt versjonsnummer for at installerte apper skal hente filen. Redigert oppgavetekst gjelder for nye øvingsrunder. Nye språk kan få egne katalogfiler med de samme nøklene og norsk som reserve.
+
+## Nytt i 1.40.0
+
+- De private boligene får større tomter der plassen tillater det, med stakitt, to grønne belter og en liten park med dam bak huset. I Elvebyen og på Palmeøya foretrekkes flate tomter nær en innsjø eller dam i terrenget. Boligen vises med navn i kartinformasjonen.
+- Bilene parkerer plant og gir trafikken i gaten forkjørsrett. Bilene bytter på å bruke innkjørselen til de store hagene.
+
+## Nytt i 1.39.1
+
+- Oppgavene, menyene og historiene på kartene bruker bokmålsformer som «jobbet», «tallinjen» og «gaten».
+
+## Nytt i 1.39.0
+
+- Spillere med navn på profilen kan velge å bygge sitt eget hus etter to ferdige bygg på kartet. Elvebyen har en residens, Palmeøya et palass og Månebasen et rompalass. Hvert hus har hage, to parkerte kjøretøy og navnet som ble brukt da det ble valgt.
+- Vinduer, karmer og vindusbrett gir flere bygg detaljer på sidene og baksiden. Restauranten på toppen av Målenåla fortsetter å rotere også på travle kart.
+- Byggebonus kan gjøre ferdig et kartbygg, gi ett ekstra vekststeg eller én ekstra kloss og legge på opptil tre klosser på en superhelt. Etter runden vises det hva bonusen ga. En opptjent bonus ligger klar til en runde hvor den kan brukes.
+- Større kart får flere biler. Kjøretøy som rygger i kø, gir den andre bilen tid til å komme forbi. Av og til stenger et arbeidslag et kort stykke av veien før trafikken slippes fram igjen.
+- T-baneinngangene er koblet til fortauene med gangstier. Reisende går ned trappen, og hevede perronger har trapper til bakken.
+
+## Nytt i 1.38.0
+
+- Trafikken øker når byen vokser. Gatene får blant annet småbiler, varebiler og motorsykler. På månen kommer minirovere og månetrikes.
+- Flyplasser, resorter, fyr og brygger får rettere adkomstveier som blir en del av veinettet. Kjøretøy kan kjøre helt ut til byggene, og nye gater kan kobles på underveis.
+- Små flystriper får mindre propellfly som letter og lander i roligere tempo.
+- Gangstier i småparkene går helt ut til fortauet. Figurene kan gå fra parken og videre langs gaten.
+- Byggeframdriften følger med ved oppdatering. Gater og noen tomter kan flytte seg når eksisterende kart tegnes på nytt.
+
+## Nytt i 1.37.0
+
+- Fullskjermkartet følger det synlige utsnittet av nettleseren. Kartgester flytter og zoomer kartet mens sideskrolling er låst.
+- Flyplasser og havnebygg får jevnere adkomstveier. Hangar og hovedflyplass deler en tomtegruppe og adkomstvei, også når hangaren bygges først.
+- Biler og rovere ved verksteder, garasjer og hangarer kan ta en tur i gatene og parkere på samme plass igjen.
+- Mer av terrenget rundt åpne gater og byggeplasser vises tidlig. Flere gater får trær eller lysskulpturer og gatelys på begge sider.
+- Laguneressorten på Palmeøya tilbys tidlig og ligger ved kysten. Den har større grunnflate og badestrand med solsenger, parasoller og svømmere.
+- Månebasen får Luna Grand Resort med panoramatårn, solsenger, parasoller og astronauter som bader i månestøv.
+- Byggeframdriften følger med ved oppdatering. Noen tomter kan få ny plassering når kartet tegnes med den oppdaterte kartgeneratoren.
+
+## Nytt i 1.36.0
+
+- Nye kart starter med et ferdig hovedbygg som kan utforskes med en gang. Det teller ikke mot byggene spilleren får for å øve. Eksisterende kart får hovedbygget når du starter et nytt kart.
+- Elveburger, Mango Express og Rover Burger er nye byggevalg. En bil svinger av gaten og stopper ved hentevinduet.
+- Terrengvandrere og rovere følger mer varierte ruter rundt kartfunn, og gruveåpningene er mørkere. Elvebyens ytre spor er synlige, og kartkameraet viser hele flyplassen når den velges.
+- Mellomtrinn får et rolig lydsignal. Ferdige bygg får fanfare, toget og monorailen har egne avgangssignaler, og hvert kart har fire forskjellige rolige melodistrofer med pauser.
+- Veiviserens øvingsvalg og belønninger kan redigeres fra spillerprofilen. Kartdemoens stegknapper virker i fullskjerm. Dialoger åpnes med fokus på overskriften, og tastaturnavigasjon har en synlig fokusramme.
+
+## Nytt i 1.35.0
+
+- Lokale profiler kan slettes under **For voksne → Spiller og øving**. «Forklar meg» er tydeligere i runden, og Eplo presenterer seg i veiviseren.
+- Hver tredje perfekte runde gir et ekstra byggeløft. Eplo viser hvor langt du er kommet mot neste belønning.
+- Hopp på tallinjen på 3. trinn trener på å dele regnestykket opp i mindre hopp.
+- Nye kart får mer varierte gater, lommer med gangstier og grøntområder eller krystallplasser, og enkelte gater får avenytrær, lysskulpturer og gatelys.
+- Jernbaner får mykere kurver, perronger langs rette strekk og egne jernbanebruer. Trikken kan vokse med Palmeøya, som også får busser og flere biler.
+- Oppdatert grottegrafikk, krystaller og UFO-vrak. Månefigurene får unike navn på hvert kart. På månen ligger veier og rullebaner over terrenget.
+- Bruk nye kart for å prøve det oppdaterte veinettet og den nye plasseringen av byggene.
 
 ## Nytt i 1.34.0
 
@@ -151,7 +210,7 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 
 - Eplo ønsker spilleren velkommen tilbake med navn. Over kartet står figuren fritt ved siden av en snakkeboble med lukkeknapp. Munnbevegelsen er kortere og ender med et smil med øynene.
 - Byggevalgene for flyplass, trikk og tog viser kjøretøyene. Grunnmur og grunnflate bruker samme kontur.
-- Tunnelene følger banen som én sammenhengende ås. Togbanene kan vokse med byen, og lange nok baner kan få et ekstra tog eller en ekstra trikk. Tåka slipper mer av terrenget til syne rundt byen.
+- Tunnelene følger banen som én sammenhengende ås. Togbanene kan vokse med byen, og lange nok baner kan få et ekstra tog eller en ekstra trikk. Tåken slipper mer av terrenget til syne rundt byen.
 - Sagingen er roligere og første suksessfanfare er forkortet. Innstillingene under «For voksne» er gruppert etter tema.
 
 ## Nytt i 1.24.0
@@ -189,8 +248,8 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 
 - Elveby stasjon og Månesporet dukker opp som byggevalg når minst to bygg står ferdige. Begge stasjonene åpner en bane med tog og tunnelportaler etter tre byggesteg.
 - Helikoptre flyr over Elvebyen og bruker den nye landingsplassen ved Palmeflyplassen.
-- Et trykk på et bygg fremhever tomta. Eplo hilser ved profiloppretting, gir hint i oppgavene og forteller små historier om byggene.
-- Byggetrinn har egne lyder for månen og jorda. Lydbildet i kartene vokser med antall bygg, og fly, raketter og andre kjøretøy kan høres når de passerer i utsnittet. Omgivelseslyden ligger på 75 prosent av den vanlige miksen.
+- Et trykk på et bygg fremhever tomten. Eplo hilser ved profiloppretting, gir hint i oppgavene og forteller små historier om byggene.
+- Byggetrinn har egne lyder for månen og jorden. Lydbildet i kartene vokser med antall bygg, og fly, raketter og andre kjøretøy kan høres når de passerer i utsnittet. Omgivelseslyden ligger på 75 prosent av den vanlige miksen.
 - Lengre fyrverkeri og applaus feirer nye bygg. Ved fullført kart eller superhelt kommer Eplo med en egen hilsen og en snarvei til samlingen. Velg «Vis finalen» i en byggedemo i beta for å se feiringen direkte.
 - På iPhone og iPad ber Mattopia om avspilling i lydløsmodus der nettleseren støtter det. Lydbryteren i appen styrer fremdeles all lyd.
 
@@ -229,7 +288,7 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 
 ## Nytt i 1.15.0
 
-- Elvebyen, Månebasen og Palmeøya har faste, tilfeldig genererte landskap. Tåka letter rundt veier og byggeplasser mens spilleren utforsker terrenget. Veier svinger mellom høydedrag, dammer og kratere, og byggene vender seg mot adkomsten sin.
+- Elvebyen, Månebasen og Palmeøya har faste, tilfeldig genererte landskap. Tåken letter rundt veier og byggeplasser mens spilleren utforsker terrenget. Veier svinger mellom høydedrag, dammer og kratere, og byggene vender seg mot adkomsten sin.
 - Hvert nytt kart har 24 byggeprosjekter, med tre runder per bygg. Blant dem er et rådhus, en rød hengebro, en biodome, en astronautbane, en hotellresort og en berg-og-dal-bane.
 - Biler, månebiler, mennesker og dyr kommer til underveis. Ferdige brygger og kaier får båttrafikk.
 - **Se samlingen → Bygg og kart** samler ferdige bygg fra både aktive og tidligere kart. Trykk på et bygg for å finne det i 3D. Bruk **Oversikt** for å se hele det utforskede området.

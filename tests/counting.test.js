@@ -12,6 +12,7 @@ import * as projects from '../projects.js';
 import * as worlds from '../worlds.js';
 import * as seasons from '../seasons.js';
 import {hintFor} from '../learning.js';
+import {text as msg} from '../i18n.js';
 
 test('Counting covers upward and downward transitions within each selected number range', () => {
   for (const level of [1, 2, 3]) {
@@ -64,7 +65,7 @@ test('The task, accessible text, help sequence and feedback all follow the same 
   const source = (await fs.readFile(new URL('../app.js', import.meta.url), 'utf8')).replace(/^import .*;\n/gm, '');
   const root = {innerHTML:'',querySelector:()=>null};
   const context = vm.createContext({
-    ...core, ...rewards, ...plants, ...breaks, ...profiles, ...curriculum, ...projects, ...worlds, ...seasons, mountProjectView:()=>()=>{}, hintFor,
+    msg,...core, ...rewards, ...plants, ...breaks, ...profiles, ...curriculum, ...projects, ...worlds, ...seasons, mountProjectView:()=>()=>{}, hintFor,
     document:{querySelector:s => s === '#app' ? root : s === '#announcer' ? {textContent:''} : null, querySelectorAll:() => [], addEventListener(){}},
     localStorage:{getItem:() => null, setItem(){}},
     window:{addEventListener(){}}, navigator:{}, matchMedia:()=>({matches:true}),

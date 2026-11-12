@@ -30,6 +30,12 @@ export function walkingClock(seconds,encounter) {
   return {time:seconds-rest,thinking:within<pause};
 }
 
+export function roadworkAge(site,seconds) {
+  if (seconds<site.start) return null;
+  const age=(seconds-site.start)%site.period;
+  return age<site.duration?age:null;
+}
+
 export function lunarSkyCamera(camera,scale,seconds=0) {
   // Stars are much farther away than the town: pan and zoom only a little.
   return {x:camera.x*.075-camera.anchorX*scale*.022+Math.sin(seconds*.027)*2.2,

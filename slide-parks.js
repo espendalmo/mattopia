@@ -105,7 +105,7 @@ export function slideRiders(plot) {
   const lunar=plot.kind==='dustSlides';
   const points=coursePoints(park.course);
   return ['#ecc279','#a189cf'].map((color,i)=>({
-    kind:'slide',
+    kind:'slide',characterSlot:16*plot.index+14+i,
     parts:[tube(0,0,.82,.92,.17,color,.027),
       ...(lunar?[-.28,.21,-.16].map((x,j)=>dome(x,-.64-j*.23,.36-j*.055,.41-j*.065,.18,'#bdabc8',.07+j*.042)):[]),
       ...visitor(lunar?(i?'alien':'astronaut'):'human',i?'#70a9be':'#d88782',undefined,true,.57,i+3)

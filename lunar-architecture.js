@@ -1,4 +1,4 @@
-import {box as b,rounded as r,tube as t,dome as d,beam,worldSign,vehicle,placeParts} from './scenery.js';
+import {box as b,rounded as r,tube as t,dome as d,beam,worldSign,parkedVehicle,placeParts} from './scenery.js';
 
 const pearl='#e5dfd8',ink='#3c4268',cyan='#8cddd8',gold='#eac484',pink='#d998b5',glass='#608aa9';
 const pair=[-1,1];
@@ -153,7 +153,7 @@ export function lunarArchitecture(style,stages,index) {
     const garage=style==='roverGarage'||style==='hangar';
     extra.push(...ring(-2.68,-1.62,1.99,garage?5.27:6.49,cyan,.15,.26),
       cone(-2.68,-1.62,.57,1.45,pink,garage?5.49:6.79));
-    if (style==='hangar') extra.push(...placeParts(vehicle('rover','#d6ac8c'),{x:2.4,y:.37,z:2.66,yaw:.22}));
+    if (style==='hangar') extra.push(...parkedVehicle('rover','#d6ac8c',{x:-3.15,y:.37,z:2.86,yaw:.22}));
   } else if (['biodome','solarGarden','solarObservatory'].includes(style)) {
     extra.push(...antenna(0,-2.7,style==='biodome'?3.18:1.77,cyan),
       ...ring(0,-1.45,2.53,style==='biodome'?3.35:2.66,pink,.12,.61));

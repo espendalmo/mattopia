@@ -183,6 +183,31 @@ test('Three crossing routes clear their queue and a waiting hovercar stops its f
   assert.ok(hoverWaited&&travel.every(distance=>distance>150));
 });
 
+test('A temporary road closure stops a line of vehicles, cues a horn and releases the queue',()=>{
+  const path=[[0,0],[36,0],[36,14],[0,14]];
+  const cars=[.09,.046,0].map((phase,i)=>actor(vehicle(i?'car':'bus','#799da6'),path,{
+    kind:i?'road':'bus',ground:0,speed:2.6+i*.2,phase,
+  }));
+  const closure={roadwork:true,x:23,y:0,z:0,dx:1,dz:0,start:.8,period:200,duration:14};
+  const run=createTraffic(cars,[],[],[closure]);
+  let previous=run(0);
+  const waited=new Set(),horns=new Set(),cleared=new Set();
+  for (let frame=1;frame<960;frame++) {
+    const seconds=frame/30,poses=run(seconds);
+    poses.forEach((pose,i)=>{
+      const last=previous[i];
+      if (seconds>6&&seconds<13.3&&pose.x>3&&pose.x<23&&Math.abs(pose.z)<.4
+        &&Math.hypot(pose.x-last.x,pose.z-last.z)<.00001) waited.add(i);
+      if (pose.cue==='queue-horn') horns.add(i);
+      if (seconds>16&&pose.x>26&&Math.abs(pose.z)<.4) cleared.add(i);
+    });
+    previous=poses;
+  }
+  assert.equal(waited.size,3);
+  assert.ok(horns.size>=1);
+  assert.equal(cleared.size,3);
+});
+
 test('A hovercar passes a slower bus on a clear stretch and toots during some passes',()=>{
   const path=[[0,0],[45,0],[45,18],[0,18]];
   const bus=actor(vehicle('bus','#799da6'),path,{kind:'bus',ground:0,speed:1.9,phase:.07});

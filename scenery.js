@@ -1,7 +1,8 @@
-import {walkingClock} from './scene-motion.js';
-import {regionSurface,regionVisibility,roadElevation,riverAt} from './regions.js';
+import {roadworkAge,walkingClock} from './scene-motion.js';
+import {regionSurface,regionVisibility,roadElevation,regionalFootprint,regionalPoint,riverAt,residenceDrive} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 import {randomGenerator} from './worlds.js';
+import {destinationRoutes,joinStreetPaths,roadProjections,streetNetwork} from './street-network.js';
 
 export const box = (x,z,w,d,h,color,y=0,studs=0) => ({shape:'box',x,y,z,w,d,h,color,studs});
 export const tube = (x,z,w,d,h,color,y=0,axis='y') => ({shape:'tube',x,y,z,w,d,h,color,axis});
@@ -12,7 +13,7 @@ export const at = (parts,x,y,z) => parts.map(part=>({...part,x:part.x+x,y:part.y
 export const beam = (from,to,width,color) => ({
   shape:'beam',from,to,width,color,x:(from[0]+to[0])/2,z:(from[2]+to[2])/2,y:Math.min(from[1],to[1]),h:Math.abs(from[1]-to[1])+width,
 });
-export const MAX_ACTORS=22;
+export const MAX_ACTORS=54;
 
 export function pointOnSite([a,b,d],{x,y,z,yaw=0}) {
   const c=Math.cos(yaw),s=Math.sin(yaw);
@@ -184,6 +185,52 @@ export function vehicle(kind,color) {
       box(0,1.676,.54,.061,.11,'#edbf75',1.229),
       box(0,-1.655,.93,.081,.12,'#b65e70',.48)];
   }
+  if (kind==='motorcycle'||kind==='moon-trike') {
+    const trike=kind==='moon-trike';
+    const rear=trike?[-.44,.44]:[0];
+    return [
+      ...rear.flatMap(x=>wheel(x,-.55,trike?.53:.48,0)),...wheel(0,.68,trike?.56:.48,0),
+      ...rear.map(x=>beam([x,.31,-.54],[0,.53,.17],.106,'#53616f')),
+      beam([0,.29,.71],[0,.91,.39],.115,'#9ba6ae'),
+      rounded(0,.14,trike?.59:.35,.65,.37,color,.42),
+      rounded(0,-.42,trike?.85:.33,.62,.12,'#424d61',.69),
+      tube(0,.57,.22,.12,.21,'#fff0b3',.71,'z'),
+      beam([-.34,.94,.43],[.34,.94,.43],.085,'#727f8f'),
+      ...at(visitor(trike?'astronaut':'human',trike?'#b3becd':'#64778e',undefined,true,.51,trike?1:3),0,.74,-.27),
+      ...(trike?rear.map(x=>rounded(x,-.61,.42,.59,.19,color,.53))
+        :[dome(0,-.285,.35,.35,.23,color,1.25)]),
+    ];
+  }
+  if (kind==='delivery') {
+    return [...[-.54,.54].flatMap(x=>[-.98,.86].flatMap(z=>wheel(x,z,.48,0))),
+      rounded(0,.74,1.14,1.2,.84,color,.32),rounded(0,-.48,1.27,1.78,1.29,'#f0e4cd',.35),
+      box(0,1.338,.85,.058,.31,'#7cabb9',.81),rounded(0,-1.36,.91,.07,.89,'#b2b4ab',.48),
+      ...[-1,1].flatMap(side=>[box(side*.641,-.54,.031,.84,.31,color,.86),
+        rounded(side*.39,1.36,.23,.11,.14,'#ffdfa0',.49)])];
+  }
+  if (kind==='compact'||kind==='mini-rover') {
+    const lunar=kind==='mini-rover';
+    return [...[-.41,.41].flatMap(x=>[-.46,.46].flatMap(z=>wheel(x,z,lunar?.59:.43,0))),
+      rounded(0,0,.93,1.54,.4,color,lunar?.39:.25),
+      dome(0,-.09,.84,1.06,.45,lunar?'#91bcc9':'#9ac4ca',lunar?.74:.59),
+      ...[-.29,.29].map(x=>rounded(x,.77,.14,.12,.12,'#ffe9a7',lunar?.58:.43)),
+      ...(lunar?[tube(.29,-.46,.087,.087,.42,'#8c96b2',1.06),dome(.29,-.46,.25,.25,.19,color,1.41)]:[])];
+  }
+  if (kind==='pickup'||kind==='van') {
+    const pickup=kind==='pickup';
+    return [...[-.54,.54].flatMap(x=>[-.77,.77].flatMap(z=>wheel(x,z,.49,0))),
+      rounded(0,0,1.23,2.4,.44,color,.28),
+      rounded(0,pickup?.38:-.14,1.12,pickup?1.21:1.95,pickup?.54:.81,color,.68),
+      rounded(0,.96,1.0,.092,.34,'#77b1bd',.78),
+      ...[-1,1].flatMap(side=>[
+        rounded(side*.554,.42,.055,.7,.36,'#8bc0c3',.8),
+        rounded(side*.42,1.19,.22,.08,.15,'#fff0bf',.46),
+        rounded(side*.42,-1.19,.22,.08,.15,'#c96962',.46),
+        ...(pickup?[box(side*.52,-.67,.12,1.02,.24,color,.69)]:[box(side*.57,-.49,.06,.94,.19,'#e7ce86',.95)]),
+      ]),
+      ...(pickup?[dome(.21,-.66,.26,1.44,.17,'#e8bb72',.72,.1),dome(-.19,-.7,.27,1.56,.19,'#79c1b9',.72,-.12)]
+        :[dome(0,-.4,.68,.88,.3,'#e5ab58',1.47),dome(.17,-.38,.26,.4,.1,'#8db178',1.75)])];
+  }
   if (kind==='rover') {
     return [
       ...[-.67,.67].flatMap(x=>[-.86,0,.86].flatMap(z=>wheel(x,z,.71,0))),
@@ -255,14 +302,19 @@ export function visitor(kind,coat,skin,seated=false,scale=.83,variant=0) {
   return model.map(part=>({...part,characterKind:kind,variant,x:part.x*scale,y:part.y*scale,z:part.z*scale,w:part.w*scale,d:part.d*scale,h:part.h*scale}));
 }
 
-function occupiedHovercar(passenger=false) {
+export function parkedVehicle(kind,color,site) {
+  const parking={kind,color,...site};
+  return placeParts(vehicle(kind,color),site).map(part=>({...part,parking}));
+}
+
+function occupiedHovercar(passenger=false,color='#b982ac') {
   const exhaust=(x,radius,length,color)=>Array.from({length:8},(_,i)=>{
     const rim=index=>[x+radius*Math.cos(index*Math.PI/4),.425+radius*Math.sin(index*Math.PI/4),-1.38];
     return {shape:'terrain',outline:[rim(i+1),rim(i),[x,.425,-1.38-length]],
       x,y:.425-radius,z:-1.38,h:radius*2,color,life:[0,0,0,-1]};
   });
   return [
-    ...vehicle('hover','#b982ac'),
+    ...vehicle('hover',color),
     ...[-.36,.36].flatMap(x=>[
       {...tube(x,-1.414,.28,.084,.27,'#f2aa6c',.29,'z'),life:[0,0,0,-1]},
       ...exhaust(x,.145,.78,'#ff985e'),...exhaust(x,.09,.53,'#fff0a8'),
@@ -273,8 +325,9 @@ function occupiedHovercar(passenger=false) {
   ];
 }
 
-function route(points, corner) {
+function route(points, corner, exactStart=false) {
   const path=points.flatMap(([x,z],i)=>{
+    if (i===0&&exactStart) return [[x,z]];
     const approach=points.at(i-1), exit=points[(i+1)%points.length];
     const inset=([px,pz])=>{
       const t=Math.min(.35,corner/Math.hypot(px-x,pz-z));
@@ -298,8 +351,8 @@ function route(points, corner) {
   return {segments,length};
 }
 
-export function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation,voice}) {
-  return {parts,kind,ground,speed,phase,roads,roadRise,elevation,voice,route:route(points,corner)};
+export function actor(parts,points,{kind,ground,speed,phase=0,corner=.85,roads=[],roadRise=0,elevation,voice,exactStart=false}) {
+  return {parts,kind,ground,speed,phase,roads,roadRise,elevation,voice,route:route(points,corner,exactStart)};
 }
 
 export function worldActors(theme) {
@@ -361,15 +414,34 @@ export function actorPose(actor, seconds, distanceOverride) {
   }
   if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
-  const {segments,length}=actor.route;
   const clock=walkingClock(seconds,actor.encounter);
   const traveled=distanceOverride??clock.time*actor.speed;
-  let distance=(traveled+(distanceOverride===undefined?length*actor.phase:0))%length;
+  let path=actor.route, at=traveled+(distanceOverride===undefined?path.length*actor.phase:0);
+  if (actor.wander&&distanceOverride===undefined) {
+    at%=actor.wander.length;
+    for (const trail of actor.wander.paths) {
+      path=trail;
+      if (at<path.length) break;
+      at-=path.length;
+    }
+  }
+  const {segments,length}=path;
+  let distance=at%length;
   if (distance<0) distance+=length;
-  const segment=segments.find(part=>distance<part.end) ?? segments[0];
+  let low=0,high=segments.length-1;
+  while (low<high) {
+    const mid=(low+high)>>1;
+    if (distance<segments[mid].end) high=mid;
+    else low=mid+1;
+  }
+  const segment=segments[low];
   const t=(distance-segment.start)/(segment.end-segment.start);
   const x=segment.x+segment.dx*t,z=segment.z+segment.dz*t;
-  const yaw=clock.thinking?Math.atan2(actor.encounter.x-x,actor.encounter.z-z):segment.yaw;
+  let yaw=clock.thinking?Math.atan2(actor.encounter.x-x,actor.encounter.z-z):segment.yaw;
+  if (actor.parking&&distance<actor.parking.reverseUntil) {
+    const turn=Math.max(0,Math.min(1,(actor.parking.reverseUntil-distance)/2.1));
+    yaw+=Math.PI*turn*turn*(3-2*turn);
+  }
   const walking=actor.kind==='walk';
   const nearestRoad=Math.min(...actor.roads.map(row=>Math.abs(row-z)));
   const y=actor.kind==='coaster'?segment.y+segment.dy*t:
@@ -392,17 +464,27 @@ export function actorPose(actor, seconds, distanceOverride) {
 const streetKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
 
 function vehicleFootprint(actor) {
+  switch (actor.vehicleModel) {
+    case 'motorcycle': return [1.02,.36];
+    case 'moon-trike': return [1.04,.63];
+    case 'compact': return [.85,.54];
+    case 'mini-rover': return [.93,.61];
+    case 'delivery': return [1.53,.68];
+    case 'cart': return [1.13,.64];
+  }
   return actor.kind==='bus'?[1.83,.76]:actor.kind==='jetski'?[.69,.34]:[1.31,.74];
 }
 
 function overlaps(a,b) {
   const dx=b.pose.x-a.pose.x,dz=b.pose.z-a.pose.z;
   if (Math.abs(dx)>4||Math.abs(dz)>4||Math.abs(a.pose.y-b.pose.y)>1.7) return false;
-  const axes=({sin,cos})=>[[sin,cos],[cos,-sin]];
-  const aa=axes(a.pose),bb=axes(b.pose);
-  const radius=(axes,[long,wide],[x,z])=>Math.abs(x*axes[0][0]+z*axes[0][1])*long
-    +Math.abs(x*axes[1][0]+z*axes[1][1])*wide;
-  return [...aa,...bb].every(([x,z])=>Math.abs(dx*x+dz*z)<radius(aa,a.size,[x,z])+radius(bb,b.size,[x,z]));
+  const {sin:as,cos:ac}=a.pose,{sin:bs,cos:bc}=b.pose;
+  const [al,aw]=a.size,[bl,bw]=b.size;
+  const parallel=Math.abs(as*bs+ac*bc),cross=Math.abs(as*bc-ac*bs);
+  return Math.abs(dx*as+dz*ac)<al+bl*parallel+bw*cross
+    &&Math.abs(dx*ac-dz*as)<aw+bl*cross+bw*parallel
+    &&Math.abs(dx*bs+dz*bc)<bl+al*parallel+aw*cross
+    &&Math.abs(dx*bc-dz*bs)<bw+al*cross+aw*parallel;
 }
 
 function followsTooClosely(a,b) {
@@ -424,18 +506,23 @@ function transferDistance(route,pose) {
   return null;
 }
 
-function waitingCycle(vehicles) {
+function waitingCycleVehicles(vehicles) {
+  const checked=new Set(),cycles=[];
   for (const start of vehicles) {
     const path=[];
     let next=start;
-    while (next?.wait>1.15) {
+    while (next?.wait>1.15&&!checked.has(next)) {
       const repeated=path.indexOf(next);
-      if (repeated>=0) return path.slice(repeated);
+      if (repeated>=0) {
+        cycles.push(...path.slice(repeated));
+        break;
+      }
       path.push(next);
       next=next.blocker;
     }
+    for (const vehicle of path) checked.add(vehicle);
   }
-  return [];
+  return cycles;
 }
 
 function passingPose(vehicle,pass,elapsed,seconds) {
@@ -451,22 +538,69 @@ function passingPose(vehicle,pass,elapsed,seconds) {
     sound:.64,thrust:Number(pass.hover)}};
 }
 
-export function createTraffic(actors,junctions=[]) {
-  const crossings=junctions.filter(point=>!point.arms||point.arms.length>=3||point.connector);
+export function createTraffic(actors,junctions=[],obstacles=[],roadworks=[]) {
+  const crossings=new Map();
+  const cell=8;
+  for (const point of junctions) {
+    if (point.arms&&point.arms.length<3) continue;
+    const column=Math.floor(point.x/cell),row=Math.floor(point.z/cell);
+    for (let x=column-1;x<=column+1;x++) for (let z=row-1;z<=row+1;z++) {
+      const id=`${x}:${z}`;
+      if (!crossings.has(id)) crossings.set(id,[]);
+      crossings.get(id).push(point);
+    }
+  }
   const junctionAt=(vehicle,pose)=>{
     if (!['road','bus','hover'].includes(vehicle.actor.kind)) return null;
-    const reach=2.3+Math.hypot(...vehicle.size);
-    return crossings.find(point=>Math.hypot(pose.x-point.x,pose.z-point.z)<reach)??null;
+    const id=`${Math.floor(pose.x/cell)}:${Math.floor(pose.z/cell)}`;
+    return crossings.get(id)?.find(point=>(pose.x-point.x)**2+(pose.z-point.z)**2<vehicle.crossingReach)??null;
   };
   const vehicles=[];
+  let closures=[];
+  const roadworkBlocker=(vehicle,pose)=>{
+    if (!closures.length||!['road','bus','hover'].includes(vehicle.actor.kind)) return null;
+    return closures.find(site=>{
+      const contains=position=>{
+        const dx=position.x-site.x,dz=position.z-site.z;
+        return Math.abs(dx*site.dx+dz*site.dz)<1.45+vehicle.size[0]
+          &&Math.abs(dx*site.dz-dz*site.dx)<1.4&&Math.abs(position.y-site.y)<1.45;
+      };
+      // Vehicles already in the work area can leave before the lane closes.
+      return contains(pose)&&!contains(vehicle.pose);
+    });
+  };
   const physicalBlocker=(vehicle,pose)=>vehicles.find(other=>other!==vehicle&&overlaps({size:vehicle.size,pose},other));
   const laneBlocker=(vehicle,pose)=>vehicles.find(other=>other!==vehicle&&(
     overlaps({size:vehicle.size,pose},other)||followsTooClosely({size:vehicle.size,pose},other)));
-  const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone);
+  const intersectionOwner=(vehicle,zone)=>zone&&vehicles.find(other=>other!==vehicle&&other.zone===zone
+    &&other.yielding?.other!==vehicle);
+  const atBay=vehicle=>vehicle.distance<=vehicle.nextPark-vehicle.actor.route.length+.0001;
+  function drivewayClear(vehicle,distance,seconds) {
+    const {actor,size}=vehicle;
+    const {entry,reach}=actor.parking.merge;
+    const duration=reach/actor.speed;
+    const nearby=vehicles.filter(other=>other!==vehicle&&Math.hypot(other.pose.x-entry.x,other.pose.z-entry.z)<11+other.actor.speed*duration);
+    for (let t=0;t<=duration+.16;t+=.16) {
+      const pose=actorPose(actor,seconds+t,distance+Math.min(reach,actor.speed*t));
+      const leaving={size,pose};
+      if (roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) return false;
+      const atGate=Math.hypot(pose.x-entry.x,pose.z-entry.z)<3.2;
+      for (const other of nearby) {
+        const waiting=other.holdUntil>seconds+t||other.blocker||other.workWait>0;
+        const next=other.pass?passingPose(other,other.pass,Math.min(other.pass.duration,other.pass.elapsed+t),seconds+t).pose
+          :waiting?other.pose:actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
+        const approaching={size:other.size,pose:next};
+        const passingGate=atGate&&Math.abs(pose.y-next.y)<1.6&&Math.hypot(next.x-entry.x,next.z-entry.z)<other.size[0]+.98;
+        if (passingGate||overlaps(leaving,other)||overlaps(leaving,approaching)||followsTooClosely(leaving,approaching)
+          ||followsTooClosely(approaching,leaving)) return false;
+      }
+    }
+    return true;
+  }
   function planPass(vehicle,blocker,seconds) {
     const {actor,pose,size}=vehicle;
     const hover=actor.kind==='hover';
-    if (!blocker||vehicle.zone||blocker.zone&&!hover||seconds<(vehicle.nextPass??0)
+    if (!blocker||actor.parking||vehicle.zone||blocker.zone&&!hover||seconds<(vehicle.nextPass??0)
       ||!['road','hover'].includes(actor.kind)||!['road','bus','hover'].includes(blocker.actor.kind)
       ||actor.speed-blocker.actor.speed<.54
       ||vehicles.some(other=>other.pass)) return null;
@@ -488,7 +622,8 @@ export function createTraffic(actors,junctions=[]) {
       const next=passingPose(vehicle,pass,t,seconds+t);
       const forward=next.pose.cos*pose.cos+next.pose.sin*pose.sin>(hover?-.12:.988);
       const overJunction=hover&&t>.29&&t<duration-.31;
-      if (!forward||junctionAt(vehicle,next.pose)&&!overJunction) return null;
+      const nearFind=obstacles.some(({x,z,radius})=>Math.hypot(x-next.pose.x,z-next.pose.z)<radius+Math.hypot(...size));
+      if (!forward||nearFind||roadworkBlocker(vehicle,next.pose)||junctionAt(vehicle,next.pose)&&!overJunction) return null;
       for (const other of vehicles) {
         if (other===vehicle) continue;
         const expected=actorPose(other.actor,seconds+t,other.distance+other.actor.speed*t);
@@ -502,10 +637,16 @@ export function createTraffic(actors,junctions=[]) {
   actors.forEach((actor,index)=>{
     if (!actor.route||!streetKinds.has(actor.kind)) return;
     const {length}=actor.route;
-    const size=vehicleFootprint(actor);
-    for (let offset=0;offset<length;offset+=.53) {
+    const size=vehicleFootprint(actor),crossingReach=(2.3+Math.hypot(...size))**2;
+    const spawnRange=actor.parking ? .53 : length;
+    for (let offset=0;offset<spawnRange;offset+=.53) {
       const distance=actor.phase*length+offset;
-      const candidate={actor,index,distance,size,pose:actorPose(actor,0,distance),wait:0,nextTurn:9+index*3,rng:randomGenerator(Math.round(length*200)+index*973)};
+      const candidate={actor,index,distance,size,crossingReach,pose:actorPose(actor,0,distance),wait:0,nextTurn:9+index*3,rng:randomGenerator(Math.round(length*200)+index*973)};
+      if (actor.parking) {
+        candidate.nextPark=length;
+        candidate.holdUntil=actor.parking.delay;
+        candidate.pose={...candidate.pose,sound:0,thrust:0};
+      }
       candidate.zone=junctionAt(candidate,candidate.pose);
       if (intersectionOwner(candidate,candidate.zone)) continue;
       if (vehicles.some(other=>overlaps(candidate,other)||followsTooClosely(candidate,other)||followsTooClosely(other,candidate))) continue;
@@ -521,62 +662,99 @@ export function createTraffic(actors,junctions=[]) {
   function exitBlocker(vehicle,distance,zone,seconds) {
     for (let advance=.55;advance<=12;advance+=.55) {
       const pose=actorPose(vehicle.actor,seconds,distance+advance);
-      const blocker=laneBlocker(vehicle,pose);
+      const blocker=roadworkBlocker(vehicle,pose)||laneBlocker(vehicle,pose);
       if (blocker) return blocker;
       if (junctionAt(vehicle,pose)!==zone) return null;
     }
     return null;
   }
   function findRetreat(seconds) {
-    const cycle=waitingCycle(vehicles).sort((a,b)=>a.size[0]-b.size[0]||a.index-b.index);
+    // Let a vehicle already in the junction clear it before the queue moves up.
+    const cycle=waitingCycleVehicles(vehicles).sort((a,b)=>Number(Boolean(a.zone))-Number(Boolean(b.zone))
+      ||b.wait-a.wait||a.size[0]-b.size[0]||a.index-b.index);
     for (const vehicle of cycle) {
       let clear=0;
-      for (let back=.3;back<=4.5;back+=.3) {
+      const lap=vehicle.nextPark-vehicle.actor.route.length;
+      const room=Math.min(vehicle.zone?7.2:4.5,vehicle.actor.parking?vehicle.distance-lap:Infinity);
+      for (let back=.3;back<=room;back+=.3) {
         const pose=actorPose(vehicle.actor,seconds,vehicle.distance-back);
-        if (physicalBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) break;
+        if (roadworkBlocker(vehicle,pose)||physicalBlocker(vehicle,pose)||intersectionOwner(vehicle,junctionAt(vehicle,pose))) break;
         clear=back;
       }
-      if (clear>=1.2) return {vehicle,target:vehicle.distance-clear};
+      if (clear>=1.2) {
+        const other=vehicle.blocker;
+        return {vehicle,target:vehicle.distance-clear,other,route:other.actor.route,distance:other.distance,pose:other.pose};
+      }
     }
     return null;
   }
   return seconds=>{
     carry+=Math.max(0,Math.min(.2,seconds-last));
     last=seconds;
+    closures=roadworks.filter(site=>{
+      const age=roadworkAge(site,seconds);
+      return age!==null&&age>=1.5&&age<site.duration-1.5;
+    });
     const step=1/30;
     while (carry>=step) {
       carry-=step;
-      if (!retreat&&vehicles.some(vehicle=>vehicle.wait>1.15)) retreat=findRetreat(seconds);
+      if (!retreat&&vehicles.some(vehicle=>vehicle.blocker&&vehicle.wait>1.15)) retreat=findRetreat(seconds);
       const backing=retreat?.vehicle;
       if (backing) {
         const distance=Math.max(retreat.target,backing.distance-step*1.55);
         const pose=actorPose(backing.actor,seconds,distance);
         const zone=junctionAt(backing,pose);
-        const blocked=physicalBlocker(backing,pose)||intersectionOwner(backing,zone);
+        const blocked=roadworkBlocker(backing,pose)||physicalBlocker(backing,pose)||intersectionOwner(backing,zone);
         if (!blocked) Object.assign(backing,{distance,zone,pose:{...pose,sound:0,thrust:0}});
         if (blocked||distance<=retreat.target) {
-          Object.assign(backing,{wait:0,blocker:null,holdUntil:seconds+.85});
+          const {other,route,distance:otherDistance,pose:otherPose}=retreat;
+          Object.assign(backing,{wait:0,blocker:null,holdUntil:seconds+1.25,
+            yielding:{other,route,distance:otherDistance,pose:otherPose,expires:seconds+8.5}});
           retreat=null;
         }
       }
       const priority=vehicles.slice().sort((a,b)=>Number(Boolean(b.zone))-Number(Boolean(a.zone))||b.wait-a.wait);
       for (const vehicle of priority) {
         if (vehicle===backing||seconds<vehicle.holdUntil) continue;
+        if (vehicle.yielding) {
+          const {other,route,distance,pose,expires}=vehicle.yielding;
+          const advance=other.actor.route===route?other.distance-distance:Math.hypot(other.pose.x-pose.x,other.pose.z-pose.z);
+          if (seconds<expires&&advance<vehicle.size[0]+other.size[0]+.55) continue;
+          vehicle.yielding=null;
+        }
         if (vehicle.pass) {
           const pass=vehicle.pass;
           const elapsed=Math.min(pass.duration,pass.elapsed+step);
           const {distance,pose}=passingPose(vehicle,pass,elapsed,seconds);
-          if (!physicalBlocker(vehicle,pose)) {
+          const work=roadworkBlocker(vehicle,pose);
+          if (!work&&!physicalBlocker(vehicle,pose)) {
             Object.assign(vehicle,{distance,pose});
+            vehicle.workWait=0;
             pass.elapsed=elapsed;
             if (elapsed>=pass.duration) {
               vehicle.pass=null;
               vehicle.nextPass=seconds+6+vehicle.rng()*5;
             }
+          } else if (work) {
+            vehicle.workWait=(vehicle.workWait??0)+step;
+            vehicle.pose={...vehicle.pose,sound:0,thrust:0};
           }
           continue;
         }
         const actor=vehicle.actor;
+        const merge=actor.parking?.merge;
+        if (merge&&atBay(vehicle)&&vehicles.some(other=>other!==vehicle&&other.actor.parking?.plot===actor.parking.plot
+          &&(!atBay(other)||other.holdUntil<vehicle.holdUntil))) continue;
+        if (actor.driveThrough) {
+          const near=Math.hypot(actor.driveThrough.x-vehicle.pose.x,actor.driveThrough.z-vehicle.pose.z)<.33;
+          if (near&&!vehicle.pickedUp) {
+            vehicle.pickedUp=true;
+            vehicle.holdUntil=seconds+1.65;
+            vehicle.pose={...vehicle.pose,sound:0};
+            continue;
+          }
+          if (!near) vehicle.pickedUp=false;
+        }
         if (actor.alternatives?.length&&seconds>=vehicle.nextTurn) {
           const near=vehicles.some(other=>other!==vehicle&&Math.hypot(other.pose.x-vehicle.pose.x,other.pose.z-vehicle.pose.z)<8);
           const pick=actor.alternatives[Math.floor(vehicle.rng()*actor.alternatives.length)];
@@ -587,13 +765,26 @@ export function createTraffic(actors,junctions=[]) {
             vehicle.nextTurn=seconds+12+vehicle.rng()*17;
           } else vehicle.nextTurn=seconds+(near?.45:1.8);
         }
-        const distance=vehicle.distance+vehicle.actor.speed*step;
+        let proposed=vehicle.distance+vehicle.actor.speed*step;
+        const stop=merge&&vehicle.nextPark-actor.route.length+merge.stop;
+        if (merge&&vehicle.distance<=stop+.00001&&proposed>=stop) {
+          if (vehicle.distance<stop-.00001) proposed=stop;
+          else if (seconds<vehicle.nextMergeCheck) continue;
+          else if (!drivewayClear(vehicle,stop,seconds)) {
+            vehicle.nextMergeCheck=seconds+.14;
+            vehicle.pose={...vehicle.pose,sound:0,thrust:0};
+            continue;
+          }
+        }
+        const parking=actor.parking&&proposed>=vehicle.nextPark;
+        const distance=parking?vehicle.nextPark:proposed;
         const pose=actorPose(vehicle.actor,seconds,distance);
-        const zone=junctionAt(vehicle,pose);
-        const blocker=intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
+        const zone=merge&&distance<=stop+.00001?null:junctionAt(vehicle,pose);
+        const blocker=roadworkBlocker(vehicle,pose)||intersectionOwner(vehicle,zone)||laneBlocker(vehicle,pose)
           ||(zone&&zone!==vehicle.zone&&exitBlocker(vehicle,distance,zone,seconds));
         if (blocker) {
-          const pass=!zone&&planPass(vehicle,blocker,seconds);
+          const roadwork=blocker.roadwork||blocker.workWait>0;
+          const pass=!zone&&!roadwork&&planPass(vehicle,blocker,seconds);
           if (pass) {
             Object.assign(vehicle,{pass,wait:0,blocker:null});
             vehicle.passCount=(vehicle.passCount??0)+1;
@@ -601,10 +792,16 @@ export function createTraffic(actors,junctions=[]) {
             continue;
           }
           vehicle.wait+=step;
-          vehicle.blocker=blocker;
+          vehicle.blocker=blocker.roadwork?null:blocker;
+          vehicle.workWait=roadwork?(vehicle.workWait??0)+step:0;
           vehicle.pose={...vehicle.pose,sound:0,thrust:0};
         } else {
-          Object.assign(vehicle,{pose,zone,distance,wait:0,blocker:null});
+          Object.assign(vehicle,{pose,zone,distance,wait:0,workWait:0,blocker:null});
+          if (parking) {
+            vehicle.nextPark+=actor.route.length;
+            vehicle.holdUntil=seconds+actor.parking.rest;
+            vehicle.pose={...pose,sound:0,thrust:0};
+          }
         }
       }
     }
@@ -612,6 +809,10 @@ export function createTraffic(actors,junctions=[]) {
       const vehicle=byIndex.get(i);
       if (!vehicle) return actor.route&&streetKinds.has(actor.kind)
         ? {...actorPose(actor,seconds),y:-540,sound:0} : actorPose(actor,seconds);
+      const queueAge=(vehicle.workWait??0)-1.55-.87*actor.phase;
+      if (queueAge>=0&&queueAge%5.1<.54) {
+        return {...vehicle.pose,cue:'queue-horn',sound:.8};
+      }
       const horn=seconds<vehicle.passHorn||actor.horn&&(seconds+17*actor.phase)%actor.horn<.68&&seconds>8;
       return horn?{...vehicle.pose,cue:'horn',sound:.65}:vehicle.pose;
     });
@@ -635,22 +836,23 @@ function rocketPose({x,y,z,yaw,kind,delay},seconds) {
   };
 }
 
-function planePose({x,y,z,yaw,delay,runway,kind},seconds) {
-  const clock=Math.max(0,seconds-delay),t=clock%30;
+function planePose({x,y,z,yaw,delay,runway,kind,lightAircraft},seconds) {
+  const clock=Math.max(0,seconds-delay)*(lightAircraft?.75:1),t=clock%30;
+  const travel=lightAircraft?125:189;
   const reverse=Math.floor(clock/30)%2===1;
   const shuttle=kind==='shuttle';
-  const end=runway*.5-(shuttle?1.32:1.08);
+  const end=runway*.5-(lightAircraft?.74:shuttle?1.32:1.08);
   let along=-end,altitude=0,turn=0;
   if (t>=2.4&&t<5.3) along=-end+2*end*((t-2.4)/2.9)**1.8;
   else if (t>=5.3&&t<8.8) {
     const flight=(t-5.3)/3.5;
-    along=end+189*flight**1.7;
-    altitude=(shuttle?146:115)*flight**1.44;
+    along=end+travel*flight**1.7;
+    altitude=(lightAircraft?73:shuttle?146:115)*flight**1.44;
   } else if (t>=8.8&&t<13) altitude=-540;
   else if (t>=13&&t<17.4) {
     const approach=(17.4-t)/4.4;
-    along=-end-189*approach**1.91;
-    altitude=103*approach**1.94;
+    along=-end-travel*approach**1.91;
+    altitude=(lightAircraft?66:103)*approach**1.94;
   } else if (t>=17.4&&t<20.5) along=-end+2*end*(1-((20.5-t)/3.1)**2);
   else if (t>=20.5) {
     along=end;
@@ -684,6 +886,117 @@ function laneLoop(path,offset) {
     return [point.x-Math.sin(angle)*side,point.z+Math.cos(angle)*side];
   });
   return [...lane(offset),...lane(-offset).reverse()];
+}
+
+function streetLane(points,offset=.87) {
+  return points.map((point,i)=>{
+    const before=points.at(i-1),after=points[(i+1)%points.length];
+    const a=Math.hypot(point.x-before.x,point.z-before.z)||1;
+    const b=Math.hypot(after.x-point.x,after.z-point.z)||1;
+    const ax=(point.x-before.x)/a,az=(point.z-before.z)/a;
+    const bx=(after.x-point.x)/b,bz=(after.z-point.z)/b;
+    const miter=offset/Math.max(.5,1+ax*bx+az*bz);
+    return [point.x-(az+bz)*miter,point.z+(ax+bx)*miter];
+  });
+}
+
+function roadNear(paths,access,loop=false) {
+  return roadProjections(paths,access,loop?.75:1.85,loop).reduce((best,spot)=>
+    !best||spot.gap<best.gap?spot:best,null);
+}
+
+function parkingStreet(plan,access,site) {
+  const local=roadNear(plan.paths,access);
+  if (!local||local.gap>1.85) return null;
+  const branches=(plan.circuits??[]).filter(path=>site||path.length<=8);
+  const circuit=roadNear(branches,access,true);
+  if (circuit&&circuit.gap<.75) {
+    const {path,i,x,z,u,v}=circuit;
+    const points=path.slice(i+1).concat(path.slice(0,i+1));
+    const reverse=site&&(site.x-x)*-v+(site.z-z)*u<0;
+    if (reverse) points.reverse();
+    const offset=reverse?-.87:.87;
+    const join=[x-v*offset,z+u*offset];
+    return [join,...streetLane(points),join];
+  }
+  const {x,z,path,i}=local;
+  const right=path.slice(i+1),left=path.slice(0,i+1).reverse();
+  const reach=branch=>branch.reduce((sum,p,i)=>sum+Math.hypot(p.x-(branch[i-1]?.x??x),p.z-(branch[i-1]?.z??z)),0);
+  const preferred=site&&((site.x-x)*-local.v+(site.z-z)*local.u>0?right:left);
+  const branch=preferred&&reach(preferred)>=5?preferred:reach(right)>reach(left)?right:left;
+  if (reach(branch)<5) return null;
+  const points=[{x,z},...branch.slice(0,24)].filter((point,i,all)=>!i||Math.hypot(point.x-all[i-1].x,point.z-all[i-1].z)>.15);
+  return laneLoop(points,.87);
+}
+
+function residenceMerge(route,plot,entry,front) {
+  const depth=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const line=front-3.02;
+  const segment=route.segments.find(p=>depth(p.x,p.z)<=line&&depth(p.x+p.dx,p.z+p.dz)>line);
+  const stop=segment?segment.start+(segment.end-segment.start)*(line-depth(segment.x,segment.z))
+    /(depth(segment.x+segment.dx,segment.z+segment.dz)-depth(segment.x,segment.z)):0;
+  return {stop,reach:6.1,entry};
+}
+
+function residenceTours(layout,plan,plot,spots) {
+  const entry=plot.entries[0];
+  const street=parkingStreet(plan,entry,plot);
+  if (!street) return [];
+  const {front,elevation}=residenceDrive(layout,plot,plan.streetElevation);
+  const point=([x,z])=>{const at=regionalPoint(plot,x,z);return [at.x,at.z];};
+  const throat=[0,front-1.53];
+  return spots.map((spot,i)=>{
+    const side=Math.sign(spot.x);
+    const leaving=[[spot.x,spot.z],[side*1.43,4.78],[0,front-3.45],throat];
+    const returning=[throat,[0,front-3.48],[side*1.66,5.72],[side*4.14,5.51],[side*4.62,4.52],[side*4.34,3.58]];
+    const points=leaving.map(point).concat(street,returning.map(point));
+    const car=actor(vehicle(spot.kind,spot.color),points,{kind:'road',speed:2.16,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
+    return {...car,vehicleModel:spot.kind,parking:{model:spot,plot:plot.index,delay:8+i*11,rest:15+i*6,
+      merge:residenceMerge(car.route,plot,entry,front)}};
+  });
+}
+
+export function parkingTours(layout,plan,plot,stages) {
+  const entry=plot.entries?.[0];
+  if (!entry) return [];
+  const spots=[...new Set(stages.flatMap(stage=>stage.flatMap(part=>part.parking?[part.parking]:[])))];
+  if (!spots.length) return [];
+  if (plot.residence) return residenceTours(layout,plan,plot,spots);
+  const cos=Math.cos(plot.yaw),sin=Math.sin(plot.yaw);
+  const front=(entry.x-plot.x)*sin+(entry.z-plot.z)*cos;
+  return spots.flatMap((spot,i)=>{
+    const apron=plot.airportDistrict?spot.x*.31:spot.x;
+    const access=regionalPoint(plot,apron,front);
+    const street=parkingStreet(plan,access,plot.kind==='residence'?plot:null)??parkingStreet(plan,entry);
+    if (!street||front<spot.z+1.5) return [];
+    const bay=regionalPoint(plot,spot.x,spot.z);
+    const fromDeck=regionalPoint(plot,spot.x,Math.min(front-.84,spot.z+1.48));
+    const driveway=regionalPoint(plot,apron,front-1.25);
+    const toArray=({x,z})=>[x,z];
+    const points=[bay,fromDeck,driveway].map(toArray).concat(street,[driveway,fromDeck].map(toArray));
+    const height=spot.kind==='hover'?.17:0;
+    const deck=plot.y+spot.y-height;
+    const edge=Math.min(front-1.05,Math.max(plot.kind==='residence'?spot.z+.74:0,(plot.halfDepth??4.6)-.28));
+    const elevation=(x,z)=>{
+      const a=x-plot.x,b=z-plot.z;
+      const localX=a*cos-b*sin,depth=a*sin+b*cos;
+      const street=plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
+      if (Math.abs(localX-spot.x)>4.7||depth<spot.z-.5||depth>=front) return street+height;
+      const t=Math.max(0,Math.min(1,(depth-edge)/Math.max(.5,front-edge)));
+      return deck+(street-deck)*t+height;
+    };
+    const car=actor(spot.kind==='hover'?occupiedHovercar(i===0,spot.color):vehicle(spot.kind,spot.color),points,
+      {kind:spot.kind==='hover'?'hover':'road',speed:spot.kind==='hover'?2.38:1.76,corner:STREET_TURN_RADIUS,elevation,exactStart:true});
+    return [{...car,...(plot.kind==='residence'&&{vehicleModel:spot.kind}),parking:{
+      model:spot,plot:plot.index,delay:7+(plot.index*3+i*12)%18,rest:18+(plot.index+i*9)%15,reverseUntil:front-spot.z+.65,
+      ...(plot.kind==='residence'&&{merge:residenceMerge(car.route,plot,access,front)}),
+      access:Array.from({length:7},(_,j)=>{
+        const t=j/6,depth=edge+(front-.55-edge)*t;
+        const point=regionalPoint(plot,spot.x+(apron-spot.x)*t,depth);
+        return {...point,y:elevation(point.x,point.z)-height-.035};
+      }),
+    }}];
+  });
 }
 
 export function sailboat(cargo) {
@@ -767,75 +1080,176 @@ function islandWaterLife(layout,plan,completed) {
   return beach;
 }
 
-function offroadRover(layout,plan,plots) {
-  const routes=plan.paths.flat();
+function terrainWander(layout,plan,completed,discoveries,driver) {
+  const rng=randomGenerator(layout.seed^(driver?0xa8125c1:0x4c5a021));
+  const roads=plan.paths.flat(),tracks=plan.transit??[];
   const safe=(x,z)=>{
     const ground=regionSurface(layout,x,z);
-    return ground.basin>-2.8&&regionVisibility(plan,x,z)>.59
-      &&plan.plots.every(plot=>Math.hypot(plot.x-x,plot.z-z)>7.1)
-      &&routes.every(point=>Math.hypot(point.x-x,point.z-z)>2.15);
+    return !ground.water&&ground.basin>-2.8&&regionVisibility(plan,x,z)>.56
+      &&plan.plots.every(plot=>plot.residence?!regionalFootprint(plot,x,z,1.45):Math.hypot(plot.x-x,plot.z-z)>(plot.airfield?16:7.1))
+      &&discoveries.every(site=>Math.hypot(site.x-x,site.z-z)>(site.type.mine?7.15:6.25))
+      &&roads.every(point=>Math.hypot(point.x-x,point.z-z)>2.9)
+      &&tracks.every(point=>Math.hypot(point.x-x,point.z-z)>2.6);
   };
-  for (const crater of layout.basins) {
-    const points=Array.from({length:9},(_,i)=>{
-      const angle=i*Math.PI*2/9;
-      const radius=i===2?.57:i===3?.74:1.16;
-      return [crater.x+Math.cos(angle)*crater.w*radius,crater.z+Math.sin(angle)*crater.d*radius];
-    });
-    if (!points.every(([x,z])=>safe(x,z))) continue;
-    const rover=actor(vehicle('rover','#caa18f'),points,{kind:'offroad-rover',speed:1.5,phase:.22,corner:1.35,
-      elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
-    if (rover.route.segments.every(({x,z,dx,dz})=>safe(x,z)&&safe(x+dx*.5,z+dz*.5))) return rover;
-  }
-  for (const plot of plots.slice().reverse()) {
-    for (let direction=0;direction<8;direction++) {
-      const angle=direction*Math.PI/4, reach=15.3+(direction%2)*1.5;
-      const x=plot.x+Math.cos(angle)*reach,z=plot.z+Math.sin(angle)*reach;
-      const loop=Array.from({length:7},(_,i)=>{
-        const t=i*Math.PI*2/7;
-        return [x+Math.cos(t)*3.85,z+Math.sin(t)*2.95];
-      });
-      if (!loop.every(([a,b])=>safe(a,b))) continue;
-      const rover=actor(vehicle('rover','#caa18f'),loop,{kind:'offroad-rover',speed:1.45,phase:.22,corner:1.5,
-        elevation:(x,z)=>regionSurface(layout,x,z).y+.043});
-      if (rover.route.segments.every(part=>safe(part.x,part.z))) return rover;
+  const joins=([a,b],[x,z])=>{
+    const length=Math.hypot(x-a,z-b);
+    return Array.from({length:Math.ceil(length/.7)+1},(_,i)=>i/Math.ceil(length/.7||1))
+      .every(t=>safe(a+(x-a)*t,b+(z-b)*t));
+  };
+  const moon=layout.theme==='moon';
+  const anchors=[...(moon?layout.basins:[]),...completed.slice().reverse(),plan.origin];
+  for (const anchor of anchors) {
+    for (let attempt=0;attempt<12;attempt++) {
+      const angle=rng()*Math.PI*2,reach=anchor.w??(10+rng()*13);
+      const start=[anchor.x+Math.cos(angle)*reach,anchor.z+Math.sin(angle)*reach];
+      if (!safe(...start)) continue;
+      const points=[start];
+      for (let i=0;i<42&&points.length<20;i++) {
+        const [x,z]=points.at(-1);
+        const turn=rng()*Math.PI*2,step=2.8+rng()*5.1;
+        const next=[x+Math.cos(turn)*step,z+Math.sin(turn)*step];
+        if (points.slice(-5).some(([a,b])=>Math.hypot(a-next[0],b-next[1])<2.3)||!joins([x,z],next)) continue;
+        points.push(next);
+      }
+      if (points.length<5) continue;
+      const end=points.at(-1),returnAt=points.findIndex((point,i)=>i<points.length-3&&joins(end,point));
+      const loop=returnAt<0?points.concat(points.slice(1,-1).reverse()):points.slice(returnAt);
+      const person=moon?'alien':'human';
+      const traveler=actor(driver?vehicle('rover','#caa18f'):visitor(person,'#9d86bb',undefined,false,.83,layout.seed%8),loop,
+        {kind:driver?'offroad-rover':'walk',speed:driver?1.45:.71,phase:.22,corner:.72,
+          elevation:(x,z)=>regionSurface(layout,x,z).y+.055,voice:driver?undefined:moon?'alien':'people'});
+      const usable=trail=>trail.segments.every(({x,z,dx,dz})=>joins([x,z],[x+dx,z+dz]));
+      if (!usable(traveler.route)) continue;
+      const variations=[];
+      // Alternate trails share the first and last stretches. Crossing the
+      // seam or joining a different branch doesn't jump the figure.
+      for (let trial=0;trial<22&&variations.length<2;trial++) {
+        if (loop.length<7) break;
+        const i=2+Math.floor(rng()*(loop.length-4));
+        const a=loop[i-1],b=loop[i+1];
+        const angle=rng()*Math.PI*2,reach=3.4+rng()*3.7;
+        const fork=[loop[i][0]+Math.cos(angle)*reach,loop[i][1]+Math.sin(angle)*reach];
+        if (!joins(a,fork)||!joins(fork,b)) continue;
+        const variant=route(loop.map((point,j)=>j===i?fork:point),.72);
+        if (usable(variant)) variations.push(variant);
+      }
+      if (driver) return {...traveler,alternatives:[traveler.route,...variations]};
+      const paths=variations.length?[traveler.route,...variations,traveler.route,...variations.slice().reverse()]:[];
+      const wander=paths.length?{paths,length:paths.reduce((sum,path)=>sum+path.length,0)}:null;
+      return {...traveler,wander,offroadExplorer:true,characterSlot:901};
     }
   }
   return null;
 }
 
-export function regionActors(theme,layout,plan,completed) {
+export function driveThroughApproach(plot) {
+  const entry=plot.entries?.[0]??plot;
+  const reach=Math.max(5.8,Math.hypot(entry.x-plot.x,entry.z-plot.z));
+  const world=(x,z,y=0)=>pointOnSite([x,y,z],plot);
+  return {reach,world};
+}
+
+function driveThroughTraffic(plot,theme,elevation,circuits) {
+  const {reach,world}=driveThroughApproach(plot);
+  const far=reach+.87,near=reach-.87;
+  const span=plot.streetSpan??13.4;
+  const bend=Math.max(5.65,span*.45);
+  const localX=({x,z})=>(x-plot.x)*Math.cos(plot.yaw)-(z-plot.z)*Math.sin(plot.yaw);
+  const localZ=({x,z})=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const pullIn=[[4.26,near],[4.26,1.63],[-4.26,1.63],[-4.26,near]];
+  const convert=([x,z])=>{ const [a,,b]=world(x,z); return [a,b]; };
+  let stops=[[bend,near],...pullIn,[-bend,near],[-bend,far],[bend,far]].map(convert);
+  let corner=.58;
+  for (const circuit of circuits.slice().sort((a,b)=>a.length-b.length)) {
+    const edge=circuit.findIndex((a,i)=>{
+      const b=circuit[(i+1)%circuit.length];
+      return Math.abs(localZ(a)-reach)<.85&&Math.abs(localZ(b)-reach)<.85
+        &&Math.min(localX(a),localX(b))< -4.9&&Math.max(localX(a),localX(b))>4.9;
+    });
+    if (edge<0) continue;
+    const street=circuit.slice(edge).concat(circuit.slice(0,edge));
+    const ordered=localX(street[0])>localX(street[1])?street:[street[1],street[0],...street.slice(2).reverse()];
+    const lane=streetLane(ordered);
+    stops=[lane[0],...pullIn.map(convert),...lane.slice(1)];
+    corner=STREET_TURN_RADIUS;
+    break;
+  }
+  const local=(x,z)=>(x-plot.x)*Math.sin(plot.yaw)+(z-plot.z)*Math.cos(plot.yaw);
+  const car=actor(vehicle(theme==='moon'?'rover':theme==='island'?'pickup':'car','#d5a961'),stops,{
+    kind:'road',speed:1.68,phase:.07,corner,
+    elevation:(x,z)=>{
+      const depth=local(x,z);
+      const inside=Math.abs(localX({x,z}))<5.35&&depth>=.71&&depth<reach;
+      const blend=inside?Math.max(0,Math.min(1,(depth-4.78)/(reach-4.78))):1;
+      return (plot.y+.46)*(1-blend)+elevation(x,z)*blend;
+    }});
+  const [x,,z]=world(0,1.63);
+  return {...car,driveThrough:{x,z},...(theme==='island'&&{islandVehicle:'pickup'})};
+}
+
+function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation) {
+  const network=plan.network??streetNetwork(joinStreetPaths([],plan.paths,new Map(),new Set()).paths);
+  const entries=completed.flatMap(plot=>plot.kind!=='residence'&&(plot.waterfront||plot.halfWidth)?
+    plot.entries.map(point=>({...point,landmark:plot.index+1,airportDistrict:plot.airportDistrict,hangar:plot.kind==='hangar'})):[]);
+  const visits=destinationRoutes(network,entries);
+  const landmarkVisits=visits.filter(tour=>tour.landmark);
+  const branchVisits=visits.filter(tour=>!tour.landmark);
+  const models=theme==='moon'?['rover','moon-trike','mini-rover','rover','moon-trike','mini-rover']
+    :theme==='island'?['cart','motorcycle','pickup','van','compact','delivery','car']
+    :['car','motorcycle','compact','van','delivery','pickup','car','compact'];
+  const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83','#80b5a9','#ad91c0','#d6a26e','#7798bc'];
+  const span=network.edges.reduce((sum,edge)=>sum+edge.length,0);
+  const count=Math.min(24,2+Math.floor(completed.length*.60),Math.max(2,Math.floor(span/21)));
+  const rng=randomGenerator(layout.seed^0x52b7af34);
+  const fleet=[];
+  for (let i=0;i<count;i++) {
+    const destination=i>0?(landmarkVisits[i-1]??(i%3===2?branchVisits.shift():null)):null;
+    const circuit=circuits.length?circuits[(i*7)%circuits.length]:null;
+    const tour=destination??(!circuit?visits[i%visits.length]:null);
+    const points=tour?laneLoop(tour.path,.87):circuit?
+      streetLane(i%3===1?circuit.slice().reverse():circuit):null;
+    if (!points?.length) continue;
+    const model=models[i%models.length];
+    const speed=theme==='moon'?2.05+(i%4)*.32:model==='motorcycle'?3.75:model==='delivery'?2.28:2.65+(i%3)*.32;
+    fleet.push({...actor(vehicle(model,colors[(i+(layout.seed%colors.length))%colors.length]),points,{
+      kind:'road',elevation,speed,phase:rng(),corner:tour?1.34:STREET_TURN_RADIUS,
+    }),vehicleModel:model,fleet:true,destination:tour?.landmark?tour.terminal:null,
+      ...(!tour&&{alternatives}),horn:theme==='moon'?0:34+i*9,
+      ...(theme==='island'&&['cart','pickup','van'].includes(model)&&{islandVehicle:model})});
+  }
+  return fleet;
+}
+
+export function regionActors(theme,layout,plan,completed,discoveries=[]) {
   if (!completed.length&&!plan.circuits?.length) return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
   const circuits=(plan.circuits??[]).slice().sort((a,b)=>b.length-a.length);
-  const lane=(points,offset=.87)=>points.map((point,i)=>{
-    const before=points.at(i-1),after=points[(i+1)%points.length];
-    const a=Math.hypot(point.x-before.x,point.z-before.z)||1;
-    const b=Math.hypot(after.x-point.x,after.z-point.z)||1;
-    const ax=(point.x-before.x)/a,az=(point.z-before.z)/a;
-    const bx=(after.x-point.x)/b,bz=(after.z-point.z)/b;
-    const miter=offset/Math.max(.5,1+ax*bx+az*bz);
-    return [point.x-(az+bz)*miter,point.z+(ax+bx)*miter];
-  });
   const elevation=(x,z)=>plan.streetElevation?.(x,z)??roadElevation(layout,x,z);
-  const routeVariants=circuits.slice(0,18).map(points=>route(lane(points),STREET_TURN_RADIUS));
-  const alternatives=routeVariants.concat(circuits.slice(0,18).map(points=>route(lane(points.slice().reverse()),STREET_TURN_RADIUS)));
+  const alternatives=circuits.slice(0,18).flatMap(points=>
+    [points,points.slice().reverse()].map(path=>route(streetLane(path),STREET_TURN_RADIUS)));
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
   if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
+  if (completed.length) {
+    const walker=terrainWander(layout,plan,completed,discoveries,false);
+    if (walker) actors.push(walker);
+  }
   if (moon) {
-    const rover=completed.length&&offroadRover(layout,plan,completed);
-    if (rover) actors.push(rover,{...rover,kind:'walk',offroadExplorer:true,
-      parts:visitor('alien','#9d86bb',undefined,false,.83,layout.seed%4),speed:.58,phase:.73,voice:'alien'});
+    const rover=completed.length&&terrainWander(layout,plan,completed,discoveries,true);
+    if (rover) actors.push(rover);
     if (circuits.length||paths.length) {
       const circuit=circuits[1]??circuits[0];
-      const points=circuit?lane(circuit):laneLoop(paths.at(-1),.78);
+      const points=circuit?streetLane(circuit):laneLoop(paths.at(-1),.78);
       actors.push({...actor(occupiedHovercar(layout.seed%2===1),points,{kind:'hover',speed:3.15,phase:.38,corner:STREET_TURN_RADIUS,
         elevation:(x,z)=>elevation(x,z)+.17}),...(circuit&&{alternatives})});
       if (completed.length>=2) actors.push({...actor(vehicle('rover-bus','#8daec5'),points,
         {kind:'bus',speed:1.94,phase:.47+(layout.seed%7)*.018,corner:STREET_TURN_RADIUS,elevation}),
         lunarBus:true,...(circuit&&{alternatives})});
     }
+  }
+  for (const shop of completed.filter(plot=>plot.kind==='driveThrough')) {
+    actors.push(driveThroughTraffic(shop,theme,elevation,circuits));
   }
   const station=completed.find(plot=>plot.kind==='busStation');
   if (station&&paths.length) {
@@ -844,9 +1258,19 @@ export function regionActors(theme,layout,plan,completed) {
     const routes=circuits.length?circuits:paths;
     const cost=path=>distance(path)-Math.min(path.length,12)*.8;
     const closest=routes.reduce((near,route)=>cost(route)<cost(near)?route:near);
-    const points=circuits.length?lane(closest):laneLoop(closest,.83);
+    const points=circuits.length?streetLane(closest):laneLoop(closest,.83);
     actors.push({...actor(vehicle('bus','#4c9694'),points,{kind:'bus',speed:2.25,phase:.33,
       elevation,corner:STREET_TURN_RADIUS}),horn:44});
+  }
+  if (theme==='island'&&completed.length>=2) {
+    const busCount=completed.length>=12&&circuits.length>=2?2:1;
+    for (let i=0;i<busCount;i++) {
+      const circuit=circuits[i];
+      const points=circuit?streetLane(i===0?circuit:circuit.slice().reverse()):laneLoop(paths.at(-1),.83);
+      actors.push({...actor(vehicle('bus',i?'#cd7f75':'#4e9e98'),points,
+        {kind:'bus',speed:2.05+i*.16,phase:.48+i*.17,elevation,corner:STREET_TURN_RADIUS}),
+        islandVehicle:'bus',...(circuit&&{alternatives}),horn:58+i*12});
+    }
   }
   for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
     const cargo=plot.kind==='quay';
@@ -861,24 +1285,16 @@ export function regionActors(theme,layout,plan,completed) {
       speed:2.7,phase:.1,corner:.65,
     }));
   }
-  for (let i=0;i<Math.min(paths.length,suspension?3:4,1+Math.floor(completed.length/5));i++) {
-    const path=paths[(paths.length-1-i*3+paths.length*3)%paths.length];
-    const circuit=circuits[i%circuits.length];
-    const points=circuit?lane(circuit):laneLoop(path,.83);
-    actors.push({...actor(vehicle(moon?'rover':theme==='island'?'cart':'car',colors[i]),points,{
-      kind:'road',elevation,speed:moon?2.3:2.9,phase:i*.23+.12,
-      corner:circuit?STREET_TURN_RADIUS:1.12,
-    }),...(circuit&&{route:routeVariants[i%circuits.length],alternatives}),horn:moon?0:34+i*11});
-  }
+  actors.push(...streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation));
   for (let i=0;completed.length&&i<Math.min(paths.length,4,1+Math.floor(completed.length/4));i++) {
     const path=paths[(i*3+1)%paths.length];
     const walkCircuit=circuits.find(circuit=>circuit.length>=6)??circuits[0];
-    const points=walkCircuit ? lane(walkCircuit,i%2===0?1.86:-1.86) : laneLoop(path,1.83);
+    const points=walkCircuit ? streetLane(walkCircuit,i%2===0?1.86:-1.86) : laneLoop(path,1.83);
     const person=walkers[i%walkers.length];
-    actors.push(actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c',false,.83,(layout.seed+i)%8),points,{
+    actors.push({...actor(visitor(person,colors[(i+1)%4],i%2?'#a97963':'#edb88c',false,.83,(layout.seed+i)%8),points,{
       kind:'walk',elevation:(x,z)=>elevation(x,z)+.012,speed:.87+i*.092,phase:.13+i*.17,corner:.52,
       voice:moon?person:'people',
-    }));
+    }),characterSlot:896+i});
   }
   if (completed.length>=2) {
     const {x,z}=completed.at(-1);
@@ -893,5 +1309,5 @@ export function regionActors(theme,layout,plan,completed) {
       speed:1.62,phase:.71,corner:.47,
     }));
   }
-  return actors.slice(0,MAX_ACTORS);
+  return actors;
 }

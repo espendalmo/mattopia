@@ -8,8 +8,10 @@ export const GRAND_REGION_PLACES=30;
 export const GRAND_REGION_CATALOG=44;
 export const LUNAR_REGION_CATALOG=48;
 export const LARGE_REGION_PLACES=40;
-export const LARGE_REGION_CATALOG=GRAND_REGION_CATALOG+6;
-export const LARGE_LUNAR_CATALOG=LUNAR_REGION_CATALOG+6;
+export const LARGE_REGION_CATALOG=GRAND_REGION_CATALOG+7;
+export const LARGE_LUNAR_CATALOG=LUNAR_REGION_CATALOG+8;
+// Keep saved residences separate from the expandable building catalogs.
+export const RESIDENCE_PLACE=1000;
 export const largeRegion=map=>map?.layout===3&&map.catalog===4;
 export const grandCatalog=map=>map?.layout===3&&[3,4].includes(map.catalog);
 export const LEGACY_WORLD_STEPS=120;
@@ -78,7 +80,9 @@ export function currentWorld(state,id) {
   return state.projects?.[id]>0 ? legacyMap(state.projects[id]) : null;
 }
 
-export function worldChoices(map,theme) {
+const residenceName=value=>typeof value==='string'?value.trim().replace(/\s+/gu,' ').slice(0,24):'';
+
+export function worldChoices(map,theme,owner='') {
   const status=worldStatus(map);
   if (!map||status.full||status.building!==null) return [];
   const {finished,partial}=legacyPlacement(map.legacy);
@@ -91,11 +95,15 @@ export function worldChoices(map,theme) {
     const swap=Math.floor(rng()*(i+1));
     [options[i],options[swap]]=[options[swap],options[i]];
   }
+  if (isWorld(theme)&&isRegion(map)&&status.built>=2&&residenceName(owner)&&!used.has(RESIDENCE_PLACE)) {
+    options.push(RESIDENCE_PLACE);
+  }
   return options;
 }
 
-export function worldSelect(map,id,theme) {
-  return worldChoices(map,theme).includes(id) ? {...map,order:[...map.order,id]} : map;
+export function worldSelect(map,id,theme,owner='') {
+  if (!worldChoices(map,theme,owner).includes(id)) return map;
+  return {...map,order:[...map.order,id],...(id===RESIDENCE_PLACE&&{residenceName:residenceName(owner)})};
 }
 
 export function worldAdvance(map,theme) {
@@ -108,7 +116,7 @@ export function worldAdvance(map,theme) {
 
 export function freshWorld(rng=Math.random,previous=null) {
   const seed=Math.floor(rng()*2**32)>>>0;
-  return {layout:3,catalog:4,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
+  return {layout:3,catalog:4,starter:true,seed:seed===previous?.seed?(seed+1)>>>0:seed,legacy:0,order:[],progress:0};
 }
 
 function restoreWorld(raw,budget,first,theme) {
@@ -124,12 +132,15 @@ function restoreWorld(raw,budget,first,theme) {
   const remaining=capacity-finished.length-Number(Boolean(partial));
   const used=new Set([...finished,partial?.id]);
   const ids=Array.isArray(raw.order)?[...new Set(raw.order)].filter(id=>
-    integer(id)&&(id===RAIL_PLACE?hasRail(theme,{layout,...catalog}):id<pool)&&!used.has(id)).slice(0,remaining):[];
+    integer(id)&&(id===RESIDENCE_PLACE?layout>1:id===RAIL_PLACE?hasRail(theme,{layout,...catalog}):id<pool)
+      &&!used.has(id)).slice(0,remaining):[];
   const catchUp=Number(Boolean(partial));
   const progress=integer(raw.progress)?Math.min(raw.progress,budget-legacy,ids.length*WORLD_BUILD_STEPS+catchUp):0;
   // There can be at most one selected building beyond completed and in-progress buildings.
   const limit=catchUp&&progress===0?0:Math.floor(Math.max(0,progress-catchUp)/WORLD_BUILD_STEPS)+1;
-  return {...(layout>1?{layout,...catalog}:{}),seed:legacy?null:raw.seed,legacy,order:ids.slice(0,limit),progress};
+  const order=ids.slice(0,limit),owner=order.includes(RESIDENCE_PLACE)?residenceName(raw.residenceName):'';
+  return {...(layout>1?{layout,...catalog}:{}),...(layout===3&&raw.starter===true&&{starter:true}),
+    seed:legacy?null:raw.seed,legacy,order,progress,...(owner&&{residenceName:owner})};
 }
 
 export function restoreWorlds(raw, projects, total) {

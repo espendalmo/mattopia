@@ -3,6 +3,22 @@ import assert from 'node:assert/strict';
 import { createCurriculumTask, levelsForGrade, levelForGrade, validCurriculumTask } from '../curriculum.js';
 import { LEVELS, topicOf, createRound, restoreState, freshState, answerRound, advanceRound, roundSummary, advancePractice, practiceLevelForGrade, progressionPreview, randomGenerator } from '../core.js';
 
+test('The third-grade number-line exercises use two real jumps and stop at a multiple of ten',()=>{
+  assert.ok(levelsForGrade(3).includes(33));
+  for (let seed=0;seed<32;seed++) {
+    const round=createRound(33,seed,false,{length:8});
+    for (const task of round.tasks) {
+      const {start,middle,end,missing}=task.visual;
+      assert.equal(middle%10,0);
+      assert.ok((middle-start)*(end-middle)>0);
+      assert.equal(Number(task.labels[task.answer]),missing?Math.abs(end-middle):end);
+      if (task.type==='lineAdd') assert.ok(start<middle);
+      if (task.type==='lineSubtract') assert.ok(start>middle);
+    }
+    assert.deepEqual(restoreState({...freshState(),active:round}).active.tasks,round.tasks);
+  }
+});
+
 test('Every grade has a menu of working tracks, distinct choices, hints and resumable rounds', () => {
   const levels = new Set();
   for (let grade=1; grade<=10; grade++) {

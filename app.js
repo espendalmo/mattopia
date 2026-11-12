@@ -1,13 +1,14 @@
+import {text as msg} from './i18n.js';
 import {constructionStory} from './landmark-stories.js';
 import {mapCharacterInfo} from './map-life.js';
 import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, practiceLevelForGrade, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
-import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick } from './rewards.js';
+import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick, PERFECT_ROUNDS_PER_BONUS } from './rewards.js';
 import { plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
-import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, profileDetails, readProfiles, saveProfile } from './profiles.js';
+import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, PROFILE_KEY, chosenProfileName, profileDetails, readProfiles, saveProfile, deleteProfile } from './profiles.js';
 import { rewardIllustration } from './illustrations.js';
 import { curriculumTopic, levelForGrade, levelsForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
@@ -26,7 +27,7 @@ try {
   storage = localStorage;
   profileStore = readProfiles(storage);
   profile = profileStore.profiles.find(item => item.id === profileStore.activeId) || null;
-  state = restoreState(profile ? profile.practice : JSON.parse(storage.getItem(STORAGE_KEY)));
+  state = restoreState(profile ? profile.practice : profileStore.deletedIds?.length ? null : JSON.parse(storage.getItem(STORAGE_KEY)));
 } catch { state = freshState(); }
 alignPracticeLevel(profile?.grade);
 if (state.rewardMode === 'bricks' || isWorld(state.rewardMode)) state = selectRewardMode(state, state.rewardMode);
@@ -67,6 +68,11 @@ function save({ select=false, edit=false } = {}) {
   if (profile) {
     const result = saveProfile(storage, profileStore, { ...profile, practice:state }, { select, edit, recover:!storageWorks });
     profileStore = result.store;
+    if (result.removed) {
+      const id=profile.id;
+      queueMicrotask(()=>{ if (profile?.id===id) selectAfterDeletion(); });
+      return true;
+    }
     profile = profileStore.profiles.find(item => item.id === profile.id);
     storageWorks = result.saved;
     return storageWorks;
@@ -112,14 +118,14 @@ function projectCongratulations(id) {
   const messages={
     city:'Gratulerer! Rundene dine ble til en hel by. Nå kan du ta en siste titt på alt du fikk til.',
     moon:'Hele månebasen er ferdig! Se hvor mye du fikk til, ett byggesteg om gangen.',
-    island:'Gratulerer! Se for ei flott ferieøy du har bygd. Jeg har lyst til å dra på ferie dit.',
+    island:'Gratulerer! Se for en flott ferieøy du har bygd. Jeg har lyst til å dra på ferie dit.',
   };
   return eploNote(messages[id]??'Du fullførte superhelten! Se alle delene du fikk på plass, én runde om gangen.',true);
 }
 function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}<span class="brand-season">${seasonMark(seasonForDate())}</span></span><span>Mattopia</span></div>`; }
 function betaMark() { return CHANNEL === 'preview' ? '<span class="beta-mark"><strong>BETA</strong><span class="sr-only"> Testversjon</span></span>' : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
-function header(showAdult = true, showSound = true) { return `<header class="site-header"><div class="brand-wrap">${brand()}${betaMark()}</div><div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}For voksne</button>` : ''}</div></header>`; }
+function header(showAdult = true, showSound = true) { return `<header class="site-header"><div class="brand-wrap">${brand()}${betaMark()}</div><div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}${msg('adult.title')}</button>` : ''}</div></header>`; }
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
 function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { announcer.textContent = text; }); }
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
@@ -147,9 +153,9 @@ function alignPracticeLevel(grade) {
 }
 
 function profileFields(person) {
-  return `<label class="profile-field"><span>Fornavn eller kallenavn</span><input type="text" name="name" maxlength="${NAME_LIMIT}" value="${escapeHtml(person.name)}" autocomplete="off" placeholder="Valgfritt"></label>
-    <label class="profile-field"><span>Klassetrinn</span><select name="grade">${gradeOptions(person.grade)}</select></label>
-    <fieldset class="avatar-options"><legend>Velg en avatar</legend>
+  return `<label class="profile-field"><span>${msg('profile.name')}</span><input type="text" name="name" maxlength="${NAME_LIMIT}" value="${escapeHtml(person.name)}" autocomplete="off" placeholder="Valgfritt"></label>
+    <label class="profile-field"><span>${msg('profile.grade')}</span><select name="grade">${gradeOptions(person.grade)}</select></label>
+    <fieldset class="avatar-options"><legend>${msg('profile.avatar')}</legend>
       ${AVATAR_GROUPS.map(({label,avatars})=>`<div class="avatar-group">
         <p>${label}</p><div class="avatar-grid">${Object.entries(avatars).map(([key,name])=>`<label class="avatar-option">
           <input class="sr-only" type="radio" name="avatar" value="${key}" ${key === person.avatar ? 'checked' : ''}>
@@ -158,20 +164,21 @@ function profileFields(person) {
     </fieldset>`;
 }
 
-const SETUP_TITLES = ['Hvem skal øve?', 'Hvordan vil du øve?', 'Hva vil du bygge eller dyrke?'];
+const SETUP_TITLES = [msg('setup.profileTitle'), msg('setup.practiceTitle'), msg('setup.rewardTitle')];
 
 function makeSetup(mode) {
-  const practice = mode === 'first' ? state : freshState();
+  const practice = mode === 'new' ? freshState() : state;
   const level = practice.active || practice.roundsCompleted || practice.level !== 1 ? practice.level : null;
-  return {mode,step:0,person:profileDetails(),level,mix:practice.mix,autoProgress:practice.autoProgress,
+  const person=profileDetails(mode==='edit'?{...profile,name:chosenProfileName(profile)}:undefined);
+  return {mode,step:0,person,level,mix:practice.mix,autoProgress:practice.autoProgress,
     progressionExcluded:{...practice.progressionExcluded},roundLength:practice.roundLength,rewardMode:practice.rewardMode};
 }
 
 function progressionTracks(grade,excluded,expanded=false) {
   const levels=levelsForGrade(grade);
   const onlyOne=levels.length-excluded.length===1;
-  return `<details class="adult-details progression-tracks" ${expanded?'open':''}><summary>Spor i automatisk progresjon</summary>
-    <p class="adult-note">Fjern haken ved spor barnet skal vente med. Velg minst ett spor. Valget lagres for dette trinnet.</p>
+  return `<details class="adult-details progression-tracks" ${expanded?'open':''}><summary>${msg('setup.tracks')}</summary>
+    <p class="adult-note">${msg('setup.tracksNote')}</p>
     ${levels.map(n=>`<label class="sound-setting progression-track"><input type="checkbox" name="progression-track" value="${n}"
       ${excluded.includes(n)?'':`checked ${onlyOne?'disabled':''}`}>${LEVELS[n].label}</label>`).join('')}
   </details>`;
@@ -198,24 +205,31 @@ function setupForm(draft) {
   const {step,person,mix,autoProgress,roundLength,rewardMode} = draft;
   const excluded=draft.progressionExcluded?.[person.grade]??[];
   const startingLevel=practiceLevelForGrade(draft,person.grade);
-  const modes = [['fixed','Velg et spor','Øv videre på sporet du velger.'],['auto','Følg progresjonen','Oppgavene endrer seg gradvis mens du øver.'],
-    ['grade','Fri blanding på trinnet','Bland oppgaver fra alle øvingsområdene på trinnet.'],
-    ['all','Fri blanding fra 3.–10. trinn','Prøv oppgaver fra flere klassetrinn i samme runde.']];
+  const modes = [['fixed',msg('practice.fixed'),msg('practice.fixedNote')],['auto',msg('practice.auto'),msg('practice.autoNote')],
+    ['grade',msg('practice.grade'),msg('practice.gradeNote')],
+    ['all',msg('practice.mixed'),msg('practice.mixedNote')]];
   const rewards = [
-    ['plant','Plante','Så et frø og se det vokse.'],
-    ['bricks','Klossebygging','Bygg små figurer og samle dem.'],
+    ['plant',msg('reward.plant'),msg('reward.plantNote')],
+    ['bricks',msg('reward.bricks'),msg('reward.bricksNote')],
     ...Object.entries(PROJECTS).map(([id,{name,description}])=>
       [id,name,`Bygg ${description[0].toLowerCase()}${description.slice(1)}`]),
   ];
+  const practiceModes=modes.map(([id,label,note])=>{
+    const unavailable=!person.grade&&['auto','grade'].includes(id);
+    const selected=id===(mix||(autoProgress&&person.grade?'auto':'fixed'));
+    return `<label class="level-option${unavailable?' unavailable':''}">
+      <input type="radio" name="practice" value="${id}" ${selected?'checked':''} ${unavailable?'disabled':''}>
+      <span><strong>${label}</strong><small>${unavailable?msg('setup.gradeRequired'):note}</small></span>
+    </label>`;
+  }).join('');
   const fields = [
     () => profileFields(person),
-    () => `<fieldset class="setup-modes"><legend>Velg øvingsmåte</legend>${modes.map(([id,label,note])=>`<label class="level-option">
-      <input type="radio" name="practice" value="${id}" ${id === (mix || (autoProgress && person.grade ? 'auto' : 'fixed')) ? 'checked' : ''} ${['auto','grade'].includes(id) && !person.grade ? 'disabled' : ''}>
-      <span><strong>${label}</strong><small>${['auto','grade'].includes(id) && !person.grade ? 'Velg klassetrinn for å bruke dette.' : note}</small></span>
-    </label>`).join('')}</fieldset>
-    <label class="profile-field"><span>Startspor (for spor og progresjon)</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === startingLevel ? 'selected' : ''} ${autoProgress&&excluded.includes(id)?'disabled':''}>${LEVELS[id].label}</option>`).join('')}</select></label>
+    () => `<fieldset class="setup-modes"><legend>${msg('setup.practiceLegend')}</legend>
+    ${!person.grade?'<p class="setup-grade-note">Gå tilbake og velg klassetrinn for å bruke «Følg progresjonen» eller «Fri blanding på trinnet».</p>':''}
+    ${practiceModes}</fieldset>
+    <label class="profile-field"><span>${msg('setup.startTopic')}</span><select name="level">${levelsForGrade(person.grade).map(id=>`<option value="${id}" ${id === startingLevel ? 'selected' : ''} ${autoProgress&&excluded.includes(id)?'disabled':''}>${LEVELS[id].label}</option>`).join('')}</select></label>
     ${person.grade?`<div class="progression-setting setup-progression">${progressionTracks(person.grade,excluded,true)}</div>`:''}
-    <label class="profile-field"><span>Oppgaver per runde</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
+    <label class="profile-field"><span>${msg('setup.roundLength')}</span><select name="length">${ROUND_LENGTHS.map(length=>`<option value="${length}" ${length === roundLength ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>`,
     () => `<fieldset class="setup-rewards"><legend class="sr-only">Velg belønning</legend><div>${rewards.map(([id,label,note])=>`<label class="setup-reward">
       <input type="radio" name="reward" value="${id}" class="sr-only" ${id === rewardMode ? 'checked' : ''}>
       <span class="setup-reward-card"><span class="setup-reward-art" aria-hidden="true">${rewardIllustration(id)}<span class="setup-reward-check">${icon('check')}</span></span>
@@ -223,11 +237,11 @@ function setupForm(draft) {
     </label>`).join('')}</div></fieldset><p class="adult-note">Du kan endre valgene under «For voksne».</p>`,
   ];
   return `<form class="profile-form setup-form" data-setup-form>
-    <div class="setup-progress"><span>Steg ${step+1} av ${SETUP_TITLES.length}</span><div aria-hidden="true">${SETUP_TITLES.map((_,i)=>`<i ${i<=step?'class="done"':''}></i>`).join('')}</div></div>
-    ${step===0?eploNote('Hei, jeg heter Eplo! Trykk «Vis meg» hvis du vil ha et hint når du øver.'):''}
+    <div class="setup-progress"><span>${msg('setup.step', {step:step+1,total:SETUP_TITLES.length})}</span><div aria-hidden="true">${SETUP_TITLES.map((_,i)=>`<i ${i<=step?'class="done"':''}></i>`).join('')}</div></div>
+    ${step===0&&draft.mode!=='edit'?eploNote(msg('setup.intro')):''}
     ${fields[step]()}
     <div class="setup-actions">${step ? '<button type="button" class="secondary" data-action="setup-back">Tilbake</button>' : ''}
-      <button type="submit" class="primary">${step < SETUP_TITLES.length-1 ? 'Neste' : 'Kom i gang'} ${icon('arrow')}</button></div>
+      <button type="submit" class="primary">${step < SETUP_TITLES.length-1 ? msg('round.next') : draft.mode==='edit'?msg('setup.save'):msg('setup.start')} ${icon('arrow')}</button></div>
   </form>`;
 }
 
@@ -262,7 +276,7 @@ function stepSetup(form, direction) {
   const dialog = form.closest('[data-setup-dialog]');
   if (dialog) {
     const heading = dialog.querySelector('#dialog-title');
-    heading.textContent = SETUP_TITLES[setup.step];
+    heading.textContent = setup.step===0&&setup.mode==='edit'?msg('setup.edit'):SETUP_TITLES[setup.step];
     form.outerHTML = setupForm(setup);
     dialog.scrollTop = 0;
     heading.focus({preventScroll:true});
@@ -275,29 +289,26 @@ function renderOnboarding() {
   setup ||= makeSetup('first');
   const carry = state.roundsCompleted || state.active;
   root.innerHTML = `<div class="app-shell">${header(CHANNEL === 'preview', false)}${updateBanner()}<main class="onboarding">
-    <p class="home-eyebrow">Hei fra Mattopia!</p><h1 tabindex="-1">${SETUP_TITLES[setup.step]}</h1>
-    ${setup.step === 0 ? `<p>${carry ? 'Øvingen du har fra før, følger med denne profilen.' : 'Lag en spiller og velg et bilde til profilen din.'}</p>` : ''}
-    ${setupForm(setup)}<p class="adult-note">Profilen lagres på denne enheten.</p>
+    <p class="home-eyebrow">${msg('setup.greeting')}</p><h1 tabindex="-1">${SETUP_TITLES[setup.step]}</h1>
+    ${setup.step === 0 ? `<p>${carry ? msg('setup.import') : msg('setup.playerIntro')}</p>` : ''}
+    ${setupForm(setup)}<p class="adult-note">${msg('setup.storage')}</p>
     ${!storageWorks ? '<p class="storage-warning">Framgangen kan forsvinne hvis nettleseren blokkerer lagring.</p>' : ''}
   </main></div>`;
 }
 
 function showProfiles() {
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>Hvem skal øve?</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk profilvalget">${icon('close')}</button></div>
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${msg('setup.profileTitle')}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk profilvalget">${icon('close')}</button></div>
     <div class="player-list">${profileStore.profiles.map(person => `<button class="player-row" data-action="select-profile" data-profile-id="${person.id}" ${person.id === profile.id ? 'aria-current="true"' : ''}>
       ${avatarArt(person.avatar)}<span><strong>${escapeHtml(person.name)}</strong>${person.grade ? `<small>${person.grade}. trinn</small>` : ''}</span>
       ${person.id === profile.id ? '<small class="current-player">Spiller nå</small>' : icon('arrow')}</button>`).join('')}</div>
-    <div class="profile-actions"><button class="secondary" data-action="new-profile">Ny spiller</button><button class="secondary" data-action="edit-profile">Rediger min profil</button></div>`, 'profile-dialog');
+    <div class="profile-actions"><button class="secondary" data-action="new-profile">${msg('profile.new')}</button><button class="secondary" data-action="edit-profile">${msg('profile.edit')}</button></div>`, 'profile-dialog');
 }
 
 function showProfileForm(mode) {
-  if (mode === 'new') setup = makeSetup('new');
-  const title = mode === 'edit' ? 'Rediger profilen' : SETUP_TITLES[0];
-  const form = mode === 'edit'
-    ? `<form class="profile-form" data-profile-form="edit">${profileFields(profile)}<button type="submit" class="primary">Lagre profilen ${icon('check')}</button></form>`
-    : setupForm(setup);
+  setup = makeSetup(mode);
+  const title = mode === 'edit' ? msg('setup.edit') : SETUP_TITLES[0];
   showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2><button class="icon-button" data-action="show-profiles" aria-label="Tilbake til spillerne">${icon('close')}</button></div>
-    ${form}`, 'profile-dialog', mode === 'new' ? dialog => { dialog.dataset.setupDialog = ''; } : undefined);
+    ${setupForm(setup)}`, 'profile-dialog', dialog => { dialog.dataset.setupDialog = ''; });
 }
 
 function openProfile(person, practice, edit = false) {
@@ -324,12 +335,51 @@ function selectProfile(id) {
   if (person) openProfile(person, person.practice);
 }
 
+function selectAfterDeletion() {
+  const next=profileStore.profiles.find(person=>person.id===profileStore.activeId);
+  if (next) { openProfile(next,next.practice); return; }
+  profile=null;
+  state=freshState();
+  completedReward=null;
+  focusGame=null;
+  testBreakReturn=null;
+  setup=null;
+  ui=makeUI();
+  sounds.stop();
+  view='onboarding';
+  closeDialog();
+  render(); goTop(); focusHeading();
+}
+
+function confirmProfileDeletion() {
+  if (!profile) return;
+  const {id,name}=profile;
+  showDialog(`<h2 id="dialog-title">Slette profilen til ${escapeHtml(name)}?</h2>
+    <p>Øvingshistorikk, stjerner og alt spilleren har bygd eller dyrket, slettes fra denne enheten.</p>
+    <button class="primary" data-action="close-dialog">${msg('profile.keep')}</button>
+    <button class="delete-button" data-action="confirm-profile-delete" data-profile-id="${id}">${msg('profile.confirmDelete')}</button>
+    <p class="adult-note" data-delete-error role="alert" hidden></p>`, 'pause-dialog');
+}
+
+function applySetupPreferences(practice,person,preferences) {
+  if (!preferences) return practice;
+  const autoProgress = Boolean(person.grade && preferences.autoProgress);
+  const progressionExcluded = preferences.progressionExcluded ?? practice.progressionExcluded;
+  const level = practiceLevelForGrade({level:preferences.level,autoProgress,progressionExcluded},person.grade);
+  const progressRounds = practice.level!==level || practice.autoProgress!==autoProgress ? 0 : practice.progressRounds;
+  return selectRewardMode({...practice,level,autoProgress,progressionExcluded,progressRounds,
+    mix:autoProgress?null:preferences.mix??null,roundLength:preferences.roundLength},preferences.rewardMode);
+}
+
 function submitProfile(mode, details, preferences = null) {
   const person = profileDetails(details);
   if (mode === 'edit' && profile) {
     if (profile.grade !== person.grade) state.progressRounds = 0;
-    profile = { ...profile, ...person, name:person.name || profile.name };
+    const number=profileStore.profiles.findIndex(player=>player.id===profile.id)+1;
+    profile = { ...profile, ...person, name:person.name || `Spiller ${Math.max(1,number)}`, hasName:Boolean(person.name) };
+    state=applySetupPreferences(state,profile,preferences);
     alignPracticeLevel(profile.grade);
+    setup=null;
     save({ edit:true });
     closeDialog(); render(); focusHeading();
     return;
@@ -342,15 +392,8 @@ function submitProfile(mode, details, preferences = null) {
   if (profile || !practice.roundsCompleted && !practice.active && practice.level === 1) {
     practice.level = levelForGrade(person.grade, null);
   }
-  if (preferences) {
-    const autoProgress = Boolean(person.grade && preferences.autoProgress);
-    const progressionExcluded = preferences.progressionExcluded ?? practice.progressionExcluded;
-    const level = practiceLevelForGrade({level:preferences.level,autoProgress,progressionExcluded},person.grade);
-    if (practice.level !== level || practice.autoProgress !== autoProgress) practice.progressRounds = 0;
-    practice = selectRewardMode({...practice,level,autoProgress,progressionExcluded,
-      mix:autoProgress?null:preferences.mix??null,roundLength:preferences.roundLength},preferences.rewardMode);
-  }
-  openProfile({ ...person, name, id }, practice, true);
+  practice=applySetupPreferences(practice,person,preferences);
+  openProfile({ ...person, name, id, hasName:Boolean(person.name) }, practice, true);
 }
 
 function rewardDetails(reward = null) {
@@ -378,24 +421,33 @@ function rewardArt(happy = false, reward = null, {showBuddy=true}={}) {
   const info = rewardDetails(reward);
   if (info.project) {
     const world = isWorld(info.mode);
-    const label = world ? 'Utforsk kartet' : 'Utforsk i 3D';
+    const label = world ? msg('map.explore') : msg('project.explore');
     return `<button class="project-peek${world?' project-peek--world':''}" data-action="project-open" data-project="${info.mode}" aria-label="${label}: ${info.project.name}">
       <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" ${happy && info.added && celebrateOnRender ? 'data-reveal' : ''} aria-hidden="true"></canvas><span>${label} ${icon('arrow')}</span>
     </button>`;
   }
   const art = info.mode === 'bricks'
-    ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0})
+    ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0, newPieces:1+(reward?.bonusSteps??0)})
     : renderPlant(info.garden.plant, info.garden.stage);
   const finished = happy && reward && info.full && celebrateOnRender;
   return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}${finished?' reward-finished':''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
+}
+
+function completedProjectScene(reward) {
+  if (!reward?.added) return null;
+  const scene=projectScene(reward.mode,reward.map??reward.completed);
+  if (!reward.bonusSteps||reward.map) return scene;
+  const earlier=projectScene(reward.mode,reward.completed-1-reward.bonusSteps);
+  return {...scene,latest:scene.parts.slice(earlier.parts.length)};
 }
 
 function mountProjectPreview(container) {
   const canvas = container.querySelector('[data-project-preview]');
   if (!canvas) return;
   const id=canvas.dataset.projectPreview;
-  const map=view==='complete' && completedReward?.mode===id ? completedReward.map : currentWorld(state,id);
-  const scene = projectScene(id, map || Number(canvas.dataset.completed));
+  const reward=view==='complete'&&completedReward?.mode===id?completedReward:null;
+  const map=reward?.map??currentWorld(state,id);
+  const scene = completedProjectScene(reward)??projectScene(id,map??Number(canvas.dataset.completed));
   const reveal=canvas.hasAttribute('data-reveal');
   const result=container===root&&view==='complete';
   if (!scene) return;
@@ -416,7 +468,8 @@ function mountDialogProjectPreview(dialog) {
 }
 
 function projectProgress(info) {
-  return isWorld(info.mode) ? `${info.built??0} av ${info.capacity??REGION_PLACES} bygg ferdige` : `${info.completed} av ${info.total} byggesteg`;
+  return isWorld(info.mode) ? msg('map.progress',{built:info.built??0,capacity:info.capacity??REGION_PLACES})
+    : msg('map.steps',{completed:info.completed,total:info.total});
 }
 
 function projectAmbience(dialog, currentScene) {
@@ -458,12 +511,12 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const target=place===null?null:scene.landmarks?.[place];
   if (place!==null&&!target) return;
   const title=target?worldBuilding(id,place,map).name:project.name;
-  const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : 'Klar til å bygge'}</strong>`;
+  const latest = () => `<strong>${scene.last ? escapeHtml(scene.last) : msg('map.ready')}</strong>`;
   const milestone = () => progress().full ? 'Hele byggeprosjektet er ferdig!'
     : scene.next ? `Neste byggesteg er «${scene.next}».`
-    : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåka.' : 'Velg neste bygg før en ny runde.';
+    : isRegion(map) && map.progress===0 ? 'Bygg videre for å se hva som skjuler seg i tåken.' : 'Velg neste bygg før en ny runde.';
   const roundAction=scene.world&&!demo&&!archivedMap&&!fromCollection;
-  showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${title}</h2>
+  showDialog(`<div class="dialog-header"><div><h2 id="dialog-title" tabindex="-1" autofocus>${escapeHtml(title)}</h2>
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     ${fromCollection ? `<button class="secondary project-back" data-action="collection" data-project="${id}" ${galleryMap===null?'':`data-map="${galleryMap}"`} ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
     <div class="project-viewer${scene.world?' map-viewer':''}" data-drag-mode="${scene.world?'move':'rotate'}">
@@ -474,7 +527,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       </div>` : ''}
       ${demo ? `<div class="demo-shortcuts"><button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
       <div class="project-map-stage">
-        <canvas tabindex="0" role="img" aria-label="${scene.world ? 'Kart: '+title : title+' i 3D'}" aria-describedby="project-instructions project-milestone"></canvas>
+        <canvas tabindex="0" role="img" aria-label="${escapeHtml(scene.world ? 'Kart: '+title : title+' i 3D')}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
           <span class="eplo-avatar">${buddy()}</span>
           <div class="eplo-bubble"><small data-map-info-status></small><h3></h3><p data-map-info-description></p>
@@ -488,39 +541,63 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         ${demo ? mapEplo(projectCongratulations(id),true) : ''}
       </div>
       <div class="project-controls">
-        ${scene.world?`<label class="map-inspect-label" hidden><span>Bygg på kartet</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
+        ${scene.world?`<label class="map-inspect-label" hidden><span>${msg('map.buildings')}</span><select data-map-inspect aria-label="Velg bygg på kartet"></select></label>`:''}
         <div class="project-control-group" role="group" aria-label="Zoom og tilbakestill">
           <button class="secondary project-zoom" data-project-zoom=".8" aria-label="Zoom ut">−</button>
           <button class="secondary project-zoom" data-project-zoom="1.25" aria-label="Zoom inn">+</button>
-          <button class="secondary" data-project-reset>Oversikt</button>
+          <button class="secondary" data-project-reset>${msg('map.overview')}</button>
         </div>
       </div>
       <p id="project-instructions">${scene.world?'Dra kartet for å flytte. Trykk på bygg, folk, kjøretøy og kartfunn.':'Dra for å rotere.'} Klyp<span class="project-desktop-hint"> eller bruk pluss og minus</span> for å zoome.</p>
       ${scene.world ? `<div class="project-atmosphere"><button class="secondary" data-project-ambience aria-pressed="false" ${state.sound ? '' : 'disabled'}>${icon('muted')} Omgivelseslyd</button>${state.sound ? '' : '<small>Lyden i appen er slått av.</small>'}</div>` : ''}
       ${!demo && !target && progress().completed ? `<div class="project-latest"><div><small>Siste byggesteg · ${progress().completed} av ${progress().total}</small>${latest()}</div><button class="secondary" data-project-latest>Vis siste steg</button></div>` : ''}
     </div>
-    <p id="project-milestone" class="project-milestone">${milestone()}</p>
+    <p id="project-milestone" class="project-milestone">${escapeHtml(milestone())}</p>
     ${roundAction ? `<div class="project-round-action"><button type="button" class="primary" data-action="map-start">${startRoundLabel()}${icon('arrow')}</button></div>` : ''}
     ${trail ? '<button class="secondary demo-new-map" data-demo-new>Nytt demokart</button>' : ''}`, 'project-dialog', dialog => {
     const viewer = dialog.querySelector('.project-viewer');
     const selector=viewer.querySelector('[data-map-inspect]');
     const card=viewer.querySelector('[data-map-info]');
     const expand=viewer.querySelector('[data-map-expand]');
+    const demoControls=viewer.querySelector('.demo-controls');
+    const stage=viewer.querySelector('.project-map-stage');
     if (expand) {
       let fullScreen=false;
       let previousScroll=0;
+      const viewport=window.visualViewport;
+      const events=new AbortController();
+      const syncViewport=()=>{
+        if (!viewport?.width||!viewport.height) return;
+        dialog.style.setProperty('--map-viewport-left',`${viewport.offsetLeft}px`);
+        dialog.style.setProperty('--map-viewport-top',`${viewport.offsetTop}px`);
+        dialog.style.setProperty('--map-viewport-width',`${viewport.width}px`);
+        dialog.style.setProperty('--map-viewport-height',`${viewport.height}px`);
+      };
+      const stopPageGesture=event=>{ if (fullScreen&&event.cancelable) event.preventDefault(); };
       const showFullScreen=enabled=>{
         fullScreen=enabled;
         if (enabled) previousScroll=dialog.scrollTop;
         dialog.classList.toggle('project-fullscreen',enabled);
+        if (enabled) syncViewport();
+        if (demoControls) {
+          if (enabled) stage.append(demoControls);
+          else viewer.prepend(demoControls);
+        }
         expand.innerHTML=icon(enabled?'collapse':'expand');
         expand.setAttribute('aria-pressed',String(enabled));
-        expand.setAttribute('aria-label',enabled?'Avslutt fullskjerm':'Vis kartet i fullskjerm');
-        expand.title=enabled?'Avslutt fullskjerm':'Fullskjerm';
+        expand.setAttribute('aria-label',enabled?msg('map.collapse'):msg('map.expand'));
+        expand.title=enabled?msg('map.collapse'):'Fullskjerm';
         dialog.scrollTop=enabled?0:previousScroll;
         expand.focus({preventScroll:true});
       };
       expand.addEventListener('click',()=>showFullScreen(!fullScreen));
+      for (const name of ['scroll','resize']) {
+        viewport?.addEventListener(name,()=>{ if (fullScreen) syncViewport(); },{signal:events.signal});
+      }
+      for (const name of ['gesturestart','gesturechange','wheel']) {
+        dialog.addEventListener(name,stopPageGesture,{passive:false,signal:events.signal});
+      }
+      dialog.addEventListener('close',()=>events.abort(),{once:true});
       dialog.addEventListener('cancel',event=>{
         if (!fullScreen) return;
         event.preventDefault();
@@ -616,7 +693,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         viewer.querySelector('[data-demo-status]').innerHTML = `<small>Steg ${info.completed} av ${info.total}</small>${scene.finished ? `<strong>${escapeHtml(scene.finished)} er på plass!</strong>` : latest()}`;
         dialog.querySelector('#project-milestone').textContent = milestone();
         finale.hidden=!info.full;
-        finish.textContent=info.full?'Spill finalen igjen':'Vis finalen';
+        finish.textContent=info.full?msg('map.replayDemo'):msg('map.finishDemo');
         dispose();
         const canvas=viewer.querySelector('canvas');
         canvas.replaceWith(canvas.cloneNode());
@@ -764,8 +841,8 @@ function galleryMapsMarkup(maps,preferred) {
       <div class="map-gallery-content"><button class="secondary map-gallery-open" data-action="gallery-map" data-project="${id}" data-map="${index}">Utforsk kartet ${icon('arrow')}</button>
       <div class="map-landmarks">${places.slice().reverse().map(place=>{
         const {name}=worldBuilding(id,place,map);
-        return `<button class="map-landmark" data-action="gallery-map" data-project="${id}" data-map="${index}" data-place="${place}" aria-label="Finn ${name} på kartet">
-          <canvas aria-hidden="true"></canvas><span>${name}</span></button>`;
+        return `<button class="map-landmark" data-action="gallery-map" data-project="${id}" data-map="${index}" data-place="${place}" aria-label="Finn ${escapeHtml(name)} på kartet">
+          <canvas aria-hidden="true"></canvas><span>${escapeHtml(name)}</span></button>`;
       }).join('')}</div></div></details>`;
   }).join('')}</div>`;
 }
@@ -830,7 +907,7 @@ function showCollection(preferred={}) {
     mountGalleryArt(dialog);
     const matching=[...dialog.querySelectorAll('[data-action="gallery-map"], [data-action="gallery-hero"]')].find(({dataset})=>
       dataset.project===preferred.project&&dataset.map===preferred.map&&dataset.place===preferred.place);
-    matching?.focus();
+    matching?.scrollIntoView({block:'nearest'});
   });
 }
 
@@ -927,39 +1004,39 @@ function renderHome() {
   const archives = g.map ? (state.worlds?.[g.mode] ?? []).slice(0,-1) : [];
   const cta = startRoundLabel(g);
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="home">
-    ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>Bytt spiller</span></button>` : ''}
+    ${profile ? `<button class="profile-switch" data-action="show-profiles">${avatarArt(profile.avatar)}<strong>${escapeHtml(profile.name)}</strong><span>${msg('home.switchProfile')}</span></button>` : ''}
     <div class="home-reward">${rewardArt(false, next,{showBuddy:false})}<div class="home-surprise" data-home-surprise data-act="idle" aria-hidden="true"><div class="eplo-act">${buddy()}</div></div></div><p class="home-eyebrow">${g.label}</p>
-    <h1 tabindex="-1">${firstBuild ? 'Klar for å komme i gang?' : total % 2 ? 'Klar for en til økt?' : 'Klar for flere oppgaver?'}</h1>
-    <p class="home-description">${state.active?.tasks.length ?? state.roundLength} oppgaver venter.</p>
+    <h1 tabindex="-1">${firstBuild ? msg('home.startQuestion') : total % 2 ? msg('home.againQuestion') : msg('home.moreQuestion')}</h1>
+    <p class="home-description">${msg('home.tasksWaiting', {count:state.active?.tasks.length??state.roundLength})}</p>
     <button class="primary" data-action="start">${cta}${icon('arrow')}</button>
-    <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av ${state.active.tasks.length} oppgaver.` : nextBuilding ? `Neste byggesteg · ${nextBuilding.name}` : g.map && g.full ? 'Kartet er ferdig!' : choose ? 'Hvilket bygg vil du sette på kartet?' : 'Vi ser, teller og finner ut sammen.'}</p>
-    ${g.map && g.full && !state.active ? '<button class="secondary secondary-cta" data-action="world-new">Start et nytt kart</button>' : ''}
-    <div class="star-shelf"><p class="shelf-label">Så langt har du kommet</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}
+    <p class="gentle-note">${state.active ? `Du har gjort ${state.active.index + (state.active.solved ? 1 : 0)} av ${state.active.tasks.length} oppgaver.` : nextBuilding ? `Neste byggesteg · ${escapeHtml(nextBuilding.name)}` : g.map && g.full ? msg('home.mapComplete') : choose ? msg('home.pickBuilding') : msg('home.together')}</p>
+    ${g.map && g.full && !state.active ? `<button class="secondary secondary-cta" data-action="world-new">${msg('map.startNew')}</button>` : ''}
+    <div class="star-shelf"><p class="shelf-label">${msg('home.progress')}</p><div class="stars" aria-label="${total} ${total === 1 ? 'stjerne' : 'stjerner'}">${stars}${total > 5 ? `<span>+${total - 5}</span>` : ''}</div><p class="shelf-note">${shelf}</p>${badgeShelf(total)}${collectionShelf()}
     ${archives.length ? `<details class="world-archives"><summary>Tidligere kart</summary><div>${archives.map((_,index)=>`<button class="secondary" data-action="project-archive" data-project="${g.mode}" data-archive="${index}">Kart ${index+1}</button>`).join('')}</div></details>` : ''}</div>
   </main></div>`;
 }
 
 function showWorldChoices(id, choices) {
-  const map=currentWorld(state,id);
+  const map={...currentWorld(state,id),residenceName:chosenProfileName(profile)};
   const cards = choices.map(index => {
     const {name,description} = worldBuilding(id,index,map);
     return `<button class="world-option" data-action="world-choose" data-project="${id}" data-building="${index}">
-      <canvas data-world-art="${index}" aria-hidden="true"></canvas><strong>${name}</strong><small>${description}</small>
+      <canvas data-world-art="${index}" aria-hidden="true"></canvas><strong>${escapeHtml(name)}</strong><small>${escapeHtml(description)}</small>
     </button>`;
   }).join('');
   sounds.play('open', state.sound);
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${map.progress===0?'Hva vil du bygge først?':'Hva vil du bygge nå?'}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggevalget">${icon('close')}</button></div>
-    <p class="world-choose-note">Hvert bygg tar tre runder.</p><div class="world-options">${cards}</div>`, 'world-chooser', dialog => {
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${map.progress===0?msg('map.firstQuestion'):msg('map.nextQuestion')}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggevalget">${icon('close')}</button></div>
+    <p class="world-choose-note">${msg('map.threeRounds')}</p><div class="world-options">${cards}</div>`, 'world-chooser', dialog => {
     const dispose = [...dialog.querySelectorAll('[data-world-art]')].map(canvas => mountProjectView(canvas.parentElement, worldBuildingPreview(id,Number(canvas.dataset.worldArt),map)));
     dialog.addEventListener('close', () => dispose.forEach(stop => stop()), {once:true});
   });
 }
 
 function startRoundLabel(info=rewardDetails()) {
-  if (state.active) return 'Fortsett runden';
+  if (state.active) return msg('round.resume');
   if (state.focusBreakPending) return breakButtonLabel();
-  if (info.map && info.building === null && !info.full) return info.completed === 0 ? 'Velg første bygg' : 'Velg neste bygg';
-  return 'Start runden';
+  if (info.map && info.building === null && !info.full) return info.completed === 0 ? msg('map.first') : msg('map.next');
+  return msg('round.start');
 }
 
 function startRound() {
@@ -969,7 +1046,7 @@ function startRound() {
   }
   if (!state.active) {
     const id = state.rewardMode;
-    const choices = isWorld(id) ? worldBuildingOptions(id,currentWorld(state,id)) : [];
+    const choices = isWorld(id) ? worldBuildingOptions(id,currentWorld(state,id),chosenProfileName(profile)) : [];
     if (choices.length) { showWorldChoices(id,choices); return; }
     focusGame = null;
     state = prepareReward(state);
@@ -1237,15 +1314,15 @@ document.addEventListener('lostpointercapture', endBrickDrag);
 
 function taskTitle(t) {
   if (curriculumTopic(t.type)) return t.title;
-  if (t.type === 'remove' || t.type === 'subtract') return `Ta bort ${t.b}`;
-  if (t.type === 'ten') return 'Hvor mange mangler?';
-  if (t.type === 'missing') return 'Hvilket tall mangler?';
-  if (t.type === 'multiply') return 'Hvor mange til sammen?';
-  if (t.type === 'divide') return 'Hvor mange i hver gruppe?';
-  if (t.type === 'count') return countStep(t) < 0 ? 'Hvilket tall mangler?' : 'Hvilket tall kommer nå?';
-  if (t.type === 'place') return 'Hvilket tall er dette?';
-  if (t.type === 'shift') return t.b > 0 ? `Legg til ${t.b === 100 ? 'én hundrer' : 'én tier'}` : `Ta bort ${t.b === -100 ? 'én hundrer' : 'én tier'}`;
-  return 'Hvor mye blir det?';
+  if (t.type === 'remove' || t.type === 'subtract') return msg('task.remove',{amount:t.b});
+  if (t.type === 'ten') return msg('task.ten');
+  if (t.type === 'missing') return msg('task.missing');
+  if (t.type === 'multiply') return msg('task.multiply');
+  if (t.type === 'divide') return msg('task.divide');
+  if (t.type === 'count') return countStep(t) < 0 ? msg('task.missing') : msg('task.count');
+  if (t.type === 'place') return msg('task.place');
+  if (t.type === 'shift') return msg(t.b>0?'task.add':'task.remove',{amount:msg(Math.abs(t.b)===100?'task.hundred':'task.tenUnit')});
+  return msg('task.calculate');
 }
 function equationText(t) {
   if (curriculumTopic(t.type)) return t.hints[2];
@@ -1326,7 +1403,24 @@ function equalGroups(t, solved) {
 function hintStage() { return state.active?.hintStages?.[state.active.index] || 0; }
 function hintText(t) { return hintFor(t, hintStage() || 1); }
 
-function curriculumVisual(model) {
+function curriculumVisual(model,solved) {
+  if (model.kind==='numberLine') {
+    const {start,middle,end,missing}=model;
+    const low=Math.min(start,end),span=Math.abs(end-start),sign=end>start?'+':'−';
+    const x=n=>28+(n-low)*274/span;
+    const jump=(from,to,hide)=>{
+      const a=x(from),b=x(to),tip=(a+b)/2,side=Math.sign(b-a);
+      const label=hide?'?':sign+Math.abs(to-from);
+      return `<path d="M${a} 66 Q${tip} -5 ${b} 66 m${-10*side} -4 ${10*side} 4 ${-2*side} -11" /><text x="${tip}" y="25">${label}</text>`;
+    };
+    const endLabel=missing||solved?end:'?';
+    const spokenDirection=end>start?'fram':'tilbake';
+    const description=`Start på ${start}. Hopp ${Math.abs(middle-start)} ${spokenDirection} til ${middle}. ${missing&&!solved?`Hvor langt er hoppet til ${end}?`:`Hopp ${Math.abs(end-middle)} ${spokenDirection}. ${solved?`Du lander på ${end}.`:'Hvor lander du?'}`}`;
+    return `<svg class="jump-line" viewBox="0 0 330 108" role="img" aria-label="${description}">
+      <path class="jump-axis" d="M12 70H318"/>${jump(start,middle,false)}${jump(middle,end,missing&&!solved)}
+      ${[[start,start],[middle,middle],[end,endLabel]].map(([n,label])=>`<circle cx="${x(n)}" cy="70" r="4.5"/><text class="jump-stop${label==='?'?' jump-unknown':''}" x="${x(n)}" y="98">${label}</text>`).join('')}
+    </svg>`;
+  }
   if (model.kind==='money') {
     const piece=(value,extra='')=>`<span class="money-piece ${value>=50?'money-note':'money-coin'} ${extra}" data-money-value="${value}"><strong>${value}</strong><small>kr</small></span>`;
     const label=model.pieces.map(value=>`${value} kroner`).join(', ');
@@ -1369,7 +1463,7 @@ function curriculumVisual(model) {
 
 function renderVisual(t, solved) {
   const stage = ui.retry ? ui.retryStage : hintStage();
-  if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual">${curriculumVisual(t.visual)}</div>` : '';
+  if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual${t.visual.kind==='numberLine'?' line-visual':''}">${curriculumVisual(t.visual,solved)}</div>` : '';
   if (t.support === 'optional' && !stage && !solved && !state.alwaysShowVisuals) return '<p class="mental-note">Prøv gjerne i hodet.<br>Brikkene er her hvis du trenger dem.</p>';
   let html = '', caption = '';
   if (t.type === 'ten') {
@@ -1419,16 +1513,15 @@ function renderRound() {
   const progress = Array.from({ length }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
   let feedback;
   if (r.solved) {
-    const messages = ['Bra, fortsett slik!', 'Du er flink!', 'Godt tenkt!', 'Bra jobba!',
-      'Så bra!', 'Du fikk det til!', 'Kjempebra!', 'Fint regnet!', 'Heia deg!', 'Det klarte du!', 'Godt jobba!', 'Veldig bra!'];
+    const messages = [msg('round.praise1'), msg('round.praise2'), msg('round.praise3'), msg('round.praise4'), msg('round.praise5'), msg('round.praise6'), msg('round.praise7'), msg('round.praise8'), msg('round.praise9'), msg('round.praise10'), msg('round.praise11'), msg('round.praise12')];
     const message=messages[(state.roundsCompleted*5+r.index)%messages.length];
-    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? 'Fullfør runden' : 'Neste'}${icon('arrow')}</button>`;
-  } else feedback = '<p class="idle-note">Ta den tiden du trenger.</p>';
-  root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>Oppgave ${r.index + 1} av ${length}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
+    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? msg('round.complete') : msg('round.next')}${icon('arrow')}</button>`;
+  } else feedback = `<p class="idle-note">${msg('round.takeTime')}</p>`;
+  root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>${msg('round.position', {current:r.index + 1,total:length})}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
-    <p><span class="companion-message">${r.solved ? 'Se hva du fikk til!' : r.attempts[r.index] ? 'Vi prøver igjen sammen.' : 'Vi finner det ut.'}</span></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
-    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? 'Vi ser sammen' : stage ? 'Et hint til' : 'Vis meg'}</button>` : ''}
+    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? msg('round.showHelp') : stage ? msg('round.moreHelp') : msg('round.help')}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
@@ -1447,15 +1540,21 @@ function renderAnswers(t, solved) {
 
 function renderComplete() {
   const g = rewardDetails(completedReward);
-  const stage = g.added ? projectScene(g.mode, g.map || g.completed) : null;
+  const stage = completedProjectScene(completedReward);
   const projectStep = stage?.last;
   const buildStory=g.map&&projectStep ? constructionStory(g.mode,stage.latestTarget?.kind,stage.finished?3:g.phase||1,g.map.seed,g.completed) : '';
   const finishedProject = g.project && g.full && g.added;
   const length = state.history.at(-1)?.length ?? ROUND_LENGTH;
+  const bonusSteps=completedReward?.bonusSteps??0;
+  const bonus=bonusSteps?msg(g.map?'reward.bonus.map':g.mode==='plant'?'reward.bonus.plant':
+    bonusSteps===1?'reward.bonus.brick':'reward.bonus.bricks',{count:bonusSteps}):'';
   const message = g.project
     ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g)}.`
-    : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `En ny kloss på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
+    : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `${bonusSteps?'To nye klosser':'En ny kloss'} på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
   const earnedBrick = g.mode === 'bricks' || g.added;
+  const rewardCount=earnedBrick?1+bonusSteps:1;
+  const earnedLabel=g.map?(rewardCount===1?'Et nytt byggesteg':`${rewardCount} nye byggesteg`)
+    :earnedBrick?(rewardCount===1?'En ny kloss':`${rewardCount} nye klosser`):'En ny stjerne';
   const party = celebrateOnRender ? confetti(Boolean(stage?.finished)) : '';
   const newBadge = BADGES.find(badge => badge.stars === state.roundsCompleted);
   const badge = newBadge ? `<div class="new-badge">${badgeArt(newBadge)}<span>Ny utmerkelse <strong>${newBadge.name}</strong></span></div>` : '';
@@ -1466,9 +1565,9 @@ function renderComplete() {
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
   const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
-  const again = newMap ? 'Start et nytt kart' : state.focusBreakPending ? breakButtonLabel() : 'En runde til';
+  const again = newMap ? msg('map.startNew') : state.focusBreakPending ? breakButtonLabel() : msg('round.repeat');
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
-  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${g.added ? 'Et nytt byggesteg' : earnedBrick ? 'En ny kloss' : 'En ny stjerne'}">${icon(earnedBrick ? 'brick' : 'star')} +1</span></div><h1 tabindex="-1">${headline}</h1>${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
+  root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${earnedLabel}">${icon(earnedBrick ? 'brick' : 'star')} +${rewardCount}</span></div><h1 tabindex="-1">${headline}</h1>${bonus?`<p class="completion-bonus">${icon(g.mode==='plant'?'sprout':'brick')}<span>${escapeHtml(bonus)}</span></p>`:''}${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
   celebrateOnRender = false;
 }
 
@@ -1538,6 +1637,11 @@ function showDialog(content, css = '', afterOpen) {
   d.className = css;
   d.setAttribute('aria-labelledby', 'dialog-title');
   d.innerHTML = content;
+  const title = d.querySelector('#dialog-title');
+  if (title) {
+    title.tabIndex = -1;
+    title.setAttribute('autofocus','');
+  }
   document.body.append(d);
   d.addEventListener('close', () => {
     if (!d.isConnected) return;
@@ -1551,12 +1655,7 @@ function showDialog(content, css = '', afterOpen) {
 }
 function closeDialog() { document.querySelector('dialog')?.close(); }
 
-const pauseEncouragements=[
-  'Godt jobbet! For hver gang du øver, blir du litt tryggere i matte.',
-  'Så fint at du prøver. Litt øving om gangen gjør deg flinkere i matte.',
-  'Du har gjort en god innsats! Vi fortsetter når du er klar.',
-  'Du lærer mye av å prøve deg fram. Det er sånn du blir flink i matte!',
-];
+const pauseEncouragements = [msg('pause.encourage1'), msg('pause.encourage2'), msg('pause.encourage3'), msg('pause.encourage4')];
 let pauseVisits=0;
 
 function pauseProgress(info) {
@@ -1568,7 +1667,7 @@ function pauseProgress(info) {
       if (building) return [count,`Neste steg er på ${building.name}.`].filter(Boolean).join(' ');
       return count||`Vi kan bygge videre på ${info.label}.`;
     }
-    return `Du har gjort ${info.completed} av ${info.total} byggesteg på ${info.label}.`;
+    return `Du har gjort ${msg('map.steps', {completed:info.completed,total:info.total})} på ${info.label}.`;
   }
   if (info.mode==='bricks') {
     const count=info.build.completed;
@@ -1591,8 +1690,8 @@ function showPause() {
   const hello=eploGreeting();
   const encouragement=pauseEncouragements[pauseVisits++%pauseEncouragements.length];
   const note=eploNote(`${hello} ${pauseProgress(info)} ${encouragement}`);
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>En liten pause?</h2>
-    ${preview&&isWorld(info.mode)?`<div class="project-map-stage">${preview}${mapEplo(note)}</div>`:`${mapEplo(note,false,true)}${preview}`}<p class="pause-context">Oppgavene venter på deg. Du kan fortsette senere.</p>
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>${msg('pause.title')}</h2>
+    ${preview&&isWorld(info.mode)?`<div class="project-map-stage">${preview}${mapEplo(note)}</div>`:`${mapEplo(note,false,true)}${preview}`}<p class="pause-context">${msg('pause.later')}</p>
     <button class="primary" data-action="close-dialog">Fortsett runden</button><button class="secondary secondary-cta" data-action="pause-home">Ta en pause</button>${CHANNEL === 'preview' ? '<button class="text-button beta-danger" data-action="beta-abort-round">Avbryt runden</button>' : ''}`, preview ? 'pause-dialog pause-dialog--map' : 'pause-dialog', preview ? mountDialogProjectPreview : undefined);
 }
 
@@ -1658,16 +1757,16 @@ function welcomeBack() {
   const next = nextBuildReward();
   const g = rewardDetails(next);
   const note = state.active
-    ? 'Vi kan fortsette der du slapp.'
-    : g.project ? g.full ? 'Byggeprosjektet er klart til å utforskes.' : 'Én runde gir deg neste byggesteg.'
-    : next ? 'Én runde gir deg den første klossen.'
-    : g.full ? 'Neste runde får du et nytt frø!'
-    : g.mode === 'bricks' ? 'Én runde gir deg neste kloss.' : 'Én runde gir planten litt mer vekst.';
-  const cta = state.active ? 'Fortsett runden' : state.focusBreakPending ? breakButtonLabel() : 'Ta en runde';
+    ? msg('welcome.resume')
+    : g.project ? g.full ? msg('welcome.explore') : msg('welcome.nextStage')
+    : next ? msg('welcome.firstBrick')
+    : g.full ? msg('welcome.newSeed')
+    : g.mode === 'bricks' ? msg('welcome.nextBrick') : msg('welcome.plantGrowth');
+  const cta = state.active ? msg('round.resume') : state.focusBreakPending ? breakButtonLabel() : msg('welcome.start');
   const art=rewardArt(false,next,{showBuddy:false});
   const greeting=eploNote(`${eploGreeting()} ${note}`);
   showDialog(`<div class="dialog-header">
-      <h2 id="dialog-title" tabindex="-1" autofocus>Velkommen tilbake</h2>
+      <h2 id="dialog-title" tabindex="-1" autofocus>${msg('welcome.title')}</h2>
       <button type="button" class="icon-button welcome-close" data-action="close-dialog" aria-label="Lukk velkomsten">${icon('close')}</button>
     </div>
     ${greeting}
@@ -1698,7 +1797,7 @@ function practiceOptions() {
   const groups = levels.includes(4) ? '<p class="adult-note"><strong>Ganging og deling.</strong> Sporet blander ganging og deling med pluss, minus og oppgaver med et manglende tall. Fordelingen kan endres etter hva barnet trenger hjelp med.</p>' : '';
   const mixes = [
     ...(profile?.grade ? [['grade','Fri blanding på '+profile.grade+'. trinn','Oppgaver fra alle øvingsområdene på trinnet, i tilfeldig rekkefølge.']] : []),
-    ['all','Fri blanding fra 3.–10. trinn','En runde kan blande enkel hoderegning med brøk, algebra og andre oppgaver fra høyere trinn.'],
+    ['all',msg('practice.mixed'),'En runde kan blande enkel hoderegning med brøk, algebra og andre oppgaver fra høyere trinn.'],
   ].map(([id,label,help])=>`<label class="level-option"><input type="radio" name="level" value="${id}" ${state.mix===id?'checked':''} ${state.autoProgress?'disabled':''}><span><strong>${label}</strong><small>${help}</small></span></label>`).join('');
   return `<legend>${title}</legend>${options}${mixes}${groups}
     <p class="adult-note">Valget gjelder fra neste nye runde.</p>
@@ -1774,14 +1873,15 @@ function adultView() {
   </details>` : '';
   const playerSettings = profile ? `<section class="adult-profile">
     <h3>${avatarArt(profile.avatar)}${escapeHtml(profile.name)}</h3>
-    <label class="profile-field"><span>Klassetrinn</span><select id="player-grade" aria-describedby="grade-note">${gradeOptions(profile.grade)}</select></label>
+    <label class="profile-field"><span>${msg('profile.grade')}</span><select id="player-grade" aria-describedby="grade-note">${gradeOptions(profile.grade)}</select></label>
     <p class="adult-note" id="grade-note">Velg trinn for å se aktuelle øvingsspor nedenfor.</p>
     <button class="secondary" data-action="show-profiles">Bytt eller legg til spiller</button>
+    <button class="delete-button" data-action="delete-profile">Slett profilen</button>
   </section>` : '';
-  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>For voksne</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title" tabindex="-1" autofocus>${msg('adult.title')}</h2><button class="icon-button" data-action="close-dialog" aria-label="Lukk voksenvisningen">${icon('close')}</button></div><p class="adult-intro">Ingen tidsfrist, liv eller poengtrekk. En stjerne betyr at barnet har øvd.</p>
     ${!storageWorks ? '<p class="storage-warning">Nettleseren tillater ikke lagring akkurat nå. Appen virker, men framgangen kan forsvinne når siden lukkes.</p>' : ''}
     <details class="adult-details admin-section"><summary>Spiller og øving</summary><div class="admin-section-body">${playerSettings}
-    <div class="round-length-setting"><label class="profile-field"><span>Oppgaver per runde</span>
+    <div class="round-length-setting"><label class="profile-field"><span>${msg('setup.roundLength')}</span>
       <select id="round-length" aria-describedby="round-length-note">${ROUND_LENGTHS.map(length => `<option value="${length}" ${state.roundLength === length ? 'selected' : ''}>${length} oppgaver</option>`).join('')}</select></label>
       <p class="adult-note" id="round-length-note">Gjelder fra neste nye runde. En fullført runde gir én stjerne og ett steg på det du bygger eller dyrker.</p></div>
     <fieldset class="adult-group" id="practice-options">${practiceOptions()}</fieldset>
@@ -1792,7 +1892,7 @@ function adultView() {
     <label class="sound-setting"><input type="checkbox" id="sound-setting" ${state.sound ? 'checked' : ''}>Lyd i appen</label>
     ${typeof navigator.vibrate === 'function' ? `<label class="sound-setting"><input type="checkbox" id="haptics-setting" ${state.haptics ? 'checked' : ''}>Vibrasjon ved svar og fullføring</label>` : ''}
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="visual-setting" aria-describedby="visual-setting-note" ${state.alwaysShowVisuals ? 'checked' : ''}>Vis alltid brikker og figurer</label>
-    <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Vis meg».</p></div>
+    <p class="adult-note" id="visual-setting-note">Holder tellebrikker og andre figurer synlige i matteoppgavene. Med valget av kan støtten bli valgfri etter flere trygge runder. Barnet kan da hente den fram med «Forklar meg».</p></div>
     <div class="described-setting"><label class="sound-setting"><input type="checkbox" id="focus-break-setting" aria-describedby="focus-break-note" ${state.focusBreaks ? 'checked' : ''}>Pauseleker mellom øvingsrundene</label>
     <p class="adult-note" id="focus-break-note">En kort lek etter hver tredje runde. Appen veksler mellom Kims lek, klossebygging etter hukommelsen og å telle klosser til et gulv.</p></div>
     <p class="adult-note adaptation-note">Oppgaver som trengte hjelp får litt mer plass. Etter flere trygge runder kan én eller to oppgaver få talltastatur.</p>
@@ -1889,6 +1989,9 @@ function submitAnswer(value) {
   if (answered.solved) {
     const last = answered.index === answered.tasks.length - 1;
     const perfect = last && answered.results.every(result => result?.firstTry);
+    const goal=PERFECT_ROUNDS_PER_BONUS;
+    const progress=perfect ? state.perfectRounds%goal+1 : 0;
+    const bonusMessage=progress===goal ? `${goal} av ${goal}. Byggebonus klar!` : `${progress} av ${goal} til byggebonus`;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
     save(); render();
     feedback(perfect ? 'perfect' : `task-success-${taskSuccessStep(answered.index,answered.tasks.length)}`, 16);
@@ -1897,8 +2000,10 @@ function submitAnswer(value) {
       const companion = root.querySelector('.companion-strip');
       const message = companion?.querySelector('.companion-message');
       if (message) {
+        const count=companion.querySelector('.perfect-progress');
         const previous = message.textContent;
-        message.textContent = 'Perfekt runde!';
+        message.textContent = msg('round.perfect');
+        if (count) { count.textContent=bonusMessage; count.hidden=false; }
         companion.classList.add('perfect-round');
         const sparks = companion.querySelector('.companion-sparks');
         if (sparks && !reducedMotion) {
@@ -1908,12 +2013,13 @@ function submitAnswer(value) {
         }
         setTimeout(() => {
           message.textContent = previous;
+          if (count) count.hidden=true;
           companion.classList.replace('perfect-round','companion-returned');
           sparks?.replaceChildren();
         }, 3500);
       }
     }
-    say(`Riktig. ${equationText(task)} ${perfect ? 'Eplo sier: Perfekt runde!' : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
+    say(`Riktig. ${equationText(task)} ${perfect ? `Eplo sier: Perfekt runde! ${bonusMessage}` : last ? 'Runden er klar til å fullføres.' : 'Neste oppgave er klar.'}`);
     root.querySelector('[data-action="next"]')?.focus({ preventScroll: true });
     root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
     return;
@@ -2080,11 +2186,11 @@ document.addEventListener('click', e => {
       const summary = roundSummary(state.active);
       if (summary && !state.history.some(r => r.id === summary.id)) {
         state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
-        const awarded = awardPractice(state, summary.id);
+        const awarded = awardPractice(state, summary.id, Math.random, summary.firstTry===summary.length);
         state = summary.mix ? awarded.state : advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
         state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
       }
-      const stage = completedReward?.added ? projectScene(completedReward.mode, completedReward.map || completedReward.completed) : null;
+      const stage = completedProjectScene(completedReward);
       state.active = null; view = 'complete'; celebrateOnRender = true;
       if (stage) {
         if (state.haptics) navigator.vibrate?.([18,55,25]);
@@ -2121,8 +2227,9 @@ document.addEventListener('click', e => {
     const {project,building} = actionButton.dataset;
     if (project !== state.rewardMode || !isWorld(project)) return;
     const map = currentWorld(state,project);
-    if (!worldBuildingOptions(project,map).includes(Number(building))) return;
-    const chosen = worldSelect(map,Number(building),project);
+    const owner=chosenProfileName(profile);
+    if (!worldBuildingOptions(project,map,owner).includes(Number(building))) return;
+    const chosen = worldSelect(map,Number(building),project,owner);
     if (chosen === map) return;
     state = replaceCurrentWorld(state,project,chosen);
     closeDialog(); startRound();
@@ -2138,6 +2245,15 @@ document.addEventListener('click', e => {
   if (action === 'adult') adultView();
   if (action === 'setup-back') stepSetup(actionButton.form,-1);
   if (action === 'show-profiles' && profile) showProfiles();
+  if (action === 'delete-profile') confirmProfileDeletion();
+  if (action === 'confirm-profile-delete' && profile?.id===actionButton.dataset.profileId) {
+    const result=deleteProfile(storage,profileStore,profile.id);
+    if (result.saved) { profileStore=result.store; selectAfterDeletion(); }
+    else {
+      const error=document.querySelector('[data-delete-error]');
+      if (error) { error.hidden=false; error.textContent='Kunne ikke slette profilen. Prøv igjen når nettleseren tillater lagring.'; }
+    }
+  }
   if (action === 'new-profile' && profile) showProfileForm('new');
   if (action === 'edit-profile' && profile) showProfileForm('edit');
   if (action === 'select-profile' && profile) selectProfile(e.target.closest('[data-profile-id]').dataset.profileId);
@@ -2150,7 +2266,7 @@ document.addEventListener('click', e => {
     state.active = null;
     finishBetaTestAction();
   }
-  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog" autofocus>Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
+  if (action === 'reset') showDialog('<h2 id="dialog-title">Slette historikken?</h2><p>Denne spilleren mister stjerner, plantevekst, bygg og en påbegynt runde.</p><button class="primary" data-action="close-dialog">Behold historikken</button><button class="text-button" data-action="confirm-reset">Ja, slett historikken</button>', 'pause-dialog');
   if (action === 'confirm-reset') { closeDialog(); const { level, sound, haptics, rewardMode, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix } = state; state = selectRewardMode({ ...freshState(), level, sound, haptics, focusBreaks, alwaysShowVisuals, autoProgress, progressionExcluded, roundLength, mix }, rewardMode); completedReward = null; focusGame = null; save(); view = profile ? 'home' : 'onboarding'; render(); focusHeading(); }
 });
 
@@ -2166,9 +2282,6 @@ document.addEventListener('submit', event => {
     resetBetaProject(new FormData(form).get('project'));
     return;
   }
-  if (!form.matches('[data-profile-form]')) return;
-  event.preventDefault();
-  submitProfile(form.dataset.profileForm, Object.fromEntries(new FormData(form)));
 });
 
 document.addEventListener('change', event => {
@@ -2192,6 +2305,13 @@ document.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('pagehide', () => { markAway(); sounds.stop(); });
+window.addEventListener('storage', event=>{
+  if (event.key!==PROFILE_KEY||!profile) return;
+  try {
+    const latest=readProfiles(storage);
+    if (latest.deletedIds?.includes(profile.id)) { profileStore=latest; selectAfterDeletion(); }
+  } catch {}
+});
 window.addEventListener('pageshow', () => {
   if (!document.hidden&&state.sound) sounds.resume();
   welcomeBack();

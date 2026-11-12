@@ -5,6 +5,55 @@ import {BUILD_MODELS,modelById,selectRewardMode,prepareReward,awardPractice,rest
 const rng=()=>.41;
 function earn(state,id){state={...state,roundsCompleted:state.roundsCompleted+1};return awardPractice(state,id,rng);}
 
+test('Every third perfect round earns a saved bonus that completes one map building',()=>{
+  let state=freshState();
+  for (const id of ['perfect-1','perfect-2']) {
+    state=awardPractice({...state,roundsCompleted:state.roundsCompleted+1},id,rng,true).state;
+  }
+  state=selectRewardMode(state,'moon',rng);
+  const result=awardPractice({...state,roundsCompleted:3},'perfect-3',rng,true);
+  assert.equal(result.reward.bonus,true);
+  assert.equal(result.reward.map.progress,3);
+  assert.equal(result.state.perfectRounds,3);
+  assert.equal(result.state.buildBonusesUsed,1);
+  assert.equal(result.state.bonusBuildSteps,2);
+  assert.equal(awardPractice(result.state,'perfect-3',rng,true).reward,null);
+  assert.deepEqual(restoreState(result.state).worlds.moon,result.state.worlds.moon);
+
+  const queued=awardPractice({...state,rewardMode:'plant',garden:{...state.garden,stage:4},roundsCompleted:3},'perfect-3',rng,true).state;
+  assert.equal(queued.garden.stage,5);
+  assert.equal(queued.buildBonusesUsed,0);
+  const used=earn(selectRewardMode(restoreState(queued),'moon',rng),'practice-4');
+  assert.equal(used.reward.bonus,true);
+  assert.equal(used.state.perfectRounds,3);
+});
+
+test('A build bonus grows a plant, adds a toy brick or adds three hero bricks exactly once',()=>{
+  for (const [mode,extra,progress] of [
+    ['plant',1,state=>state.garden.stage],
+    ['bricks',1,state=>state.brickBuild.pieces],
+    ['armor',3,state=>state.projects.armor],
+  ]) {
+    const start=selectRewardMode({...freshState(),perfectRounds:2,roundsCompleted:3},mode,rng);
+    const result=awardPractice(start,`perfect-${mode}`,rng,true);
+    assert.equal(result.reward.bonusSteps,extra);
+    assert.equal(result.state.buildBonusesUsed,1);
+    assert.equal(progress(result.state),1+extra);
+    const restored=restoreState(JSON.parse(JSON.stringify(result.state)));
+    assert.equal(progress(restored),1+extra);
+    assert.equal(restored.roundsCompleted,3);
+    assert.equal(awardPractice(restored,`perfect-${mode}`,rng,true).reward,null);
+    assert.equal(earn(restored,'normal-after-bonus').reward.bonus,undefined);
+  }
+  const nearlyDone=selectRewardMode({...freshState(),roundsCompleted:23,perfectRounds:3,projects:{armor:22}},'armor',rng);
+  const last=awardPractice(nearlyDone,'final-brick',rng);
+  assert.equal(last.reward.bonusSteps,1);
+  assert.equal(restoreState(last.state).projects.armor,24);
+  const done=awardPractice({...last.state,perfectRounds:6},'after-hero',rng);
+  assert.equal(done.reward.added,false);
+  assert.equal(done.state.buildBonusesUsed,1);
+});
+
 test('The eighteen models have five large pieces and their projected faces fit inside the drawing',()=>{
   assert.equal(BUILD_MODELS.length,18);assert.equal(new Set(BUILD_MODELS.map(m=>m.id)).size,18);
   for(const m of BUILD_MODELS){

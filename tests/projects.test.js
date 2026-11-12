@@ -5,13 +5,14 @@ import { selectRewardMode, prepareReward, awardPractice } from '../rewards.js';
 import { PROJECTS, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from '../projects.js';
 import { projectFaces, buildMotion, projectCameras, finishTransition, rasterizeLunarTerrain } from '../project-view.js';
 import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite } from '../scenery.js';
-import { AIRPORT_HELIPAD, districtRail } from '../transport.js';
+import { AIRPORT_HELIPAD, REGIONAL_HELIPAD, districtRail } from '../transport.js';
 import {landmarkAt} from '../project-picking.js';
 import {seasonForDate} from '../seasons.js';
-import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
-import {planRegion,regionLayout,regionSurface,regionVisibility,riverAt,riverWidth} from '../regions.js';
+import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, RESIDENCE_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
+import {planRegion,regionLayout,regionalFootprint,regionalPoint,regionSurface,regionVisibility,residenceDrive,riverAt,riverWidth} from '../regions.js';
 import {planStreetRegion,STREET_TURN_RADIUS} from '../street-grid.js';
-import {prepareRoadTunnels,regionRoads,roundedStreetPaths} from '../region-roads.js';
+import {joinStreetPaths,streetNetwork,destinationRoutes,roadProjections} from '../street-network.js';
+import {prepareRoadTunnels,regionRoads,roundedStreetPaths,streetHalfWidth} from '../region-roads.js';
 
 test('A completed round adds one step to the selected project and preserves other rewards', () => {
   let state = freshState();
@@ -119,7 +120,7 @@ test('The same terrain becomes visible as an irregular road network reaches new 
     assert.deepEqual(late.plots[0],early.plots[0]);
     assert.deepEqual(late.paths[0],early.paths[0]);
     assert.ok(new Set(late.plots.map(plot=>plot.yaw)).size>3,theme);
-    const farthest=late.plots.find(({x,z})=>regionVisibility(early,x,z)===0);
+    const farthest=late.plots.find(({x,z})=>regionVisibility(early,x,z)<.4);
     assert.ok(farthest,theme);
     assert.equal(regionVisibility(late,farthest.x,farthest.z),1);
     assert.ok(late.paths.some(path=>path.slice(1).some(({x,z},i)=>Math.abs(x-path[i].x)>.4&&Math.abs(z-path[i].z)>.4)));
@@ -567,7 +568,7 @@ test('The city helicopter circles and the island helicopter lands only on a comp
   const helicopter=scene.ambient.find(item=>item.kind==='helicopter');
   const rotor=scene.ambient.find(item=>item.kind==='helicopter-rotor');
   const plane=scene.ambient.find(item=>item.kind==='plane');
-  const {x,y,z}=AIRPORT_HELIPAD;
+  const {x,y,z}=scene.landmarks[25].airfield?REGIONAL_HELIPAD:AIRPORT_HELIPAD;
   const pad=pointOnSite([x,y,z],scene.landmarks[25]);
   const landed=actorPose(helicopter,17),airborne=actorPose(helicopter,29);
   assert.deepEqual([landed.x,landed.y,landed.z],pad);
@@ -638,10 +639,130 @@ test('Growing railway districts can add a real lower rail segment and a surface 
     assert.ok(rail.points.some(point=>point.y<regionSurface(layout,point.x,point.z).y-2.3));
     assert.equal(Object.keys(rail.entries).length,rail.undergroundStops.length);
     assert.ok(rail.parts.some(part=>part.entity==='subway:0'));
+    assert.ok(rail.parts.some(part=>part.railWalkway));
+    assert.ok(rail.surfaceStops.length);
+    assert.ok(rail.surfaceStops.every(stop=>stop.parts.some(part=>part.platformStair)));
+    assert.equal(rail.walkers.length,rail.undergroundStops.length);
+    const descent=Array.from({length:300},(_,i)=>actorPose(rail.walkers[0],i*.1));
+    assert.ok(descent.some(p=>p.y> -150&&p.y<regionSurface(layout,p.x,p.z).y-.22));
+    assert.ok(descent.some(p=>p.y< -150));
     const samples=Array.from({length:980},(_,i)=>actorPose(rail.actors[0],i*.1));
     assert.ok(samples.some((point,i)=>i>0&&point.y< -500&&point.x===samples[i-1].x&&point.z===samples[i-1].z));
     assert.ok(samples.some(point=>point.y>1&&point.sound));
   }
+});
+
+test('A named player can choose and keep a themed residence with a garden and two parked vehicles',()=>{
+  const names={city:'Ada & Sam sin residens',island:'Ada & Sam sitt palass',moon:'Ada & Sam sin månebase'};
+  for (const theme of WORLD_IDS) {
+    const fresh=freshWorld(()=>6163/2**32);
+    assert.ok(!worldBuildingOptions(theme,fresh,'Ada & Sam').includes(RESIDENCE_PLACE));
+    const ready={...fresh,order:[0,3],progress:6};
+    assert.equal(worldSelect(ready,RESIDENCE_PLACE,theme),ready);
+    assert.ok(!worldBuildingOptions(theme,ready).includes(RESIDENCE_PLACE));
+    assert.ok(worldBuildingOptions(theme,ready,'Ada & Sam').includes(RESIDENCE_PLACE));
+    const selected=worldSelect(ready,RESIDENCE_PLACE,theme,'  Ada & Sam  ');
+    assert.equal(worldBuilding(theme,RESIDENCE_PLACE,selected).name,names[theme]);
+    const finished=[1,2,3].reduce(map=>worldAdvance(map,theme),selected);
+    const restored=restoreState({...freshState(),roundsCompleted:9,worlds:{[theme]:[finished]}});
+    assert.deepEqual(currentWorld(restored,theme),finished);
+    assert.ok(!worldBuildingOptions(theme,finished,'Ada & Sam').includes(RESIDENCE_PLACE));
+    assert.equal(projectScene(theme,finished).finished,names[theme]);
+    const {parts}=worldBuildingPreview(theme,RESIDENCE_PLACE,selected);
+    assert.ok(parts.some(p=>p.support&&p.w>11));
+    assert.equal(new Set(parts.flatMap(p=>p.parking?[p.parking]:[])).size,2);
+    assert.ok(parts.some(p=>p.y>8.5));
+  }
+});
+
+test('Residences get a dry, road-connected garden without displacing earlier plots',()=>{
+  const seed=6163;
+  const map=freshWorld(()=>seed/2**32);
+  for (const theme of WORLD_IDS) {
+    const layout=regionLayout(theme,seed,true,LARGE_REGION_PLACES);
+    const history=[0,3].map(index=>({index,kind:worldBuilding(theme,index,map).kind}));
+    const build=(buildings)=>planStreetRegion(layout,buildings,LARGE_REGION_PLACES,{starter:true});
+    const before=build(history);
+    const after=build([...history,{index:RESIDENCE_PLACE,kind:'residence'}]);
+    assert.deepEqual(after.plots.slice(0,2),before.plots);
+    const site=after.plots.at(-1);
+    assert.ok(site.residence&&site.halfWidth>6&&site.halfDepth>7.5);
+    assert.ok(roadProjections(after.paths,site.entries[0],.001).length);
+    assert.ok(after.paths.every(path=>path.every(p=>!regionalFootprint(site,p.x,p.z,1.2))));
+    for (const x of [-site.halfWidth,0,site.halfWidth]) for (const z of [-site.halfDepth,0,site.halfDepth]) {
+      const point=regionalPoint(site,x,z);
+      assert.equal(regionSurface(layout,point.x,point.z).water,false);
+    }
+    const {path}=residenceDrive(layout,site);
+    assert.ok(Math.abs(path[0].y-path.at(-1).y)<.36);
+    const {parts}=worldBuildingPreview(theme,RESIDENCE_PLACE,map);
+    assert.ok(parts.some(p=>p.shape==='tube'&&p.w>3&&p.z< -5));
+    assert.ok(parts.filter(p=>p.z< -7&&p.h>.7&&p.w<.25).length>20);
+  }
+});
+
+test('Residence cars wait for traffic from either direction and return to level parking bays',()=>{
+  const seed=6163,theme='city';
+  const map={...freshWorld(()=>seed/2**32),order:[0,3,RESIDENCE_PLACE],progress:9,residenceName:'Ada'};
+  const scene=projectScene(theme,map),site=scene.sites[RESIDENCE_PLACE];
+  const cars=scene.ambient.filter(actor=>actor.parking?.plot===RESIDENCE_PLACE);
+  assert.equal(cars.length,2);
+  const layout=regionLayout(theme,seed,true,LARGE_REGION_PLACES);
+  const {front}=residenceDrive(layout,site);
+  const first={...cars[0],parking:{...cars[0].parking,delay:0}};
+  const stop=actorPose(first,0,first.parking.merge.stop);
+  const local=([x,z])=>{const p=regionalPoint(site,x,z);return [p.x,p.z];};
+  for (const side of [-1,1]) {
+    const lane=front+side*.87;
+    const points=[[-side*12,lane],[side*15,lane],[side*15,front+10],[-side*12,front+10]].map(local);
+    const bus=actor(vehicle('bus','#498c82'),points,{kind:'bus',ground:stop.y,speed:3.1,corner:.35,exactStart:true});
+    bus.phase=(12-bus.speed*2.75)/bus.route.length;
+    const run=createTraffic([first,cars[1],bus]);
+    const parked=run(0);
+    assert.equal(parked[0].pitch,0);
+    assert.equal(parked[1].pitch,0);
+    assert.equal(parked[0].y,parked[1].y);
+    let waited=0;
+    const away=new Set(),returned=new Set();
+    for (let frame=1;frame<=5400&&returned.size<2;frame++) {
+      const poses=run(frame/30);
+      if (!away.has(0)&&Math.hypot(poses[0].x-stop.x,poses[0].z-stop.z)<.003&&poses[0].sound===0) waited++;
+      for (let i=0;i<2;i++) {
+        const distance=Math.hypot(poses[i].x-parked[i].x,poses[i].z-parked[i].z);
+        if (distance>8) away.add(i);
+        if (away.has(i)&&distance<.02&&poses[i].sound===0) {
+          assert.equal(poses[i].pitch,0);
+          returned.add(i);
+        }
+      }
+    }
+    assert.ok(waited>=8,'the car waits on its own driveway while the bus passes');
+    assert.equal(returned.size,2);
+  }
+});
+
+test('Occupied buildings add window trim and glazing on their less detailed sides',()=>{
+  const map=freshWorld(()=>.41);
+  for (const [theme,id] of [['city',0],['island',3],['moon',3]]) {
+    const {parts}=worldBuildingPreview(theme,id,map);
+    for (const side of ['left','right','back']) {
+      const windows=parts.filter(part=>part.facadeSide===side);
+      assert.ok(windows.length>=3);
+      assert.ok(new Set(windows.map(part=>part.color)).size>=3);
+    }
+  }
+});
+
+test('Målenåla keeps its rotating restaurant on a busy map',()=>{
+  const fresh=freshWorld(()=>3920017217/2**32);
+  const order=[...new Set([37,55,44,39,3,24,RAIL_PLACE,...worldChoices(fresh,'moon')])].slice(0,36);
+  const scene=projectScene('moon',{...fresh,order,progress:order.length*3});
+  const cabin=scene.ambient.find(actor=>actor.kind==='observation');
+  assert.ok(cabin?.parts.length>10);
+  assert.ok(cabin.parts.every(part=>part.landmark===37));
+  assert.ok(actorPose(cabin,0).y>scene.landmarks[37].y+7);
+  assert.notEqual(actorPose(cabin,0).sin,actorPose(cabin,3).sin);
+  assert.ok(scene.ambient.filter(actor=>actor.fleet).length>=17);
 });
 
 test('Tram stops along its loop and the city airport opens a flight path',()=>{
@@ -871,5 +992,207 @@ test('Outlying airfields have a long usable runway and the shuttle lands back on
     assert.equal(pose(18.3).y,pose(0).y);
     assert.ok(Math.hypot(pose(17.45).x-pose(20.49).x,pose(17.45).z-pose(20.49).z)>15);
     assert.ok(projectFaces(scene).every(face=>face.points.flat().every(Number.isFinite)));
+  }
+});
+
+test('New regions reserve a headquarters without counting it as a reward, and cars stop at each drive-through',()=>{
+  for (const [id,index] of [['city',50],['island',50],['moon',54]]) {
+    const fresh=freshWorld(()=>6163/2**32);
+    const scene=projectScene(id,fresh);
+    const {starter,...older}=fresh;
+    assert.equal(worldStatus(fresh).built,0);
+    assert.ok(scene.discoveries.headquarters);
+    assert.ok(scene.parts.some(part=>part.entity==='headquarters'&&part.y+part.h>6));
+    assert.equal(projectScene(id,older).discoveries.headquarters,undefined);
+    const advanced={...fresh,order:[2,3,index],progress:9};
+    const completed=projectScene(id,advanced);
+    const customer=completed.ambient.find(actor=>actor.driveThrough);
+    assert.ok(customer);
+    assert.ok(completed.landmarks[index]);
+    const tick=createTraffic([customer],completed.junctions,completed.trafficObstacles);
+    let pickupFrames=0;
+    for (let i=0;i<2100;i++) {
+      const [pose]=tick(i/30);
+      if (Math.hypot(pose.x-customer.driveThrough.x,pose.z-customer.driveThrough.z)<.34) pickupFrames++;
+    }
+    assert.ok(pickupFrames>=49,'the car waits at the pickup window');
+  }
+});
+
+
+test('The airfield and hangar share an access road even when the hangar is built first',()=>{
+  for (const theme of WORLD_IDS) {
+    const layout=regionLayout(theme,38796217,true,LARGE_REGION_PLACES);
+    const specs=[{index:0,kind:'hangar'},{index:1,kind:theme==='moon'?'shuttlePort':'airport'}];
+    for (const order of [specs,specs.slice().reverse()]) {
+      const plan=planStreetRegion(layout,order,LARGE_REGION_PLACES,{starter:true});
+      const [a,b]=plan.plots;
+      assert.ok(a.airportDistrict&&b.airportDistrict);
+      assert.ok(Math.hypot(a.x-b.x,a.z-b.z)<19);
+      const link=plan.paths.find(path=>path[0]===a.entries[0]&&path.at(-1)===b.entries[0]);
+      assert.ok(link&&link.length>5);
+      assert.ok(plan.paths.some(path=>path.at(-1)===a.entries[0]&&path!==link));
+    }
+  }
+});
+
+test('The island offers a large seaside resort with beach visitors and swimmers in the sea',()=>{
+  const fresh=freshWorld(()=>6163/2**32);
+  assert.ok(worldBuildingOptions('island',fresh).includes(27));
+  const hardCoast=regionLayout('island',2037861578,true,LARGE_REGION_PLACES);
+  const plan=planStreetRegion(hardCoast,[{index:27,kind:'megaResort'}],LARGE_REGION_PLACES,{starter:true});
+  assert.ok(plan.paths.some(path=>path.at(-1)===plan.plots[0].entries[0]));
+  const map={...fresh,order:[27],progress:3};
+  const scene=projectScene('island',map);
+  const site=scene.landmarks[27];
+  const layout=regionLayout('island',map.seed,true,LARGE_REGION_PLACES);
+  assert.ok(site.beach);
+  assert.ok(site.halfWidth>8);
+  assert.ok(scene.parts.some(part=>part.landmark===27&&part.entity?.startsWith('resident:27:2')));
+  const swimmers=scene.ambient.filter(actor=>actor.kind==='swimmer');
+  assert.ok(swimmers.length>=2);
+  for (const swimmer of swimmers) {
+    for (const seconds of [0,3,7,12]) {
+      const {x,z}=actorPose(swimmer,seconds);
+      assert.ok(regionSurface(layout,x,z).water);
+    }
+  }
+});
+
+test('Rovers and workshop cars leave their bays and park in the same place again',()=>{
+  for (const [theme,order] of [['city',[12,37,39,1,3,13,RAIL_PLACE]],['moon',[3,39,44,50,24,RAIL_PLACE,1,4,5]]]) {
+    const map={...freshWorld(()=>6163/2**32),order,progress:order.length*3};
+    const scene=projectScene(theme,map);
+    const run=createTraffic(scene.ambient,scene.junctions,scene.trafficObstacles);
+    const start=run(0);
+    const parking=scene.ambient.flatMap((actor,index)=>actor.parking?[index]:[]);
+    assert.ok(parking.length>=1);
+    const away=new Set(),returned=new Set();
+    for (let i=1;i<=5400&&returned.size<parking.length;i++) {
+      const positions=run(i/30);
+      for (const index of parking) {
+        const a=start[index],b=positions[index];
+        const distance=Math.hypot(a.x-b.x,a.z-b.z);
+        if (distance>5) away.add(index);
+        if (away.has(index)&&distance<.02&&b.sound===0) returned.add(index);
+      }
+    }
+    assert.equal(returned.size,parking.length);
+  }
+});
+
+test('A street opened later can join a diagonal access road at a real intersection',()=>{
+  const street=[{x:0,z:-25},{x:0,z:25}];
+  const access=[{x:-12,z:-6},{x:12,z:6}];
+  const later=joinStreetPaths([street],[access],new Map([[street,false]]),new Set([access]));
+  const network=streetNetwork(later.paths,later.accessPaths);
+  assert.equal(later.gateways.size,2);
+  assert.equal(later.latestPaths.size,2);
+  assert.equal(network.junctions.find(({x,z})=>x===0&&z===0).arms.length,4);
+  const [tour]=destinationRoutes(network,[{...access.at(-1),landmark:1}]);
+  assert.equal(tour.landmark,1);
+  assert.ok(tour.path.some(({x,z})=>x===0&&z===0));
+  assert.ok(tour.path[0].x===0,'the trip can start on the later street');
+});
+
+test('Larger towns get a mixed fleet that drives along real access roads to the fixed sites',()=>{
+  const cases=[
+    ['city',83291,[37,39,20,21,38,12,RAIL_PLACE],'motorcycle'],
+    ['island',83291,[27,25,38,34,7,17,37,RAIL_PLACE],'motorcycle'],
+    ['island',6163,[27,25,RESIDENCE_PLACE,38,34,7,17,37,RAIL_PLACE],'motorcycle'],
+    ['moon',3920017217,[55,44,39,3,24,RAIL_PLACE],'moon-trike'],
+  ];
+  for (const [theme,seed,specials,smallVehicle] of cases) {
+    const fresh=freshWorld(()=>seed/2**32);
+    const order=[...new Set([...specials,...worldChoices(fresh,theme)])].slice(0,36);
+    const map={...fresh,order,progress:order.length*3,...(order.includes(RESIDENCE_PLACE)&&{residenceName:'Ada'})};
+    const layout=regionLayout(theme,map.seed,true,LARGE_REGION_PLACES);
+    const plan=planStreetRegion(layout,order.map(index=>({index,kind:worldBuilding(theme,index,map).kind})),
+      LARGE_REGION_PLACES,{starter:true});
+    const scene=projectScene(theme,map);
+    const fleet=scene.ambient.filter(actor=>actor.fleet);
+    assert.ok(fleet.length>=(theme==='moon'?17:20)
+      &&fleet.length>projectScene(theme,fresh).ambient.filter(actor=>actor.fleet).length);
+    assert.ok(fleet.some(actor=>actor.vehicleModel===smallVehicle));
+    assert.ok(new Set(fleet.map(actor=>actor.vehicleModel)).size>=3);
+    const reachable=new Set();
+    const queue=[[...plan.network.nodes.values()][0]];
+    for (const node of queue) {
+      if (reachable.has(node.id)) continue;
+      reachable.add(node.id);
+      queue.push(...node.links.map(link=>link.other).filter(other=>!reachable.has(other.id)));
+    }
+    for (const plot of plan.plots.filter(plot=>plot.airportDistrict||plot.waterfront||plot.spaceResort)) {
+      for (const {x,z} of plot.entries) {
+        assert.ok(reachable.has(`${Math.round(x*10000)}:${Math.round(z*10000)}`),plot.kind);
+      }
+    }
+    const trips=scene.ambient.flatMap((actor,i)=>actor.destination?[[i,actor.destination]]:[]);
+    assert.ok(trips.length>=2);
+    const run=createTraffic(scene.ambient,scene.junctions,scene.trafficObstacles,scene.roadworks);
+    const arrivals=new Set();
+    for (let i=0;i<=5400&&arrivals.size<trips.length;i++) {
+      const poses=run(i/30);
+      for (const [index,site] of trips) {
+        const p=poses[index];
+        if (p.y> -50&&Math.hypot(p.x-site.x,p.z-site.z)<2.6) arrivals.add(index);
+      }
+    }
+    assert.equal(arrivals.size,trips.length,theme);
+  }
+});
+
+test('Pocket park walkers reach the street shoulder by following paved paths',()=>{
+  const theme='island',fresh=freshWorld(()=>83291/2**32);
+  const order=[...new Set([27,25,38,34,7,17,37,RAIL_PLACE,...worldChoices(fresh,theme)])].slice(0,36);
+  const map={...fresh,order,progress:order.length*3};
+  const layout=regionLayout(theme,map.seed,true,LARGE_REGION_PLACES);
+  const plan=planStreetRegion(layout,order.map(index=>({index,kind:worldBuilding(theme,index,map).kind})),
+    LARGE_REGION_PLACES,{starter:true});
+  const scene=projectScene(theme,map);
+  const walkers=scene.ambient.filter(actor=>actor.parkWalk);
+  assert.ok(walkers.length>=1);
+  assert.ok(scene.parts.some(part=>part.footpath&&part.outline.length===4));
+  for (const walker of walkers) {
+    const gaps=walker.route.segments.map(p=>roadProjections(plan.paths,p,15)
+      .reduce((near,road)=>Math.min(near,road.gap),Infinity));
+    assert.ok(Math.min(...gaps)<streetHalfWidth(theme)+.65);
+    assert.ok(Math.max(...gaps)>streetHalfWidth(theme)+3);
+  }
+});
+
+test('Small airstrips launch a smaller propeller plane on a slower flight cycle',()=>{
+  const scene=projectScene('island',{...freshWorld(()=>6163/2**32),order:[34,25],progress:6});
+  const planes=scene.ambient.filter(actor=>actor.kind==='plane');
+  const small=planes.find(actor=>actor.lightAircraft);
+  const large=planes.find(actor=>!actor.lightAircraft);
+  assert.ok(small&&large&&small.runway<large.runway);
+  const width=actor=>Math.max(...actor.parts.map(part=>Math.abs(part.x)+(part.w??0)/2));
+  assert.ok(width(small)<width(large)*.7);
+  assert.ok(actorPose(large,large.delay+7).y>large.y+10);
+  assert.equal(actorPose(small,small.delay+7).y,small.y);
+  assert.ok(actorPose(small,small.delay+10).y>small.y+10);
+});
+
+
+test('Luna Grand Resort has its own large site and animated bathers inside the dust pool',()=>{
+  const fresh=freshWorld(()=>6163/2**32);
+  assert.ok(worldBuildingOptions('moon',fresh).includes(55));
+  const map={...fresh,order:[55],progress:3};
+  const scene=projectScene('moon',map);
+  const site=scene.landmarks[55];
+  const width=site.halfWidth;
+  assert.ok(site.spaceResort&&width>8);
+  assert.ok(scene.parts.some(part=>part.landmark===55&&part.color==='#b3a8c5'));
+  const swimmers=scene.ambient.filter(actor=>actor.dustBather);
+  assert.equal(swimmers.length,2);
+  for (const swimmer of swimmers) {
+    for (const seconds of [0,2,5,8,14]) {
+      const {x,y,z}=actorPose(swimmer,seconds);
+      const dx=x-site.x,dz=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
+      const across=dx*c-dz*s,along=dx*s+dz*c;
+      assert.ok(Math.abs(across)<4.4&&along>.68&&along<5.1);
+      assert.ok(y>site.y+.6&&y<site.y+.75);
+    }
   }
 });

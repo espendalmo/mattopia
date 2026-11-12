@@ -47,12 +47,27 @@ const jazzBass=[130.81,155.56,164.81,174.61,146.83,130.81,98,130.81];
 const cubanNotes=[523,659,0,784,698,659,0,587,698,0,880,784,698,659,587,523,0,659,784,0,698,659,587,523];
 const claveHits=[0,.324,.648,1.08,1.404];
 
-function jazz(t,mid) {
+const jazzPhrases=[jazzNotes,
+  [523,0,622,587,523,466,440,466,392,0,349,392,466,440,392,0,349,0],
+  [349,392,415,440,466,523,587,523,0,466,415,392,349,392,466,392,349,0],
+  [392,466,0,523,466,0,349,392,440,523,554,523,466,392,349,330,349,0]];
+const islandPhrases=[cubanNotes,
+  [659,0,784,880,784,0,659,587,659,784,0,1047,988,880,784,698,0,659,698,0,784,659,587,523],
+  [392,523,0,659,587,523,698,0,784,880,0,784,659,523,587,659,0,523,587,698,659,0,587,523],
+  [784,0,698,659,523,0,587,659,784,0,880,988,880,784,698,0,659,587,0,698,659,587,523,0]];
+const moonPhrases=[
+  [220,261.63,329.63,293.66,261.63,196,220,0,329.63,392,329.63,261.63],
+  [196,246.94,293.66,369.99,0,329.63,293.66,220,246.94,196],
+  [261.63,392,349.23,293.66,329.63,392,0,440,392,349.23,293.66,261.63],
+  [164.81,246.94,329.63,0,311.13,246.94,196,220,261.63,196,164.81],
+];
+function jazz(t,mid,variation) {
   if (t<0||t>=7.6) return 0;
   const beat=t%.46,index=Math.floor(t/.46);
   const offbeat=beat>=.306;
   const age=offbeat?beat-.306:beat;
-  const melody=jazzNotes[(index+(offbeat?1:0))%jazzNotes.length];
+  const notes=jazzPhrases[variation];
+  const melody=notes[(index+(offbeat?1:0))%notes.length];
   const lead=unit(age*42)*Math.exp(-age*7)*(wave(age,melody)*.57+wave(age,melody*2)*.15);
   const root=jazzBass[index%jazzBass.length];
   const bass=unit(beat*34)*Math.exp(-beat*10)*(wave(beat,root)*.52+wave(beat,root*2)*.19);
@@ -60,9 +75,9 @@ function jazz(t,mid) {
   return (lead*.7+bass*.57+brush)*unit((7.6-t)*3);
 }
 
-function salsa(t,mid) {
+function salsa(t,mid,variation) {
   if (t<0||t>7.6) return 0;
-  const figure=phrase(t-.13,cubanNotes,.216);
+  const figure=phrase(t-.13,islandPhrases[variation],.216);
   const bar=t%1.728;
   const bassAge=bar<.648?bar:bar-.648;
   const root=Math.floor(t/1.728)%2?98:130.81;
@@ -72,10 +87,10 @@ function salsa(t,mid) {
   return (figure*.84+bass*.62+clave*.25)*unit((7.6-t)*2);
 }
 
-function moonPhrase(t) {
+function moonPhrase(t,variation) {
   if (t<0||t>7.5) return 0;
-  const note=phrase(t,[220,261.63,329.63,293.66,261.63,196,220,0,329.63,392,329.63,261.63],.59);
-  const glide=270*t+19*Math.sin(t*1.55)+.085*Math.sin(t*31);
+  const note=phrase(t,moonPhrases[variation],.59);
+  const glide=(208+variation*29)*t+19*Math.sin(t*(1.55+variation*.19))+.085*Math.sin(t*31);
   const halo=Math.sin(TAU*glide)*Math.sin(Math.PI*t/7.5)**2*.2;
   return note*.42+halo;
 }
@@ -84,26 +99,30 @@ export function ambienceBuffer(context,world,buildings,{fun=0,wheel=false,hotel=
   const loopLength=loopLengths[world]??48;
   const birds=world==='city'?[[1.9,1550],[2.16,1790],[17.4,1850],[17.69,1580],[34.33,1710]]
     :world==='island'?[[6.2,1220],[19.6,1360],[36.7,1530],[39.1,1480]]:[];
+  const starts=world==='moon'?[3.5,18,34,49]:world==='island'?[3.5,15.5,28,42]:[3.5,14,25,39];
   return synthesize(context,loopLength,(t,noise,low,mid)=>{
+    const variation=t>=starts[3]?3:t>=starts[2]?2:t>=starts[1]?1:0;
+    const age=t-starts[variation];
     let bed,music;
     if (world==='island') {
       const swell=.18+.82*(.5-.5*Math.cos(t*TAU/7))**2;
       bed=swell*(low*1.66+mid*.47+noise*.19);
-      music=(hotel?.57:.47)*(salsa(t-3.5,mid)+salsa(t-26,mid));
+      music=(hotel?.57:.47)*salsa(age,mid,variation);
     } else if (world==='moon') {
       bed=low*.36+mid*.07+.065*wave(t,56)*(.8+.2*Math.cos(t*TAU/12));
-      music=.73*(moonPhrase(t-3.5)+moonPhrase(t-34));
+      music=.73*moonPhrase(age,variation);
     } else {
       const breeze=.67+.33*wave(t,1/12);
       const river=.49+.28*wave(t,1/3.5);
       bed=breeze*(low*.73+mid*.12)+river*(mid*.41+noise*.045);
-      music=.55*(jazz(t-3.5,mid)+jazz(t-21.5,mid));
+      music=.55*jazz(age,mid,variation);
     }
     for (const [at,pitch] of birds) bed+=.085*chirp(t-at,world==='island'?.3:.15,pitch);
     const passes=(.4+.32*wave(t,1/8)+.23*wave(t,3/16))**2;
     const street=buildings*.043*passes*(low*1.2+mid*.12);
-    const fair=wheel?.19*waltz(t-(world==='city'?36:44))
-      :fun&&world!=='moon'?.105*phrase(t-(world==='city'?38:46),[392,523,659,784,659,698,587,523],.31):0;
+    const fairAge=t-(world==='city'?33:36);
+    const fair=world==='moon'?0:wheel?.19*waltz(fairAge)*unit((5.6-fairAge)*2)
+      :fun?.105*phrase(fairAge,[392,523,659,784,659,698,587,523],.31):0;
     return (bed+street+music+fair)*Math.min(1,t*3,(loopLength-t)*3);
   });
 }
@@ -114,7 +133,10 @@ export const ACTIVITY_SOUNDS=Object.freeze({
   helicopter:[3.45,.057,5],
   train:[1.9,.058,5],
   'tram-bell':[.65,.24,0],
+  'train-start':[.76,.18,0],
+  'monorail-start':[.59,.17,0],
   horn:[.52,.085,12],
+  'queue-horn':[.55,.085,1.9],
   monorail:[1.65,.052,5],
   traffic:[1.45,.047,6.5],
   rover:[1.65,.045,7.5],
@@ -155,7 +177,7 @@ const buildingKinds={
   work:['mill','factory','sawmill','moonWorkshop','moonCargo','oxygen','generator','refinery','supplyDepot','cargoDepot'],
   signal:['solar','solarGarden','telescope','telescopeArray','craterLab','radioTower','lunarRadio','prismTower','novaTower','haloTower'],
   dining:['restaurant','bistro','coralCafe','tikiBar','dustCafe','moonBurger','cosmicIce','needleTower'],
-  hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel'],
+  hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel','lunarResort'],
 };
 const buildingVoices=Object.fromEntries(Object.entries(buildingKinds)
   .flatMap(([voice,kinds])=>kinds.map(kind=>[kind,voice])));
@@ -288,7 +310,13 @@ export function soundClip(context,kind) {
       const bell=age=>age<0?0:unit(age*195)*Math.exp(-age*13)*(wave(age,986)*.67+wave(age,1525)*.24+wave(age,2164)*.13);
       return bell(t-.01)+bell(t-.18)*.84;
     }
-    if (kind==='horn') {
+    if (kind==='train-start'||kind==='monorail-start') {
+      const moon=kind==='monorail-start';
+      const call=(age,frequency)=>age<0?0:unit(age*45)*unit(((moon?.14:.25)-age)*15)*
+        (wave(age,frequency)*.62+wave(age,frequency*(moon?2:1.26))*.29);
+      return call(t-.014,moon?660:174)+call(t-(moon?.18:.29),moon?850:196)*.88;
+    }
+    if (kind==='horn'||kind==='queue-horn') {
       const toot=age=>age<0?0:unit(age*105)*unit((.16-age)*27)*(wave(age,392)*.63+wave(age,512)*.31+wave(age,783)*.13);
       return toot(t-.01)+toot(t-.22)*.72;
     }

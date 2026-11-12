@@ -48,7 +48,7 @@ test('All offline assets exist and load from cache at root and GitHub project pa
   for (const base of ['https://example.github.io/', 'https://example.github.io/mattopia/']) {
     const h = harness(base);
     await h.lifecycle('install');
-    for (const name of ['index.html', 'app.js', 'core.js', 'learning.js', 'sound.js', 'sound-art.js', 'update.js', 'rewards.js', 'plants.js', 'breaks.js', 'profiles.js', 'illustrations.js', 'curriculum.js', 'projects.js', 'worlds.js', 'regions.js', 'street-grid.js', 'region-roads.js', 'map-art.js', 'region-scenery.js', 'world-landmarks.js', 'scenery.js', 'transport.js', 'project-view.js', 'project-picking.js', 'landmark-ground.js', 'landmark-stories.js', 'seasons.js', 'project-fireworks.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png', 'assets/moon-stars.svg']) {
+    for (const name of ['index.html', 'app.js', 'i18n.js', 'locale-nb.js', 'core.js', 'learning.js', 'sound.js', 'sound-art.js', 'update.js', 'rewards.js', 'plants.js', 'breaks.js', 'profiles.js', 'illustrations.js', 'curriculum.js', 'projects.js', 'worlds.js', 'regions.js', 'street-grid.js', 'region-roads.js', 'map-art.js', 'region-scenery.js', 'world-landmarks.js', 'scenery.js', 'transport.js', 'project-view.js', 'project-picking.js', 'landmark-ground.js', 'landmark-stories.js', 'seasons.js', 'project-fireworks.js', 'style.css', 'manifest.webmanifest', 'assets/icon-192.png', 'assets/apple-touch-icon.png', 'assets/moon-stars.svg']) {
       assert.ok((await h.request(name)).bytes.length > 0, name);
     }
     assert.ok((await h.request('?from=home', 'navigate')).bytes.length > 0, 'navigation query falls back to cached entry');

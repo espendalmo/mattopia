@@ -1,8 +1,8 @@
 import {isSlidePark,slideRiders} from './slide-parks.js';
 import {footballActors} from './map-life.js';
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
-import {regionSurface} from './regions.js';
-import {airportRunway,COASTER_TRACK,planeModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
+import {regionSurface,regionalPoint,resortShore} from './regions.js';
+import {airportRunway,COASTER_TRACK,planeModel,lightPlaneModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 
 const paint='#e3ae55';
 const rust='#bf8651';
@@ -103,6 +103,7 @@ export function rideModels(plot,stages) {
     return ['#da866a','#70aeb0'].map((color,i)=>coasterActor(coasterCarModel(color,true),points,.23+i*.039));
   }
   if (plot.kind==='field'||plot.kind==='spaceField') return footballActors(plot);
+  if (plot.kind==='lunarResort') return moonDustBathers(plot);
   const model=stages.flat().filter(part=>part.flight);
   if (model.length) {
     const kind=model[0].flight;
@@ -110,7 +111,9 @@ export function rideModels(plot,stages) {
     if (kind==='plane'||kind==='shuttle') {
       const runway=airportRunway(plot.airfield&&plot.kind==='airport'?'majorAirport':plot.kind);
       const [x,y,z]=pointOnSite([runway.x,runway.y,runway.z],plot);
-      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,parts:kind==='shuttle'?shuttleModel():planeModel()}];
+      const lightAircraft=plot.kind==='airstrip';
+      return [{kind,x,y,z,yaw:plot.yaw+runway.yaw,runway:runway.length,delay,lightAircraft,
+        parts:kind==='shuttle'?shuttleModel():lightAircraft?lightPlaneModel():planeModel()}];
     }
     const [x,y,z]=pointOnSite(ROCKET_PAD,plot);
     const parts=placeParts(model,{x:-ROCKET_PAD[0],y:-ROCKET_PAD[1],z:-ROCKET_PAD[2]});
@@ -118,6 +121,33 @@ export function rideModels(plot,stages) {
     return [craft,{...craft,kind:'rocket-flame',parts:rocketFlame()}];
   }
   return [];
+}
+
+function moonDustBathers(plot) {
+  const trails=[
+    [[-3.26,2.36],[-2.07,1.78],[-.89,2.2],[-.95,3.58],[-2.12,4.12],[-3.25,3.6]],
+    [[.66,2.51],[1.62,1.84],[3.07,2.18],[3.32,3.54],[2.31,4.05],[1.12,3.8]],
+  ];
+  return trails.map((trail,i)=>{
+    const points=trail.map(([x,z])=>{
+      const [a,,b]=pointOnSite([x,0,z],plot);
+      return [a,b];
+    });
+    const visor=i?'#83b3c9':'#b0c9d8';
+    const parts=[
+      dome(0,-.28,.61,.83,.15,'#c8bbd3',.016),
+      rounded(0,.13,.39,.34,.22,'#eee6d5',.063),
+      {...dome(0,.19,.48,.45,.29,'#ded8df',.24),characterKind:'astronaut'},
+      rounded(0,.395,.33,.09,.17,visor,.29),
+      ...[-1,1].map(side=>beam([side*.14,.083,-.08],[side*.43,.132,.29],.115,'#e5ddec')),
+      ...[-1,1].flatMap((side,j)=>[
+        {...dome(side*.38,-.26,.22,.18,.16,'#ded1e2',.046),life:[side*.38,.046,-.26,1+i+j*.73]},
+        dome(side*.48,-.47,.29,.35,.13,'#b6a8c3',.018),
+      ]),
+    ];
+    return {...actor(parts,points,{kind:'swimmer',ground:plot.y+.675,speed:.54+i*.08,phase:.15+i*.34,corner:.56,voice:'astronaut'}),
+      dustBather:true,characterSlot:912+i};
+  });
 }
 
 export function coasterCarModel(color,passenger=false) {
@@ -150,6 +180,7 @@ const VISITORS={
   dustCafe:cafeVisitors,moonBurger:cafeVisitors,cosmicIce:cafeVisitors,
   busStation:[[-2.61,.82,-1.83,0,true],[2.66,.82,-1.84,0,true],[.39,.43,3.44,-.4]],
   hotel:hotelVisitors,resort:hotelVisitors,sunsetHotel:hotelVisitors,glassHotel:hotelVisitors,
+  lunarResort:[[-5.01,.78,2.01,.18,true],[5.42,.78,4.6,-.37,true],[-1.76,.4,5.51,.34]],
   auroraHotel:hotelVisitors,megaResort:[[.27,.35,3.33,.46],[-4.32,.35,3.66,-.3]],
   hoverDealer:[[-.84,.35,2.72,-.75],[.83,.35,2.59,.54]],
   market:[[-1.42,.35,1.95,-.62],[2.66,.35,1.76,Math.PI]],
@@ -174,10 +205,13 @@ const VISITORS={
 };
 
 export function landmarkVisitors(theme,plot) {
-  const positions=VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
+  const positions=plot.residence?[[-4.53,.18,-4.94,.62],[3.3,.18,-6.66,-.65]]
+    :VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
   const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
   const skins=['#deae85','#aa765b','#ebbf91'];
-  const people=positions.flatMap(([x,y,z,yaw,seated],i)=>{
+  const deckX=plot.beach?1.5:1,deckZ=plot.beach?1.22:1;
+  const people=positions.flatMap(([u,y,v,yaw,seated],i)=>{
+    const x=u*deckX,z=v*deckZ;
     const kind=theme==='moon'?(i===1?'alien':'astronaut'):'human';
     const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated,.83,(plot.index*3+i)%8);
     const [px,py,pz]=pointOnSite([x,y,z],plot);
@@ -186,11 +220,75 @@ export function landmarkVisitors(theme,plot) {
   const pools=plot.kind==='megaResort'?[[-1.64,.65,2.52],[2.06,.65,2.83]]
     :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
     :plot.kind==='beachClub'?[[2.28,.64,2.16]]:[];
-  for (const [i,[x,y,z]] of pools.entries()) {
+  for (const [i,[u,y,v]] of pools.entries()) {
+    const x=u*deckX,z=v*deckZ;
     const [px,py,pz]=pointOnSite([x,y,z],plot);
     people.push(...placeParts(swimmer('#dda97d','#d99c81'),{x,y,z,yaw:-.32}).map(part=>({...part,characterKind:'human',entity:`resident:${plot.index}:${i+10}`,life:[px,py,pz,1+plot.index+i]})));
   }
   return placeParts(people,plot);
+}
+
+export function resortBeach(layout,plot) {
+  const parts=[], swimmers=[];
+  const colors=['#e28e78','#4e9d9a','#e4bd68','#8b91b5'];
+  const ground=(x,z)=>{
+    const point=regionalPoint(plot,x,z);
+    return {...point,y:regionSurface(layout,point.x,point.z).y+.045};
+  };
+  for (let i=0;i<9;i++) {
+    const x=(i-4)*2.8,shore=resortShore(layout,plot,x);
+    if (shore===null) continue;
+    const z=shore-2.4-(i%3)*.76;
+    if (z<6.95) continue;
+    const site={...ground(x,z),yaw:plot.yaw+(i%2?.08:-.14)};
+    const stripe=colors[i%colors.length];
+    const seat=(x,z)=>[
+      box(x,z,.73,1.45,.13,'#e3ceb1',.1),
+      box(x,z+.2,.59,.92,.11,stripe,.23),
+      beam([x,.24,z-.55],[x,.56,z-.79],.43,stripe),
+      ...[-.22,.22].map(dx=>box(x+dx,z,.13,1.44,.1,'#ae8a64',0)),
+    ];
+    parts.push(...placeParts([
+      ...seat(-.62,.18),...seat(.65,.04),tube(0,-.66,.083,.083,1.58,'#ab8764'),
+      dome(0,-.66,2.47,2.14,.44,stripe,1.51),dome(0,-.66,1.16,1.07,.2,'#f5dbac',1.78),
+      ...(i%2?[rounded(.66,1.1,.48,.42,.21,'#b49463',.025)]:[]),
+    ],site));
+    if (i%2===0) {
+      const visitorSite={...ground(x+.71,z+1.34),yaw:plot.yaw+.6};
+      parts.push(...placeParts(visitor('human',stripe,undefined,false,.8,i),visitorSite).map(part=>({
+        ...part,entity:`resident:${plot.index}:${20+i}`,life:[visitorSite.x,visitorSite.y,visitorSite.z,6+i],
+      })));
+    }
+  }
+  // Boards and steps connect the sun deck to the sand.
+  const shore=resortShore(layout,plot,0);
+  if (shore!==null) {
+    const length=Math.max(1,shore-9.7);
+    const count=Math.ceil(length/.65);
+    for (let i=0;i<count;i++) {
+      const z=6.08+(i+.5)*length/count;
+      const deck=plot.y+.27;
+      const site=ground(0,z);
+      const y=Math.max(site.y,deck-(i+1)*.22);
+      parts.push(...placeParts([box(0,0,2.15,length/count+.022,.12,i%2?'#caa37c':'#b9936f')],{...site,y,yaw:plot.yaw}));
+    }
+  }
+  for (const [i,x] of [-7.8,-1,6.3].entries()) {
+    const offsets=[[-1.4,.4],[-.8,-.37],[.48,-.32],[1.28,.61],[.5,1.35],[-.71,1.24]];
+    const route=offsets.map(([dx,dz])=>{
+      const u=x+dx,shore=resortShore(layout,plot,u);
+      if (shore===null) return null;
+      const {x:a,z:b}=regionalPoint(plot,u,shore+2.15+dz+i*.45);
+      return [a,b];
+    });
+    if (route.includes(null)) continue;
+    const visitor=actor(swimmer(['#dda97d','#b78464','#ebbe9c'][i],colors[i]),route,
+      {kind:'swimmer',ground:.029,speed:.54+i*.08,phase:i*.31,corner:.47});
+    if (visitor.route.segments.every(({x,z,dx,dz})=>[0,.5,1].every(t=>regionSurface(layout,x+dx*t,z+dz*t).water))) {
+      swimmers.push(visitor);
+    }
+  }
+  return {parts,swimmers};
 }
 
 export function lunarEarth(sky,amount) {

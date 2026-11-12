@@ -153,7 +153,7 @@ export function projectFaces(scene) {
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
       const actorKind=scene.ambient?.[layerIndex-1]?.kind;
       const actorEntity=layerIndex&&!Number.isInteger(part.landmark)&&piece.life?.[3]!==-1
-        &&!['rocket-flame','football-stars','observation'].includes(actorKind);
+        &&!['rocket-flame','football-stars','observation','smoke'].includes(actorKind);
       return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(actorEntity?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         lunar:scene.id==='moon'&&scene.illustrated&&part.layer!==-1,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
@@ -356,7 +356,8 @@ function canvasPainter(canvas, faces, background, stars) {
   };
 }
 
-function webGLPainter(canvas, faces, background, illustrated, stars) {
+function webGLPainter(canvas, faces, background, illustrated, stars, actorCount) {
+  const actorSlots=Math.max(1,Math.min(MAX_ACTORS,actorCount));
   const vertexFloats=17;
   const gl=canvas.getContext('webgl',{alpha:stars,antialias:true});
   if (!gl) return null;
@@ -382,9 +383,8 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
     uniform float center;
     uniform float curvature;
     uniform vec4 reveal;
-    uniform vec4 actorPose[${MAX_ACTORS}];
-    uniform vec3 actorTilt[${MAX_ACTORS}];
-    uniform vec4 actorMotion[${MAX_ACTORS}];
+    uniform vec4 actorPose[${actorSlots}];
+    uniform vec4 actorMotion[${actorSlots}];
     varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
@@ -410,22 +410,25 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
         return;
       }
       if (latest == 1.0) pos.y = reveal.z + (pos.y-reveal.z)*reveal.y + reveal.x;
-      for (int i = 0; i < ${MAX_ACTORS}; i++) {
+      if (group >= 2.0) for (int i = 0; i < ${actorSlots}; i++) {
         if (group == 2.0+float(i)) {
           vec4 pose = actorPose[i];
           vec4 motion = actorMotion[i];
+          vec2 heading = vec2(cos(pose.w),sin(pose.w));
+          vec2 roll = vec2(cos(motion.y),sin(motion.y));
+          vec2 slope = vec2(cos(motion.z),sin(motion.z));
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
-          pos.xy += vec2(pivot.x*motion.z-pivot.y*motion.w,pivot.x*motion.w+pivot.y*motion.z)-pivot;
-          vec3 slope = actorTilt[i];
-          if (life.w == -1.0 && slope.z < .5) {
+          pos.xy += vec2(pivot.x*roll.x-pivot.y*roll.y,pivot.x*roll.y+pivot.y*roll.x)-pivot;
+          if (life.w == -1.0 && motion.w < .5) {
             gl_Position = vec4(2.0,2.0,2.0,1.0);
             return;
           }
           pos.yz = vec2(pos.y*slope.x+pos.z*slope.y,pos.z*slope.x-pos.y*slope.y);
-          float step = stride*motion.y;
+          float step = stride*motion.x;
           float z = pos.z+step;
-          pos = vec3(pose.x+pos.x*pose.w+z*motion.x,pos.y+pose.y+max(0.0,step)*.58,
-            pose.z+z*pose.w-pos.x*motion.x);
+          pos = vec3(pose.x+pos.x*heading.x+z*heading.y,pos.y+pose.y+max(0.0,step)*.58,
+            pose.z+z*heading.x-pos.x*heading.y);
+          break;
         }
       }
       if (lunar > .5 && curvature > 0.0) {
@@ -477,10 +480,9 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
     gl.enableVertexAttribArray(location);
     gl.vertexAttribPointer(location,size,gl.FLOAT,false,vertexFloats*4,offset);
   }
-  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]','actorTilt[0]']
+  const uniforms=Object.fromEntries(['yaw','pitch','zoom','pan','center','curvature','reveal','shine','age','actorPose[0]','actorMotion[0]']
     .map(name=>[name,gl.getUniformLocation(program,name)]));
-  const actorPositions=new Float32Array(MAX_ACTORS*4),actorMovement=new Float32Array(MAX_ACTORS*4);
-  const actorSlopes=new Float32Array(MAX_ACTORS*3);
+  const actorPositions=new Float32Array(actorSlots*4),actorMovement=new Float32Array(actorSlots*4);
   gl.enable(gl.DEPTH_TEST);
   gl.depthFunc(gl.LEQUAL);
   gl.clearColor(...backgroundRGB(background),stars?0:1);
@@ -501,14 +503,12 @@ function webGLPainter(canvas, faces, background, illustrated, stars) {
       gl.uniform1f(uniforms.curvature,effects.curvature??0);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
-      effects.actors.forEach(({x,y,z,cos,sin,stride,rollCos,rollSin,pitch=0,thrust=0},i)=>{
-        actorPositions.set([x,y,z,cos],i*4);
-        actorMovement.set([sin,stride,rollCos,rollSin],i*4);
-        actorSlopes.set([Math.cos(pitch),Math.sin(pitch),thrust],i*3);
+      effects.actors.forEach(({x,y,z,cos=1,sin=0,stride=0,rollCos=1,rollSin=0,pitch=0,thrust=0},i)=>{
+        actorPositions.set([x,y,z,Math.atan2(sin,cos)],i*4);
+        actorMovement.set([stride,Math.atan2(rollSin,rollCos),pitch,thrust],i*4);
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
-      gl.uniform3fv(uniforms['actorTilt[0]'],actorSlopes);
       gl.drawArrays(gl.TRIANGLES,0,data.length/vertexFloats);
     },
     dispose() {
@@ -552,9 +552,10 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
   const station=point.kind==='railwayStation'||point.kind==='monorailStation'||point.kind==='tramStation';
-  const framing=(station?23:height*1.13+3.2)*(compact?.91:1);
-  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x,anchorZ:point.z,
-    center:point.y+height*(height>10?.46:.37)};
+  const framing=point.beach?44:point.airfield?39:point.spaceResort?31:point.kind==='residence'?(point.residence?22.5:18.5)
+    :(station?23:height*1.13+3.2)*(compact?.91:1);
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x+(point.beach?Math.sin(point.yaw)*5:0),anchorZ:point.z+(point.beach?Math.cos(point.yaw)*5:0),
+    center:point.y+height*(point.beach?.24:height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);
   const context={...initial,zoom:clamp(scene.size/41,1,maxZoom),center:point.y+1.35,
@@ -595,7 +596,7 @@ export function mountProjectView(container, scene, interactive=false, {
   if (stars) canvas.classList.add('lunar-starfield');
   let engine;
   if (interactive || scene.world && !still) {
-    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars); }
+    try { engine=webGLPainter(canvas,faces,scene.background,scene.illustrated,stars,scene.ambient?.length??0); }
     catch {
       const fallback=canvas.cloneNode();
       canvas.replaceWith(fallback);
@@ -630,7 +631,7 @@ export function mountProjectView(container, scene, interactive=false, {
     : {x:0,y:Math.max(...scene.parts.map(part=>part.y+part.h)),z:0});
   const fireworkY=fireworkTarget.y+(fireworkTarget.height??0)+1.4;
   const mounted=performance.now();
-  const moveActors=createTraffic(scene.ambient??[],scene.junctions);
+  const moveActors=createTraffic(scene.ambient??[],scene.junctions,scene.trafficObstacles,scene.roadworks);
   if (target || closeUp && (!reveal || motion.matches || demo&&!scene.world || focusLatest&&!completedBuild&&!scene.roadBuild)) Object.assign(camera,detail);
   else if (reveal&&scene.world) Object.assign(camera,context);
   from={...camera};

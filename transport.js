@@ -1,5 +1,6 @@
-import {box,rounded,dome,tube,roof,beam,placeParts,pointOnSite,tunnelLandform} from './scenery.js';
-import {regionSurface} from './regions.js';
+import {box,rounded,dome,tube,roof,beam,placeParts,pointOnSite,tunnelLandform,visitor} from './scenery.js';
+import {regionSurface,riverAt} from './regions.js';
+import {roadProjections} from './street-network.js';
 
 const cream='#f4e5c6', dark='#455366', glass='#74aab9', steel='#a7b6bb';
 const sides=[-1,1];
@@ -71,9 +72,8 @@ function plate(outline,color) {
   return {shape:'terrain',outline,color,x,y,z,h:0};
 }
 
-function railTrack(points,moon,skip=()=>false) {
+function railTrack(points,moon,skip=()=>false,half=moon?.57:.94) {
   const deck=moon?'#7f8da3':'#82776e', edge=moon?'#c3c1d3':'#c5a58a';
-  const half=moon?.57:.94;
   const sideways=(index,offset,lower=0)=>{
     const [x,y,z]=points[index];
     const before=points[Math.max(0,index-1)],after=points[Math.min(points.length-1,index+1)];
@@ -98,40 +98,45 @@ function railTrack(points,moon,skip=()=>false) {
   return parts;
 }
 
-function roadClearance(paths,x,z) {
+function roadClearance(paths,x,z,clearance=2.15) {
   for (const path of paths) {
     for (let i=1;i<path.length;i++) {
       const a=path[i-1],b=path[i];
       const dx=b.x-a.x,dz=b.z-a.z;
       const t=clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1));
-      if (Math.hypot(x-a.x-dx*t,z-a.z-dz*t)<2.15) return false;
+      if (Math.hypot(x-a.x-dx*t,z-a.z-dz*t)<clearance) return false;
     }
   }
   return true;
 }
 
-function roundedRailPath(waypoints,turnRadius=3.1) {
-  const softened=waypoints.flatMap((point,i)=>{
-    if (i===0||i===waypoints.length-1) return [point];
-    const radius=i===1?.85:turnRadius;
-    const inset=([x,z])=>{
-      const dx=x-point[0],dz=z-point[1],distance=Math.hypot(dx,dz);
-      const ratio=Math.min(.42,radius/distance);
-      return [point[0]+dx*ratio,point[1]+dz*ratio];
-    };
-    const before=inset(waypoints[i-1]),after=inset(waypoints[i+1]);
-    return Array.from({length:7},(_,j)=>{
-      const t=j/6,u=1-t;
-      return point.map((v,axis)=>u*u*before[axis]+2*u*t*v+t*t*after[axis]);
+function roundedRailPath(waypoints,turnRadius=4.9,station=false) {
+  const points=waypoints.filter(([x,z],i)=>!i||Math.hypot(x-waypoints[i-1][0],z-waypoints[i-1][1])>.01);
+  const softened=points.flatMap(([x,z],i)=>{
+    if (!i||i===points.length-1) return [[x,z]];
+    const [a,b]=points[i-1],[c,d]=points[i+1];
+    const incoming=Math.hypot(x-a,z-b),outgoing=Math.hypot(c-x,d-z);
+    const dx=(x-a)/incoming,dz=(z-b)/incoming;
+    const ex=(c-x)/outgoing,ez=(d-z)/outgoing;
+    const turn=Math.atan2(dx*ez-dz*ex,dx*ex+dz*ez);
+    if (Math.abs(turn)<.018||Math.abs(turn)>Math.PI-.05) return [[x,z]];
+    const tangent=Math.tan(Math.abs(turn)*.5);
+    const nearStation=station&&(i===1||i===points.length-2);
+    const inset=Math.min(nearStation?1.07:Infinity,turnRadius*tangent,incoming*.43,outgoing*.43);
+    const radius=inset/tangent,sign=Math.sign(turn);
+    const px=x-dx*inset,pz=z-dz*inset;
+    const cx=px-dz*radius*sign,cz=pz+dx*radius*sign;
+    const angle=Math.atan2(pz-cz,px-cx),count=Math.max(5,Math.ceil(Math.abs(turn)*radius/.5));
+    return Array.from({length:count+1},(_,j)=>{
+      const current=angle+turn*j/count;
+      return [cx+Math.cos(current)*radius,cz+Math.sin(current)*radius];
     });
   });
   const path=[softened[0]];
   for (let i=1;i<softened.length;i++) {
-    const from=softened[i-1],to=softened[i];
-    const count=Math.ceil(Math.hypot(to[0]-from[0],to[1]-from[1])/.83);
-    for (let step=1;step<=count;step++) {
-      path.push(from.map((value,axis)=>value+(to[axis]-value)*step/count));
-    }
+    const from=path.at(-1),to=softened[i];
+    const count=Math.ceil(Math.hypot(to[0]-from[0],to[1]-from[1])/.78);
+    for (let step=1;step<=count;step++) path.push(from.map((value,axis)=>value+(to[axis]-value)*step/count));
   }
   return path;
 }
@@ -146,7 +151,12 @@ function railLoop(points) {
   const wrap=value=>(value%length+length)%length;
   const sample=value=>{
     const distance=wrap(value);
-    const end=distances.findIndex(d=>d>distance);
+    let low=1,end=distances.length-1;
+    while (low<end) {
+      const middle=(low+end)>>1;
+      if (distances[middle]>distance) end=middle;
+      else low=middle+1;
+    }
     const t=(distance-distances[end-1])/(distances[end]-distances[end-1]);
     return points[end-1].map((v,i)=>v+(points[end][i]-v)*t);
   };
@@ -195,8 +205,12 @@ function crossesLot([x,z],[a,b],lot,margin) {
   return true;
 }
 
+function railMargin(lot,margin) {
+  return Math.max(margin,lot.right-lot.left>14||lot.front-lot.back>14?1.35:0);
+}
+
 function clearRail(lots,a,b,margin=1.35) {
-  return !lots.some(lot=>crossesLot(a,b,lot,margin));
+  return !lots.some(lot=>crossesLot(a,b,lot,railMargin(lot,margin)));
 }
 
 function pathClear(points,lots,margin) {
@@ -222,24 +236,27 @@ function simpleRailLoop(points) {
   return true;
 }
 
-function railDetour(lots) {
-  const corners=lots.flatMap(({left,right,back,front})=>
-    [left-2.7,right+2.7].flatMap(x=>[back-2.7,front+2.7].map(z=>[x,z])))
-    .filter(point=>clearRail(lots,point,point));
+function railDetour(lots,margin) {
+  const clear=(a,b)=>clearRail(lots,a,b,margin);
+  const corners=lots.flatMap(lot=>{
+    const {left,right,back,front}=lot,padding=railMargin(lot,margin)+.46;
+    return [left-padding,right+padding].flatMap(x=>[back-padding,front+padding].map(z=>[x,z]));
+  })
+    .filter(point=>clear(point,point));
   const distance=([x,z],[a,b])=>Math.hypot(x-a,z-b);
   const edges=corners.map(()=>[]);
   for (let i=0;i<corners.length;i++) {
     for (let j=i+1;j<corners.length;j++) {
-      if (!clearRail(lots,corners[i],corners[j])) continue;
+      if (!clear(corners[i],corners[j])) continue;
       const cost=distance(corners[i],corners[j]);
       edges[i].push([j,cost]);
       edges[j].push([i,cost]);
     }
   }
   return (from,to)=>{
-    if (clearRail(lots,from,to)) return [to];
-    const costs=corners.map(point=>clearRail(lots,from,point)?distance(from,point):Infinity);
-    const last=corners.map(point=>clearRail(lots,point,to)?distance(point,to):Infinity);
+    if (clear(from,to)) return [to];
+    const costs=corners.map(point=>clear(from,point)?distance(from,point):Infinity);
+    const last=corners.map(point=>clear(point,to)?distance(point,to):Infinity);
     const previous=corners.map(()=>-1),seen=new Set();
     let end=-1,best=Infinity;
     while (seen.size<corners.length) {
@@ -263,66 +280,105 @@ function railDetour(lots) {
   };
 }
 
-function regionalRailPath(layout,plot,obstacles,count) {
+function regionalRailPaths(layout,plot,obstacles,plan,limit) {
   const span=plot.streetSpan??13.4;
   const level=deckHeight(plot.kind==='monorailStation');
   const candidates=[];
-  const growth=Math.min(10,Math.max(0,count-3)*.76);
-  const score=points=>points.reduce((penalty,[x,z],i)=>{
-    if (i%4) return penalty;
-    const terrain=regionSurface(layout,x,z);
-    return penalty+Math.max(0,Math.max(Math.abs(x),Math.abs(z))-69)**2*.6
-      +(terrain.water?.55:terrain.basin< -1.4?.3:0);
-  },0)/points.length;
+  const lots=plan.plots.filter(site=>!site.airfield&&!site.waterfront);
+  const growth=Math.min(13,Math.max(0,lots.length-3)*.66);
+  const acrossRiver=layout.theme==='city'&&lots.length>=5
+    &&new Set(lots.map(site=>Math.sign(site.x-riverAt(layout,site.z)))).size>1;
+  const score=points=>{
+    const samples=points.filter((_,i)=>i%7===0);
+    let penalty=0;
+    const banks=new Set();
+    for (const [x,z] of samples) {
+      const tile=regionSurface(layout,x,z);
+      const distance=Math.max(Math.abs(x),Math.abs(z));
+      penalty+=Math.max(0,distance-72)**2*.34+(tile.water?.18:tile.basin< -1.4?.3:0);
+      if (acrossRiver&&!tile.water) banks.add(Math.sign(x-riverAt(layout,z)));
+    }
+    const coverage=lots.reduce((sum,site)=>sum+Math.max(0,Math.min(...samples.map(([x,z])=>Math.hypot(x-site.x,z-site.z)))-7),0);
+    return penalty/samples.length+coverage/Math.max(1,lots.length)*.38+(acrossRiver&&banks.size<2?28:0);
+  };
   const worldPoint=([a,b])=>{
     const [x,,z]=pointOnSite([a,0,b],plot);
     return [x,z];
   };
-  const addCandidates=(sizes)=>{
-    for (const side of sides) for (const [width,depth] of sizes) {
-      const reach=width+growth;
-      const rear=side*(depth+growth*.62);
-      const curve=side*3.6;
-      const turn=Math.min(span*1.6,reach-7);
-      const local=[[0,railZ],[6.2,railZ],[span*.91,railZ-curve],[turn,railZ-curve],
-        [reach,railZ],[reach,rear],[reach*.49,rear],[0,rear+side*5],
-        [-reach*.51,rear],[-reach,rear],[-reach,railZ],
-        [-turn,railZ-curve],[-span*.91,railZ-curve],[-6.2,railZ],[0,railZ]];
-      const points=roundedRailPath(local).map(worldPoint);
-      candidates.push({waypoints:local.map(worldPoint),points,penalty:score(points)});
-    }
-  };
-  addCandidates([[37,30],[43,37],[34,41],[31,26]]);
-  candidates.sort((a,b)=>a.penalty-b.penalty);
-  let path=candidates.find(({points})=>pathClear(points,obstacles))?.points;
-  if (!path) {
-    addCandidates([[49,35],[42,45],[30,36],[33,49]]);
-    candidates.sort((a,b)=>a.penalty-b.penalty);
-    path=candidates.find(({points})=>pathClear(points,obstacles))?.points;
+  const local=lots.map(site=>{
+    const x=site.x-plot.x,z=site.z-plot.z,c=Math.cos(plot.yaw),s=Math.sin(plot.yaw);
+    return [x*c-z*s,x*s+z*c];
+  });
+  function addLoop(left,right,rear,returnOffset=0) {
+    const curve=Math.sign(rear)*3.55,turn=Math.min(span*1.6,left-3,right-3);
+    const waypoints=[[0,railZ],[6.2,railZ],[Math.min(span*.91,turn-1),railZ-curve],[turn,railZ-curve],
+      [right,railZ],[right,rear],[right*.48,rear],[0,rear+Math.sign(rear)*4+returnOffset],
+      [-left*.52,rear],[-left,rear],[-left,railZ],[-turn,railZ-curve],[-Math.min(span*.91,turn-1),railZ-curve],[-6.2,railZ],[0,railZ]];
+    const points=roundedRailPath(waypoints,5.2,true).map(worldPoint);
+    candidates.push({waypoints:waypoints.map(worldPoint),points,penalty:score(points)});
   }
-  if (!path) {
-    // Keep the platform straight. Connect the rest of the loop around blocked parcels.
-    const detour=railDetour(obstacles);
+  for (const side of sides) {
+    for (const [width,depth] of [[36,27],[43,34],[13,26],[16,31],[32,37],[30,24],[49,35],[42,43],[29,33],[33,47]]) {
+      addLoop(width+growth,width+growth,side*(depth+growth*.55));
+    }
+    if (local.length>=5) {
+      const west=Math.max(29,Math.min(82,-Math.min(...local.map(([x])=>x))+11));
+      const east=Math.max(29,Math.min(82,Math.max(...local.map(([x])=>x))+11));
+      const rear=side*Math.max(24,Math.min(70,Math.max(...local.map(([,z])=>z*side))+9));
+      addLoop(west,east,rear);
+      addLoop(west+3,east+3,rear+side*3,side*2.6);
+    }
+  }
+  candidates.sort((a,b)=>a.penalty-b.penalty);
+  const margin=plot.kind==='monorailStation'?.79:1.01;
+  let paths=candidates.filter(({points})=>pathClear(points,obstacles,margin)).slice(0,limit).map(({points})=>points);
+  if (!paths.length) {
+    // Protect the straight station track while finding the largest usable
+    // bend radius through the rest of the loop.
+    const detour=railDetour(obstacles,margin);
+    const possibilities=[];
     for (const {waypoints} of candidates) {
       const stationExit=waypoints[1],stationEntry=waypoints.at(-2),center=waypoints[0];
-      if (!pathClear([stationEntry,center,stationExit],obstacles)) continue;
-      const outer=waypoints.slice(2,-2).filter(point=>clearRail(obstacles,point,point));
+      if (!pathClear([stationEntry,center,stationExit],obstacles,margin)) continue;
+      const outer=waypoints.slice(2,-2).filter(point=>clearRail(obstacles,point,point,margin));
       const links=[stationExit,...outer,stationEntry];
       const legs=links.slice(1).map((point,i)=>detour(links[i],point));
       if (legs.some(leg=>!leg)) continue;
       const loop=[center,stationExit,...legs.flat(),center];
-      const rounded=roundedRailPath(loop,1.25);
-      path=pathClear(rounded,obstacles)&&simpleRailLoop(rounded)?rounded:null;
-      if (path) break;
+      for (const radius of [5,3.8,2.8,1.7]) {
+        const rounded=roundedRailPath(loop,radius,true);
+        if (!pathClear(rounded,obstacles,margin)||!simpleRailLoop(rounded)) continue;
+        possibilities.push({path:rounded,score:score(rounded)+(5-radius)*1.1});
+        break;
+      }
+      if (possibilities.length>=4) break;
     }
+    paths=possibilities.sort((a,b)=>a.score-b.score).slice(0,limit).map(({path})=>path);
   }
-  if (!path) return null;
-  const [startX,startZ]=path[0];
-  return path.map(([x,z])=>{
+  if (!paths.length) {
+    const center=worldPoint([0,railZ]),entry=worldPoint([-6.2,railZ]),exit=worldPoint([6.2,railZ]);
+    const possibilities=[];
+    const near=(point,circuit)=>circuit.reduce((best,p,i)=>
+      Math.hypot(p.x-point[0],p.z-point[1])<Math.hypot(circuit[best].x-point[0],circuit[best].z-point[1])?i:best,0);
+    for (const circuit of (plan.circuits??[]).filter(loop=>loop.length>=7).slice(0,25)) {
+      const first=near(exit,circuit),last=near(entry,circuit),size=circuit.length;
+      if (first===last) continue;
+      for (const direction of sides) {
+        const count=((last-first)*direction+size)%size+1;
+        if (count<6) continue;
+        const loop=Array.from({length:count},(_,i)=>circuit[(first+direction*i+size)%size]).map(({x,z})=>[x,z]);
+        const path=roundedRailPath([center,exit,...loop,entry,center],2.8,true);
+        if (pathClear(path,obstacles,margin)&&simpleRailLoop(path)) possibilities.push({path,score:score(path)});
+      }
+    }
+    paths=possibilities.sort((a,b)=>a.score-b.score).slice(0,limit).map(({path})=>path);
+  }
+  const [startX,startZ]=worldPoint([0,railZ]);
+  return paths.map(path=>path.map(([x,z])=>{
     const terrain=regionSurface(layout,x,z);
     const blend=smooth((Math.hypot(x-startX,z-startZ)-5.2)/9);
     return [x,plot.y+level+blend*(Math.max(terrain.y,plot.y-.9)-plot.y+.22),z];
-  });
+  }));
 }
 
 function railTunnel(layout,plan,route,obstacles) {
@@ -347,34 +403,97 @@ function railTunnel(layout,plan,route,obstacles) {
 }
 
 function subwayEntrance(moon) {
-  const tile=moon?'#9da4ba':'#b2a08b',paint=moon?'#7ed4d7':'#668d86';
-  return [rounded(0,0,2.03,3.13,.17,tile,.02),box(0,-.51,1.6,1.94,.045,'#425166',.19),
-    ...Array.from({length:5},(_,i)=>box(0,1.05-i*.31,1.39,.25,.095,tile,.25-i*.021)),
-    ...sides.flatMap(side=>[box(side*.91,-.05,.14,2.91,.38,tile,.17),
-      beam([side*.8,.46,1.23],[side*.8,.94,-1.27],.08,steel),
-      tube(side*.86,-1.07,.13,.13,1.53,steel,.25),
-      dome(side*.86,-1.06,.23,.23,.16,'#ffe0a0',1.65)]),
-    rounded(0,-1.18,2.22,1.4,.16,paint,1.44),
-    box(0,-.435,.73,.09,.58,paint,1.48),
-    box(0,-.377,.48,.055,.078,cream,1.93),box(0,-.377,.078,.055,.35,cream,1.65)];
+  const tile=moon?'#a9a5bb':'#b7a68d',paint=moon?'#6997a8':'#487a70',light=moon?'#b5eeee':'#ffe4a1';
+  return [rounded(0,1.46,2.27,.61,.18,tile,.02),rounded(0,-1.45,1.75,.14,1.54,dark,-.48),
+    ...Array.from({length:8},(_,i)=>[
+      box(0,1.35-i*.35,1.56,.355,.17,tile,.05-i*.093),
+      box(0,1.48-i*.35,1.48,.049,.025,i%2?tile:cream,.22-i*.093),
+    ]).flat(),
+    ...sides.flatMap(side=>[box(side*1.0,-.05,.2,3.06,.39,tile,.18),
+      beam([side*.84,.61,1.37],[side*.84,1.04,-1.12],.092,steel),
+      rounded(side*.93,-.98,.21,.31,1.55,paint,.35),
+      rounded(side*.94,-.14,.17,.31,.24,light,.95)]),
+    rounded(0,-.92,2.35,1.46,.25,paint,1.75),dome(0,-.92,2.37,1.47,.47,paint,1.9),
+    tube(0,-.12,1.15,.14,1.15,paint,1.76,'z'),
+    tube(0,-.02,.94,.1,.94,moon?'#526381':'#30665b',1.86,'z'),
+    box(0,.035,.54,.059,.102,light,2.49),box(0,.035,.10,.059,.4,light,2.11)];
+}
+
+function walkingLink(layout,paths,lots,from,heading) {
+  const clearance=layout.theme==='island'?1.50:1.69;
+  const ground=point=>regionSurface(layout,point.x,point.z);
+  const dry=point=>!ground(point).water&&roadClearance(paths,point.x,point.z,clearance-.13);
+  const projects=roadProjections(paths,from,18).sort((a,b)=>a.gap-b.gap);
+  for (const road of projects.slice(0,28)) {
+    const side=Math.sign((from.z-road.z)*road.u-(from.x-road.x)*road.v)||1;
+    const end={x:road.x-road.v*side*clearance,z:road.z+road.u*side*clearance};
+    if (heading&&(end.x-from.x)*heading[0]+(end.z-from.z)*heading[1]<-.2) continue;
+    if (!clearRail(lots,[from.x,from.z],[end.x,end.z],.26)) continue;
+    const count=Math.max(2,Math.ceil(Math.hypot(end.x-from.x,end.z-from.z)/.73));
+    const points=Array.from({length:count+1},(_,i)=>({x:from.x+(end.x-from.x)*i/count,z:from.z+(end.z-from.z)*i/count}));
+    if (!points.every(dry)) continue;
+    return points;
+  }
+  return null;
+}
+
+function railWalkway(layout,points) {
+  const color=layout.theme==='moon'?'#b7adca':'#cdbb99';
+  const edges=points.map((point,i)=>{
+    const a=points[Math.max(0,i-1)],b=points[Math.min(points.length-1,i+1)];
+    const span=Math.hypot(b.x-a.x,b.z-a.z)||1;
+    return sides.map(side=>{
+      const x=point.x+(b.z-a.z)*side*.48/span,z=point.z-(b.x-a.x)*side*.48/span;
+      return [x,regionSurface(layout,x,z).y+.066,z];
+    });
+  });
+  return edges.slice(1).map(([a,b],i)=>({...plate([edges[i][0],a,b,edges[i][1]],color),layer:3.3,railWalkway:true}));
+}
+
+function subwayWalker(layout,site,i) {
+  const moon=layout.theme==='moon';
+  const street=site.walk.slice().reverse().map(({x,z})=>[x,regionSurface(layout,x,z).y+.079,z]);
+  const stairs=[1.55,1.25,.87,.49,.11,-.27,-.65,-1.03,-1.41,-1.69].map((z,index)=>
+    pointOnSite([0,.23-index*.097,z],site));
+  let length=0;
+  const points=[...street,...stairs];
+  const sections=points.slice(1).map(([x,y,z],j)=>{
+    const [a,b,c]=points[j],start=length;
+    length+=Math.hypot(x-a,z-c);
+    return {a,b,c,x,y,z,start,end:length};
+  }).filter(section=>section.end-section.start>.01);
+  const speed=.88,walk=length/speed;
+  return {kind:'walk',transitPassenger:true,characterSlot:914+i,voice:moon?'astronaut':'people',
+    parts:visitor(moon?'astronaut':'human',moon?'#a18fc5':'#b58b66',undefined,false,.83,layout.seed%8),
+    pose(seconds) {
+      const t=(seconds+1.4+i*7)%(walk+8);
+      if (t>=walk) return pose(site.x,-540,site.z,0);
+      const at=t*speed,segment=sections.find(section=>at<section.end)??sections.at(-1);
+      const {a,b,c,x,y,z,start,end}=segment;
+      const p=clamp((at-start)/(end-start));
+      return {...pose(a+(x-a)*p,b+(y-b)*p,c+(z-c)*p,Math.atan2(x-a,z-c),t%9<1.2),
+        stride:Math.sin(at*7)*.18};
+    },
+  };
 }
 
 function subwayPlan(layout,plan,route,lots,tunnel,built,moon) {
-  if (built<8) return null;
+  if (built<6) return null;
   const {sample,length}=route;
-  const half=21,ramp=14;
   const candidates=[];
-  for (let center=half+15;center<length-half-15;center+=2.3) {
-    const start=center-half,end=center+half;
-    if (tunnel&&start<tunnel.end+3&&end>tunnel.start-3) continue;
-    const [x,,z]=sample(center);
-    const near=Math.min(...plan.plots.map(plot=>Math.hypot(x-plot.x,z-plot.z)));
-    if (near>22||near<5.2||Math.max(Math.abs(x),Math.abs(z))>64) continue;
-    const rim=[start+7,start+9.8,end-9.8,end-7].map(sample);
-    if (rim.some(([x,,z])=>regionSurface(layout,x,z).water||!roadClearance(plan.paths,x,z))) continue;
-    const [a,,b]=sample(start+5),[c,,d]=sample(end-5);
-    const curve=32-Math.hypot(c-a,d-b);
-    candidates.push({center,start,end,ramp,cost:near+curve*.48});
+  for (const [half,ramp] of [[21,14],[18,12.5],[16,10.9]]) {
+    for (let center=half+15;center<length-half-15;center+=2.2) {
+      const start=center-half,end=center+half;
+      if (tunnel&&start<tunnel.end+3&&end>tunnel.start-3) continue;
+      const [x,,z]=sample(center);
+      const near=Math.min(...plan.plots.map(plot=>Math.hypot(x-plot.x,z-plot.z)));
+      if (near>25||near<4.9||Math.max(Math.abs(x),Math.abs(z))>65) continue;
+      const rim=[start+ramp*.56,end-ramp*.56].map(sample);
+      if (rim.some(([x,,z])=>regionSurface(layout,x,z).water||!roadClearance(plan.paths,x,z,1.87))) continue;
+      const [a,,b]=sample(start+5),[c,,d]=sample(end-5);
+      const curve=half*2-10-Math.hypot(c-a,d-b);
+      candidates.push({center,start,end,ramp,cost:near+curve*.44+(21-half)*.75});
+    }
   }
   candidates.sort((a,b)=>a.cost-b.cost);
   const model=subwayEntrance(moon);
@@ -384,20 +503,30 @@ function subwayPlan(layout,plan,route,lots,tunnel,built,moon) {
     for (const shift of [0,-8,8,-5,5,-10,10]) {
       const distance=candidate.center+shift;
       if (stations.some(station=>Math.abs(station.distance-distance)<7)) continue;
-      const [x,,z]=sample(distance),[a,,b]=sample(distance+.7);
+      const [x,y,z]=sample(distance),[a,,b]=sample(distance+.7);
+      const height=y-regionSurface(layout,x,z).y;
+      const blend=smooth(Math.min(distance-candidate.start,candidate.end-distance)/candidate.ramp);
+      if (height-(height+2.65)*blend> -1.72) continue;
       const yaw=Math.atan2(a-x,b-z);
       let entrance;
-      for (const offset of [2.95,-2.95,4.05,-4.05,5.1,-5.1]) {
+      for (const offset of [2.95,-2.95,4.05,-4.05,5.1,-5.1,6.3,-6.3]) {
         const px=x+Math.cos(yaw)*offset,pz=z-Math.sin(yaw)*offset;
         const ground=regionSurface(layout,px,pz);
         if (ground.water||ground.basin< -1.25||Math.hypot(px-plan.origin.x,pz-plan.origin.z)>62) continue;
-        const placed=placeParts(model,{x:px,y:ground.y,z:pz,yaw});
-        const bounds=footprint(placed);
-        if (overlapsLot(bounds,lots)||stations.some(station=>overlapsLot(bounds,[station.bounds]))) continue;
-        if ([bounds.left,bounds.right,px].some(u=>[bounds.back,bounds.front,pz].some(v=>
-          !roadClearance(plan.paths,u,v)||regionSurface(layout,u,v).water))) continue;
-        entrance={distance,x:px,z:pz,parts:placed,bounds};
-        break;
+        for (const turn of [yaw,yaw+Math.PI,yaw+Math.PI/2,yaw-Math.PI/2]) {
+          const site={x:px,y:ground.y,z:pz,yaw:turn};
+          const placed=placeParts(model,site);
+          const bounds=footprint(placed);
+          if (overlapsLot(bounds,lots)||stations.some(station=>overlapsLot(bounds,[station.bounds]))) continue;
+          if ([bounds.left,bounds.right,px].some(u=>[bounds.back,bounds.front,pz].some(v=>
+            !roadClearance(plan.paths,u,v,1.54)||regionSurface(layout,u,v).water))) continue;
+          const [u,,v]=pointOnSite([0,0,1.77],site);
+          const walk=walkingLink(layout,plan.paths,lots,{x:u,z:v},[Math.sin(turn),Math.cos(turn)]);
+          if (!walk) continue;
+          entrance={...site,distance,parts:placed,bounds,walk};
+          break;
+        }
+        if (entrance) break;
       }
       if (entrance) stations.push(entrance);
       if (stations.length===(built>=19?2:1)) break;
@@ -408,15 +537,129 @@ function subwayPlan(layout,plan,route,lots,tunnel,built,moon) {
   return fallback;
 }
 
+function platformStairs(layout,plan,lots,site,scale) {
+  const top=site.y+.129;
+  const stone=layout.theme==='moon'?'#a6adc3':'#b8a588';
+  for (const [u,v,dx,dz] of [[1.99,.24,1,0],[1.99,-.62,1,0],[1.55,2.08*scale,0,1],[1.55,-2.08*scale,0,-1]]) {
+    for (const reach of [3.4,4.65,5.9]) {
+      const [a,,b]=pointOnSite([u,0,v],site),[c,,d]=pointOnSite([u+dx*reach,0,v+dz*reach],site);
+      const ground=regionSurface(layout,c,d);
+      if (ground.water||top-ground.y<.41||top-ground.y>reach*.98||!clearRail(lots,[a,b],[c,d],.46)) continue;
+      const heading=Math.atan2(c-a,d-b),span=Math.hypot(c-a,d-b);
+      const landing=ground.y+.06;
+      const count=Math.ceil((top-landing)/.24);
+      const at=(fraction,side,height)=>[a+(c-a)*fraction+Math.cos(heading)*side,height,b+(d-b)*fraction-Math.sin(heading)*side];
+      const safe=Array.from({length:7},(_,i)=>{
+        const p=i/6,[x,level,z]=at(p,0,top+(landing-top)*p),tile=regionSurface(layout,x,z);
+        return !tile.water&&level+.16>=tile.y&&(level-tile.y>2.05||roadClearance(plan.paths,x,z,1.52));
+      });
+      if (!safe.every(Boolean)) continue;
+      const steps=Array.from({length:count},(_,i)=>{
+        const p=(i+.5)/count,level=top-(top-landing)*i/count;
+        const [u,,v]=at(p,0,level);
+        return {...box(u,v,1.08,span/count+.027,.237,i%3?stone:cream,level-.237),
+          angle:-heading,platformStair:true};
+      });
+      const handrails=sides.flatMap(side=>[
+        beam(at(0,side*.43,top-.24),at(1,side*.43,landing-.16),.146,stone),
+        beam(at(.01,side*.56,top+.61),at(1,side*.56,landing+.62),.086,steel),
+        ...[0,.5,1].map(p=>beam(at(p,side*.56,top+(landing-top)*p),at(p,side*.56,top+(landing-top)*p+.61),.077,steel)),
+      ]);
+      const walk=walkingLink(layout,plan.paths,lots,{x:c,z:d},[Math.sin(heading),Math.cos(heading)]);
+      return {parts:[...steps,...handrails],walk};
+    }
+  }
+  return null;
+}
+
+function placeRailPlatform(route,preferred,layout,plan,lots,allowed,moon,compact=false) {
+  const {sample,length}=route;
+  for (let attempt=0;attempt<=46;attempt++) {
+    const shift=Math.ceil(attempt/2)*.93*(attempt%2?1:-1);
+    const distance=(preferred+shift+length)%length;
+    if (!allowed(distance)) continue;
+    const scale=compact?.61:1;
+    const [a,ay,b]=sample(distance-2.64*scale),[c,cy,d]=sample(distance+2.64*scale);
+    const dx=c-a,dz=d-b,chord=Math.hypot(dx,dz);
+    if (chord<5.21*scale||Math.abs(cy-ay)>.49) continue;
+    const test=[-1.76,-.88,0,.88,1.76].map(shift=>sample(distance+shift*scale));
+    if (test.some(([x,y,z])=>Math.abs((x-a)*dz-(z-b)*dx)/chord>.091
+      ||Math.abs(y-ay-(cy-ay)*((x-a)*dx+(z-b)*dz)/(chord*chord))>.16)) continue;
+    const [x,y,z]=sample(distance),yaw=Math.atan2(dx,dz);
+    for (const turn of [yaw,yaw+Math.PI]) {
+      const site={x,y,z,yaw:turn};
+      const parts=placeParts(railPlatform(moon).map(part=>({...part,z:part.z*scale,d:part.d*scale})),site);
+      const bounds=footprint(parts);
+      const foot=[x+Math.cos(turn)*1.82,z-Math.sin(turn)*1.82];
+      if (overlapsLot(bounds,lots)||regionSurface(layout,...foot).water) continue;
+      const high=y+.13-regionSurface(layout,...foot).y>.56;
+      const stairs=high?platformStairs(layout,plan,lots,site,scale):null;
+      if (high&&!stairs) continue;
+      return {distance,...site,parts:[...parts.map(part=>({...part,railStop:true})),...(stairs?.parts??[]),
+        ...(stairs?.walk?railWalkway(layout,stairs.walk):[])],foot,walk:stairs?.walk};
+    }
+  }
+  return null;
+}
+
+function railwayBridges(layout,route) {
+  if (layout.theme!=='city') return [];
+  const {sample,length}=route;
+  const water=distance=>{
+    const [x,y,z]=sample(distance);
+    const tile=regionSurface(layout,x,z);
+    return tile.water&&!tile.pond&&y>1.1;
+  };
+  const spans=[];
+  let first=null;
+  for (let distance=.3;distance<length-.3;distance+=.58) {
+    if (water(distance)) { first??=distance; continue; }
+    if (first!==null&&distance-first>3.2) spans.push([first-.9,distance+.75]);
+    first=null;
+  }
+  const parts=spans.flatMap(([start,end])=>{
+    const panels=Math.ceil((end-start)/2.45);
+    const frame=Array.from({length:panels+1},(_,i)=>{
+      const distance=start+(end-start)*i/panels;
+      const [x,y,z]=sample(distance),[a,,b]=sample(distance-.32),[c,,d]=sample(distance+.32);
+      return {x,y,z,yaw:Math.atan2(c-a,d-b)};
+    });
+    const line=(post,side,y)=>pointOnSite([side*1.11,y,0],post);
+    const steel='#557677',lattice='#6f8983';
+    return frame.flatMap((post,i)=>{
+      const prev=frame[i-1],height=2.03,foot=-.46;
+      const ground=regionSurface(layout,post.x,post.z).y;
+      const footing=i===0||i===panels||i===Math.floor(panels/2)&&panels>=6;
+      return [
+        ...(footing?placeParts([rounded(0,0,2.8,1.49,Math.max(.2,post.y-ground-.39),'#a09583',ground-post.y),
+          box(0,0,3.04,1.59,.2,'#c2b7a0',-.52)],post):[]),
+        ...sides.flatMap(side=>[beam(line(post,side,foot),line(post,side,height),.139,steel),
+          ...(prev?[beam(line(prev,side,foot),line(post,side,foot),.20,steel),
+            beam(line(prev,side,height),line(post,side,height),.165,steel),
+            beam(line(prev,side,i%2?foot:height),line(post,side,i%2?height:foot),.11,lattice)]:[]),
+        ]),
+        ...([0,panels].includes(i)||i%3===0?[beam(line(post,-1,height),line(post,1,height),.12,steel)]:[]),
+      ];
+    });
+  });
+  return parts.map(part=>({...part,railBridge:true}));
+}
+
 export function districtRail(layout,plot,plan,developments=[],built=plan.plots.length) {
   const moon=plot.kind==='monorailStation';
   const lots=railLots(plan,developments);
-  const raised=regionalRailPath(layout,plot,lots.filter(lot=>lot.plot!==plot),plan.plots.length);
-  if (!raised) return null;
-  const route=railLoop(raised);
+  const candidates=regionalRailPaths(layout,plot,lots.filter(lot=>lot.plot!==plot),plan,built>=6?8:1);
+  if (!candidates.length) return null;
+  let selected;
+  for (const raised of candidates) {
+    const route=railLoop(raised);
+    const tunnel=railTunnel(layout,plan,route,lots);
+    const subway=subwayPlan(layout,plan,route,lots,tunnel,built,moon);
+    if (!selected||subway) selected={route,tunnel,subway};
+    if (subway) break;
+  }
+  const {route,tunnel,subway}=selected;
   const {distances,length,wrap}=route;
-  const tunnel=railTunnel(layout,plan,route,lots);
-  const subway=subwayPlan(layout,plan,route,lots,tunnel,built,moon);
   const between=(section,distance,margin=0)=>section&&distance>section.start+margin&&distance<section.end-margin;
   const inside=(distance,margin=0)=>between(tunnel,distance,margin);
   const sample=distance=>{
@@ -440,11 +683,12 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
     const distance=(distances[i-1]+distances[i])*.5;
     return inside(distance,1.15)||between(subway,distance)&&subwayDepth(distance)<.095;
   });
+  parts.push(...railwayBridges(layout,{sample,length}));
   if (tunnel) {
     const path=Array.from({length:16},(_,i)=>sample(tunnel.start+(tunnel.end-tunnel.start)*i/15));
     parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.85}).map(part=>({...part,tunnel:true})));
   }
-  const entries={};
+  const entries={},walkways=[],walkers=[];
   if (subway) {
     for (const direction of sides) {
       const rim=direction>0?subway.start:subway.end;
@@ -456,17 +700,22 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
       const [x,y,z]=sample(distance),[a,,b]=sample(distance-direction*.8);
       portals.push({x,y,z,yaw:Math.atan2(a-x,b-z)});
     }
-    subway.stations.forEach(({x,z,parts:entrance},i)=>{
+    subway.stations.forEach((site,i)=>{
+      const {x,z,parts:entrance,walk}=site;
       const key=`subway:${i}`;
       entries[key]={name:moon?['Kraterpassasjen','Støvtunnelen'][i]:['Elvepassasjen','Byporten'][i],
         status:moon?'Underjordisk månestopp':'T-banestopp',x,z,sound:'vehicle',voice:layout.seed%12+i,
-        story:moon?'Følg trappa ned til månetoget. Her er det parkering for romstøvler.':'Toget stopper under gata. Noen tar banen bare for å telle ekkoene i tunnelen.'};
+        story:moon?'Følg trappen ned til månetoget. Her er det parkering for romstøvler.':'Toget stopper under gaten. Noen tar banen bare for å telle ekkoene i tunnelen.'};
       parts.push(...entrance.map(part=>({...part,entity:key})));
+      parts.push(...railWalkway(layout,walk));
+      walkways.push(walk);
+      walkers.push(subwayWalker(layout,site,i));
     });
   }
   for (let distance=4.85;distance<length-4.3;distance+=4.65) {
     const [x,y,z]=sample(distance);
-    if (inside(distance,-2)||between(subway,distance)&&subwayDepth(distance)<.65||Math.hypot(x-plot.x,z-plot.z)<5.6) continue;
+    if (inside(distance,-2)||between(subway,distance)&&subwayDepth(distance)<.65
+      ||Math.hypot(x-plot.x,z-plot.z)<5.6||layout.theme==='city'&&regionSurface(layout,x,z).water) continue;
     const [nx,,nz]=sample(distance+.49),run=Math.hypot(nx-x,nz-z);
     const bases=roadClearance(plan.paths,x,z)?[[x,z]]:sides
       .map(side=>[x-side*(nz-z)/run*2.69,z+side*(nx-x)/run*2.69])
@@ -480,25 +729,20 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
     }
   }
 
-  const minorStops=[];
+  const surfaceStops=[];
   for (const fraction of [.28,.67]) {
-    for (const shift of [0,4,-4,8,-8,12,-12,16,-16,20,-20]) {
-      const distance=length*fraction+shift;
-      if (inside(distance,-5)||between(subway,distance,-4)||distance<12||distance>length-12||minorStops.some(stop=>Math.abs(distance-stop)<12)) continue;
-      const [x,y,z]=sample(distance),[nx,,nz]=sample(distance+.56);
-      const yaw=Math.atan2(nx-x,nz-z);
-      const platform=placeParts(railPlatform(moon),{x,y,z,yaw});
-      if (overlapsLot(footprint(platform),lots)) continue;
-      parts.push(...platform);
-      const a=x+Math.cos(yaw)*1.82,b=z-Math.sin(yaw)*1.82;
-      const base=regionSurface(layout,a,b).y;
-      if (roadClearance(plan.paths,a,b)) parts.push(rounded(a,b,.6,.61,Math.max(.08,y-base-.11),'#a8a9ad',base));
-      minorStops.push(distance);
-      break;
-    }
+    const stop=placeRailPlatform({sample,length},length*fraction,layout,plan,lots,distance=>
+      !inside(distance,-5)&&!between(subway,distance,-4)&&distance>=12&&distance<=length-12
+      &&surfaceStops.every(stop=>Math.abs(distance-stop.distance)>=12),moon);
+    if (!stop) continue;
+    parts.push(...stop.parts);
+    const [a,b]=stop.foot,base=regionSurface(layout,a,b).y;
+    if (roadClearance(plan.paths,a,b)) parts.push(rounded(a,b,.6,.61,Math.max(.08,stop.y-base-.11),'#a8a9ad',base));
+    if (stop.walk) walkways.push(stop.walk);
+    surfaceStops.push(stop);
   }
   const undergroundStops=subway?.stations.map(station=>station.distance)??[];
-  const stops=[0,...minorStops.concat(undergroundStops).sort((a,b)=>a-b),length];
+  const stops=[0,...surfaceStops.map(stop=>stop.distance).concat(undergroundStops).sort((a,b)=>a-b),length];
   const speed=moon?7.7:7.15;
   let period=0;
   const timetable=stops.slice(0,-1).map((start,i)=>{
@@ -521,11 +765,13 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
       const [x,y,z]=sample(distance);
       const [a,ay,b]=sample(distance-.38),[c,cy,d]=sample(distance+.38);
       const visible=!inside(distance,1.7)&&!(between(subway,distance)&&subwayDepth(distance)<-.55);
-      return pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
+      const model=pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
         Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
+      return !carriage&&visible&&t>=leg.depart&&t<leg.depart+.72
+        ? {...model,cue:moon?'monorail-start':'train-start',sound:.9}:model;
     },
   })));
-  return {parts,portals,points:points.map(([x,y,z])=>({x,y,z})),actors,entries,undergroundStops};
+  return {parts,portals,points:points.map(([x,y,z])=>({x,y,z})),actors,entries,walkways,walkers,undergroundStops,surfaceStops};
 }
 
 function railPlatform(moon) {
@@ -572,27 +818,40 @@ export function transitVehiclePreview(kind) {
 
 export function districtTram(layout,plot,plan,developments=[]) {
   const circuits=plan.circuits??[];
-  const lots=railLots(plan,developments);
+  const lots=railLots(plan,developments.map(({plot,steps})=>({plot,
+    steps:steps.map(parts=>parts.filter(part=>part.y+part.h>1.97&&part.y<4.2))})));
   const access=plot.entries?.[0]??plot;
-  const score=path=>path.length*.9-Math.min(...path.map(({x,z})=>Math.hypot(x-access.x,z-access.z)));
+  const score=path=>path.reduce((length,p,i)=>length+Math.hypot(p.x-path.at(i-1).x,p.z-path.at(i-1).z),0)
+    -3*Math.min(...path.map(({x,z})=>Math.hypot(x-access.x,z-access.z)));
   const route=circuits.slice().sort((a,b)=>score(b)-score(a)).map(circuit=>{
     const start=circuit.reduce((best,p,i)=>Math.hypot(p.x-access.x,p.z-access.z)
       <Math.hypot(circuit[best].x-access.x,circuit[best].z-access.z)?i:best,0);
     const loop=circuit.slice(start).concat(circuit.slice(0,start));
     const corners=loop.map(({x,z})=>[x,z]);
     const seam=corners[0].map((v,i)=>(v+corners.at(-1)[i])/2);
-    return roundedRailPath([seam,...corners,seam]);
-  }).find(points=>pathClear(points,lots));
+    for (const radius of [3.6,2.35,1.68]) {
+      const points=roundedRailPath([seam,...corners,seam],radius);
+      if (pathClear(points,lots,.85)) return points;
+    }
+    return null;
+  }).find(Boolean);
   if (!route) return null;
   const points=route.map(([x,z])=>[x,regionSurface(layout,x,z).y+2.48,z]);
   const {length,sample}=railLoop(points);
-  const parts=railTrack(points,false);
-  const stops=[0,.32,.66].map(fraction=>length*fraction);
-  for (const distance of stops) {
-    const [x,y,z]=sample(distance),[nx,,nz]=sample(distance+.53);
-    const platform=placeParts(railPlatform(false),{x,y,z,yaw:Math.atan2(nx-x,nz-z)});
-    if (!overlapsLot(footprint(platform),lots)) parts.push(...platform);
+  const parts=railTrack(points,false,undefined,.81);
+  const stops=[],walkways=[];
+  for (const fraction of length>138?[0,.25,.51,.77]:[0,.32,.66]) {
+    const platform=placeRailPlatform({sample,length},fraction*length,layout,plan,lots,distance=>
+      stops.every(stop=>Math.min(Math.abs(distance-stop),length-Math.abs(distance-stop))>9),false);
+    if (platform) { parts.push(...platform.parts); stops.push(platform.distance); if (platform.walk) walkways.push(platform.walk); }
   }
+  for (let distance=0;stops.length<3&&distance<length;distance+=4.35) {
+    const platform=placeRailPlatform({sample,length},distance,layout,plan,lots,candidate=>
+      stops.every(stop=>Math.min(Math.abs(candidate-stop),length-Math.abs(candidate-stop))>6.8),false,true);
+    if (platform) { parts.push(...platform.parts); stops.push(platform.distance); if (platform.walk) walkways.push(platform.walk); }
+  }
+  const start=stops[0]??0;
+  const departuresAt=stops.map(distance=>(distance-start+length)%length).sort((a,b)=>a-b);
   for (let d=3.2;d<length;d+=6.1) {
     const [x,y,z]=sample(d),[nx,,nz]=sample(d+.5);
     const angle=Math.atan2(nx-x,nz-z);
@@ -603,17 +862,18 @@ export function districtTram(layout,plot,plan,developments=[]) {
   }
   const speed=4.2,dwell=2,period=length/speed+stops.length*dwell;
   const departures=length>=126?[0,period*.5]:[0];
-  return {parts,points:points.map(([x,y,z])=>({x,y,z})),actors:departures.map(offset=>({
+  return {parts,walkways,points:points.map(([x,y,z])=>({x,y,z})),actors:departures.map(offset=>({
     kind:'tram',parts:cableCar(),
     pose(seconds) {
       const t=(seconds+offset)%period;
       let distance=t*speed,departing=false;
-      for (let i=0;i<stops.length;i++) {
-        if (distance<stops[i]) break;
-        if (distance<stops[i]+dwell*speed) { distance=stops[i]; break; }
-        if (distance<stops[i]+(dwell+.63)*speed) departing=true;
+      for (const stop of departuresAt) {
+        if (distance<stop) break;
+        if (distance<stop+dwell*speed) { distance=stop; break; }
+        if (distance<stop+(dwell+.63)*speed) departing=true;
         distance-=dwell*speed;
       }
+      distance+=start;
       const [x,y,z]=sample(distance),[a,ay,b]=sample(distance-.35),[c,cy,d]=sample(distance+.35);
       const model=pose(x,y,z,Math.atan2(c-a,d-b),departing,Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
       return departing?{...model,cue:'tram-bell'}:model;

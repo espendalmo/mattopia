@@ -1,9 +1,10 @@
 import {transitVehiclePreview} from './transport.js';
 import {box,tube,roof,rounded,dome,at,worldSign,vehicle,worldActors,districtActors} from './scenery.js';
-import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,randomGenerator} from './worlds.js';
+import {isWorld,isRegion,hasExpandedCatalog,grandCatalog,legacyPlacement,worldLayout,worldStatus,worldChoices,WORLD_BUILD_STEPS,RAIL_PLACE,RESIDENCE_PLACE,randomGenerator} from './worlds.js';
 import {expandedWorldScene} from './region-scenery.js';
-import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,landmarkStages,earthStarterStages} from './world-landmarks.js';
+import {NEW_LANDMARKS,EXPANDED_LANDMARKS,GRAND_LANDMARKS,RAIL_LANDMARKS,RESIDENCE_LANDMARKS,landmarkStages,earthStarterStages} from './world-landmarks.js';
 import {shapeLandmarkGround} from './landmark-ground.js';
+import {detailFacades} from './facades.js';
 import {landmarkStory} from './landmark-stories.js';
 import {seasonForDate} from './seasons.js';
 
@@ -22,10 +23,11 @@ export function projectById(id) {
   return Object.hasOwn(PROJECTS,id) ? PROJECTS[id] : null;
 }
 
-export function restoreProjects(raw, total) {
+export function restoreProjects(raw,total,bonusHeroBricks=0) {
   return Object.fromEntries(Object.keys(PROJECTS).map(id => {
     const saved = raw?.[id];
-    return [id,Number.isSafeInteger(saved) && saved>0 ? Math.min(saved,total,PROJECTS[id].total) : 0];
+    const budget=total+(isWorld(id)?0:bonusHeroBricks);
+    return [id,Number.isSafeInteger(saved) && saved>0 ? Math.min(saved,budget,PROJECTS[id].total) : 0];
   }));
 }
 
@@ -111,8 +113,8 @@ const THEMES = {
 
 const PLACES = {
   city:[
-    ['Bakeriet','house','#edba66','#bd635a'],['Skolen','school','#e2a36e','#8f625c'],['Mølla','mill','#e5c27c','#b47b52'],['Fotballbanen','field','#58a067'],
-    ['Biblioteket','school','#e9c58e','#648eae'],['Hotellet','tower','#94abc8','#596f9b'],['Kirka','church','#e9e4d3','#718491'],['Parken','park','#85ac75'],
+    ['Bakeriet','house','#edba66','#bd635a'],['Skolen','school','#e2a36e','#8f625c'],['Møllen','mill','#e5c27c','#b47b52'],['Fotballbanen','field','#58a067'],
+    ['Biblioteket','school','#e9c58e','#648eae'],['Hotellet','tower','#94abc8','#596f9b'],['Kirken','church','#e9e4d3','#718491'],['Parken','park','#85ac75'],
     ['Butikken','house','#82b0a5','#5c7fa1'],['Brannstasjonen','school','#d4796d','#774b59'],['Torget','square','#cfbd9c'],['Svømmehallen','pool','#73bed4'],
     ['Verkstedet','house','#9eb59a','#676c86'],['Kafeen','house','#e7a295','#ad6365'],['Kulturhuset','tower','#99a6c9','#646a91'],['Elveparken','park','#85ac75'],
   ],
@@ -391,7 +393,7 @@ function worldDetail(theme,i) {
     return stage(theme==='moon'?'Et nytt lyspunkt':'Et nytt hvilested',...beacon(xPos,z,'#f6d997').map(part=>({...part,y:part.y+y})),
       box(xPos+.88,z,.92,1.39,.26,color,y+.09),box(xPos+.88,z-.53,.94,.22,.36,p.dark,y+.24));
   }
-  return stage(theme==='moon'?'En liten forsyningsstasjon':theme==='island'?'En palme ved stien':'Et tre langs elva',
+  return stage(theme==='moon'?'En liten forsyningsstasjon':theme==='island'?'En palme ved stien':'Et tre langs elven',
     theme==='moon' ? [rounded(xPos,z,1.94,1.72,.76,color,y),dome(xPos,z,1.18,1.28,.34,p.white,y+.76)]
       : tree(xPos,z,theme).map(part=>({...part,y:part.y+y})));
 }
@@ -414,20 +416,25 @@ const DETAILS = {
   city:['Brødskilt og stripete markise.','Et sted å lære med lyse vinduer.','En vindmølle med store vinger.','Mål, midtsirkel og tribune.',
     'Bøker og vinduer i blått.','Et hotell med flere etasjer.','Et lite tårn over hustakene.','Trær, benker og en fontene.',
     'En butikk med kurv på skiltet.','Rød fasade og flammeskilt.','Et torg med plass til folk.','Basseng med baner.',
-    'Et verksted med tannhjul på veggen.','Kaffekopp på skiltet og en koselig inngang.','Musikkskilt og mange vinduer.','Et grønt pust ved elva.'],
+    'Et verksted med tannhjul på veggen.','Kaffekopp på skiltet og en koselig inngang.','Musikkskilt og mange vinduer.','Et grønt pust ved elven.'],
   moon:['Rakett, landingsmerker og lys.','En stor kuppel å bo i.','Solpaneler som gir strøm.','Et hjem til månebilene.',
     'En grønn kuppel for planter.','Beholdere for vann.','Et laboratorium med instrumenter.','Et sted å se ut i rommet.',
     'Antenner til meldinger hjem.','Utstyr til å reparere ting.','Paneler og batterier til basen.','Et område for forsøk.',
     'Et sted å ta imot forsyninger.','Lager for is og vann.','Et tårn med radiosignal.','En ekstra rakettplass.'],
-  island:['Hotell med balkong ved stranden.','Iskjegleskilt og stripete markise.','En badeplass med basseng.','Surfebrett på skiltet og planter ved døra.',
-    'Et sted å spise på øya.','Palmer og skygge.','Et dansegulv med fargede ruter.','En molo med plass til en båt.',
+  island:['Hotell med balkong ved stranden.','Iskjegleskilt og stripete markise.','En badeplass med basseng.','Surfebrett på skiltet og planter ved døren.',
+    'Et sted å spise på øyen.','Palmer og skygge.','Et dansegulv med fargede ruter.','En molo med plass til en båt.',
     'Et torg for kveldsmarkedet.','Et hotell med utsikt.','En kafé ved vannet.','En rolig plass å bade.',
-    'Et høyt tårn å se øya fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øya kan møtes.'],
+    'Et høyt tårn å se øyen fra.','En grønn hage under palmene.','En liten bod med fruktskilt.','Et torg der øyen kan møtes.'],
 };
 
 function catalogBuilding(id,index,map) {
   if (!isRegion(map)) return null;
   if (index===RAIL_PLACE) return RAIL_LANDMARKS[id];
+  if (index===RESIDENCE_PLACE) {
+    const residence=RESIDENCE_LANDMARKS[id];
+    if (residence&&map.residenceName) return [`${map.residenceName} ${id==='island'?'sitt':'sin'} ${residence[0].toLowerCase()}`,...residence.slice(1)];
+    return residence;
+  }
   return (grandCatalog(map)?GRAND_LANDMARKS[id]?.[index]:null)??(hasExpandedCatalog(map)?EXPANDED_LANDMARKS[id]?.[index]:null)??NEW_LANDMARKS[id]?.[index];
 }
 
@@ -443,8 +450,8 @@ export function worldBuilding(id,index,map=null) {
   return {name,description:DETAILS[id][index],kind,story:landmarkStory(id,index,kind,map?.seed)};
 }
 
-export function worldBuildingOptions(id,map) {
-  const available=worldChoices(map,id).filter(index=>{
+export function worldBuildingOptions(id,map,owner='') {
+  const available=worldChoices(map,id,owner).filter(index=>{
     const {kind}=worldBuilding(id,index,map);
     return !isRegion(map)||map.progress>=2*WORLD_BUILD_STEPS||!['pier','marina','quay','bridge'].includes(kind);
   });
@@ -453,15 +460,29 @@ export function worldBuildingOptions(id,map) {
     available.splice(available.indexOf(RAIL_PLACE),1);
     available.unshift(RAIL_PLACE);
   }
-  const airport=id==='city'?37:id==='moon'?44:null;
+  const airport=id==='city'?37:id==='moon'?44:25;
   if (worldStatus(map).built%7===3 && available.includes(airport)) {
     available.splice(available.indexOf(airport),1);
     available.unshift(airport);
+  }
+  const resort=id==='island'?27:id==='moon'?55:null;
+  if (worldStatus(map).built%6===0&&available.includes(resort)) {
+    available.splice(available.indexOf(resort),1);
+    available.unshift(resort);
+  }
+  const driveThrough=id==='moon'?54:50;
+  if (worldStatus(map).built%8===4&&available.includes(driveThrough)) {
+    available.splice(available.indexOf(driveThrough),1);
+    available.unshift(driveThrough);
   }
   const slide=id==='moon'?48:44;
   if (worldStatus(map).built%6===1 && available.includes(slide)) {
     available.splice(available.indexOf(slide),1);
     available.unshift(slide);
+  }
+  if (available.includes(RESIDENCE_PLACE)) {
+    available.splice(available.indexOf(RESIDENCE_PLACE),1);
+    available.splice(1,0,RESIDENCE_PLACE);
   }
   const types=new Set();
   const varied=[];
@@ -488,7 +509,8 @@ function regionLandmarkParts(id,index,site,map) {
     ];
   }
   if (site?.waterfront&&custom?.[2]!=='lighthouse') return stages;
-  stages=shapeLandmarkGround(stages,custom?.[2]??PLACES[id][index][1]);
+  const kind=custom?.[2]??PLACES[id][index][1];
+  stages=shapeLandmarkGround(detailFacades(stages,id,kind),kind);
   // Broad, thin surfaces stay in elevation order in the Canvas painter.
   return stages.map(parts=>parts.map(part=>{
     const top=part.y+part.h;
@@ -499,7 +521,9 @@ function regionLandmarkParts(id,index,site,map) {
 export function worldBuildingPreview(id,index,map=null) {
   const info=worldBuilding(id,index,map);
   if (!info) return null;
-  const staged=isRegion(map)?regionLandmarkParts(id,index,null,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
+  const previewSite=grandCatalog(map)&&(info.kind==='airport'||info.kind==='megaResort')
+    ?{airfield:info.kind==='airport',beach:info.kind==='megaResort'}:null;
+  const staged=isRegion(map)?regionLandmarkParts(id,index,previewSite,map).flat():landmark(id,index,PLACES[id][index],[0,0]).flatMap(step=>step.parts);
   const vehicle=transitVehiclePreview(info.kind);
   const parts=vehicle?[...staged.filter(part=>!part.transitPreview),...vehicle]
     :staged.map(part=>['plane','shuttle'].includes(part.flight)?{...part,x:part.x-.9,y:part.y+1.3,z:part.z+3.25}:part);
@@ -689,7 +713,8 @@ export function projectScene(id, completed=0, season=seasonForDate()) {
   const project=projectById(id);
   if(!project) return null;
   if (isWorld(id)&&isRegion(completed)) {
-    const key=`${id}:${completed.layout}:${completed.catalog??1}:${completed.seed}:${completed.progress}:${completed.order.join(',')}:${season}`;
+    const key=JSON.stringify([id,completed.layout,completed.catalog,completed.starter,completed.seed,completed.progress,
+      completed.order,season,completed.residenceName]);
     if (regionScenes.has(key)) return regionScenes.get(key);
     const scene=expandedWorldScene(id,completed,THEMES[id],index=>worldBuilding(id,index,completed),(index,site)=>regionLandmarkParts(id,index,site,completed),season);
     regionScenes.set(key,scene);
