@@ -1,10 +1,12 @@
-import {connectWaterfront,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
+import {connectWaterfront,insideIslandBelt,regionalAnnex,regionalFootprint,regionalPoint,regionSurface,riverAt,riverWidth,
   roadElevation,specialEntrances,RESIDENCE_PLOT} from './regions.js';
 import {randomGenerator,REGION_PLACES,LARGE_REGION_PLACES} from './worlds.js';
 import {joinStreetPaths,streetNetwork} from './street-network.js';
+import {isCarWash} from './scenery.js';
 
 export const STREET_TURN_RADIUS=2.35;
 const streets=new WeakMap();
+const outskirts=new Set(['prison','factory','breadWorks','glassWorks','sawmill','radioTower','broadcastHouse','lunarRadio','signalSpire','satelliteHub','camp','beachCamp']);
 const gap=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
 const edgeKey=(a,b)=>a<b?`${a}:${b}`:`${b}:${a}`;
 
@@ -15,7 +17,7 @@ function interpolate(a,b,step=1.9) {
   }));
 }
 
-function streetGraph(layout,spacing,shift,maxGrade=2.15) {
+function streetGraph(layout,spacing,shift,maxGrade=2.15,earthworks=false) {
   const width=layout.grand?13:11;
   const center=(width-1)/2;
   const rng=randomGenerator(layout.seed^0x5c14a537^Math.imul(shift,0x47c82f31));
@@ -34,7 +36,13 @@ function streetGraph(layout,spacing,shift,maxGrade=2.15) {
       if (layout.regionalSites.some(site=>regionalFootprint(site,point.x,point.z,1.65))) return true;
       const surface=regionSurface(layout,point.x,point.z);
       if (surface.water) return !crossRiver||Math.abs(point.x-riverAt(layout,point.z))>riverWidth(layout,point.z)+.2;
-      return layout.theme==='moon'&&surface.basin< -1.65;
+      if (layout.theme!=='moon'||surface.basin>=-1.65) return false;
+      // A short, shallow dip may be filled if the usual routes cannot
+      // connect enough lots. Keep the large craters clear.
+      const aGround=nodes[a],bGround=nodes[b];
+      const t=gap(aGround,point)/gap(aGround,bGround);
+      return !earthworks||surface.basin< -2.55||Math.min(aGround.basin,bGround.basin)<-.45
+        ||(aGround.y+(bGround.y-aGround.y)*t)-surface.y>1.48;
     })) return;
     const key=edgeKey(a,b);
     edges.set(key,{a,b,points,key});
@@ -97,6 +105,10 @@ function layoutStreets(layout,requiredLots) {
   }
   for (const [spacing,shift,maxGrade] of attempts) {
     const candidate=streetGraph(layout,spacing,shift,maxGrade);
+    if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
+  }
+  if (!graph&&layout.theme==='moon') for (const [spacing,shift,maxGrade] of attempts) {
+    const candidate=streetGraph(layout,spacing,shift,maxGrade,true);
     if (candidate?.available.length>=requiredLots) { graph=candidate; break; }
   }
   if (graph) {
@@ -307,7 +319,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
   for (const {index,kind} of buildings) {
     latestPaths=new Map();
     const special=regionalAnnex(layout,kind)??layout.berths[kind];
-    const reserveLot=special&&kind==='lighthouse';
+    const reserveLot=special?.lighthouse;
     if (special&&!reserveLot) {
       attach(special,index,kind);
       continue;
@@ -340,7 +352,10 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     let choice=null;
     for (const lot of available) {
       if (usedLots.has(lot)||blockedLots.has(lot)) continue;
-      for (const [edge,yaw] of [[lot.front,0],[lot.west,-Math.PI/2]]) {
+      const options=kind==='busStation'
+        ?[[lot.front,0],[lot.west,-Math.PI/2],[lot.perimeter[0],Math.PI],[lot.perimeter[1],Math.PI/2]]
+        :[[lot.front,0],[lot.west,-Math.PI/2]];
+      for (const [edge,yaw] of options) {
         if (!edge||!links[edge.a].includes(edge.b)) continue;
         const path=pathToStreet(links,[edge.a,edge.b],active);
         if (!path) continue;
@@ -349,8 +364,12 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
         const imbalance=banks[bank]-banks[1-bank];
         const riverBias=usedLots.size>=3&&imbalance>1 ? imbalance*9 : 0;
         const middle=edge.points[Math.floor(edge.points.length/2)];
-        const slope=kind==='residence'?lot.grade*10+Math.abs(lot.y+.484-roadElevation(layout,middle.x,middle.z))*18:0;
-        const score=path.length*6+gap(lot,origin)*.18+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
+        const slope=kind==='residence'||kind==='busStation'||isCarWash(kind)
+          ?lot.grade*10+Math.abs(lot.y+.43-roadElevation(layout,middle.x,middle.z))*18:0;
+        const distance=gap(lot,origin);
+        const outer=outskirts.has(kind)?Math.max(0,31-distance)*1.6:0;
+        const coast=kind==='tramStation'&&layout.theme==='island'&&!insideIslandBelt(layout,origin,middle.x,middle.z,.66)?65:0;
+        const score=path.length*6+distance*.18+outer+coast+lot.weight+starter+riverBias+slope+(lot.westFirst===(yaw!==0)?0:.65);
         if (!choice||score<choice.score) choice={lot,edge,yaw,path,score};
       }
     }
@@ -359,7 +378,7 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     usedLots.add(lot);
     for (let i=1;i<path.length;i++) add(edges.get(edgeKey(path[i-1],path[i])));
     add(edge);
-    const ringRoad=!varied||usedLots.size<=2||['railwayStation','monorailStation','tramStation','busStation'].includes(kind)||lot.weight<2.1;
+    const ringRoad=!varied||usedLots.size<=2||['railwayStation','monorailStation','tramStation','busStation','fireStation','policeStation'].includes(kind)||lot.weight<2.1;
     if (ringRoad) lot.perimeter.filter(side=>side&&links[side.a].includes(side.b)).forEach(add);
     else if (lot.weight>3.5) {
       // A corner plot gets a side street. Quiet parcels need only one frontage.
@@ -369,7 +388,8 @@ export function planStreetRegion(layout,buildings,requiredLots=REGION_PLACES-Obj
     }
     const offset=varied&&!ringRoad?Math.min(.58,Math.max(0,gap(nodes[lot.ring[0]],nodes[lot.ring[1]])*.5-6.32)):0;
     const x=lot.x-Math.sin(yaw)*offset,z=lot.z-Math.cos(yaw)*offset;
-    const entry=yaw===0?{x,z:nodes[lot.ring[2]].z}:{x:nodes[lot.ring[3]].x,z};
+    const from=nodes[edge.a],to=nodes[edge.b];
+    const entry={x:(from.x+to.x)*.5,z:(from.z+to.z)*.5};
     const y=kind==='residence'?lot.y-Math.min(.22,Math.max(0,lot.y+.484-roadElevation(layout,entry.x,entry.z))):lot.y;
     if (reserveLot) attach(special,index,kind);
     else plots.push({x,y,z,yaw,index,kind,entries:[entry],

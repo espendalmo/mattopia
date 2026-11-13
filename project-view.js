@@ -1,4 +1,4 @@
-import {createTraffic,MAX_ACTORS} from './scenery.js';
+import {createTraffic,EMERGENCY_LIGHT,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
 import {entityAt,landmarkSilhouette} from './project-picking.js';
 import {residentPoint,residentNormal,lunarSkyCamera,lightPulse,lunarCurvature,lunarSurfaceY} from './scene-motion.js';
@@ -153,7 +153,7 @@ export function projectFaces(scene) {
       const color=landscape ? fade(rgb) : vertexColors ? rgb.map((_,i)=>vertexColors.reduce((sum,vertex)=>sum+vertex[i],0)/points.length) : fade(shaded(unit));
       const actorKind=scene.ambient?.[layerIndex-1]?.kind;
       const actorEntity=layerIndex&&!Number.isInteger(part.landmark)&&piece.life?.[3]!==-1
-        &&!['rocket-flame','football-stars','observation','smoke'].includes(actorKind);
+        &&!['rocket-flame','football-stars','observation','smoke','wash-bubble'].includes(actorKind);
       return {points,normal:unit,color,vertexColors,opacity:piece.opacity,smooth:Boolean(piece.colors),layer:part.layer??Infinity,hinge:piece.hinge,life:piece.life,entity:part.entity??(actorEntity?`actor:${layerIndex-1}`:null),landmark:part.landmark,foundation:Boolean(part.support||part.foundation),
         lunar:scene.id==='moon'&&scene.illustrated&&part.layer!==-1,
         origin:landscape||piece.radial ? [piece.x,piece.y,piece.z] : null,
@@ -258,7 +258,7 @@ function canvasPainter(canvas, faces, background, stars) {
         if (face.group<0&&-face.group>effects.road||face.group===1&&effects.growth===0) continue;
         const actor=face.group>=2?effects.actors[face.group-2]:null;
         const light=face.life?.[3];
-        if (light===-1&&!actor?.thrust) continue;
+        if (actor?.y< -150||light===-1&&!actor?.thrust||light===EMERGENCY_LIGHT&&actor?.thrust!==2) continue;
         let [nx,ny,nz]=residentNormal(face.normal,face.life,effects.age);
         if (actor&&!face.hinge&&(actor.rollCos!==1||actor.rollSin)) {
           [nx,ny]=[nx*actor.rollCos-ny*actor.rollSin,nx*actor.rollSin+ny*actor.rollCos];
@@ -300,7 +300,8 @@ function canvasPainter(canvas, faces, background, stars) {
             points.every(([,y])=>y<0) || points.every(([,y])=>y>height)) continue;
         const shimmer=Math.max(0,1-Math.abs(modelY/points.length-effects.sweep)/.7)*.36;
         const highlight=face.group===1?Math.min(.58,effects.highlight+shimmer):0;
-        const emission=lightPulse(light,effects.age);
+        const emission=light===EMERGENCY_LIGHT?0:lightPulse(light,effects.age);
+        if (light===EMERGENCY_LIGHT&&Math.cos(effects.age*16)<-.16) continue;
         const paint=highlight||emission ? paintColor(face.color.map((value,i)=>
           value+([1,.91,.69][i]-value)*Math.max(highlight,emission))) : face.paint;
         polygons.push({points,depth:depth/points.length,paint,layer:face.layer,colors:face.smooth?face.vertexColors:null,opacity:face.opacity});
@@ -401,7 +402,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
       latest = group == 1.0 ? 1.0 : 0.0;
       modelHeight = pos.y;
       shade = color;
-      if (life.w < 0.0) {
+      if (life.w < 0.0 && life.w != ${EMERGENCY_LIGHT.toFixed(1)}) {
         float pulse = life.w == -1.0 ? .28+.16*sin(age*23.0) : .73*pow(max(0.0,cos(age*2.6+life.w)),12.0);
         shade.rgb = mix(shade.rgb,vec3(1.0,.91,.69),pulse);
       }
@@ -419,7 +420,8 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
           vec2 slope = vec2(cos(motion.z),sin(motion.z));
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
           pos.xy += vec2(pivot.x*roll.x-pivot.y*roll.y,pivot.x*roll.y+pivot.y*roll.x)-pivot;
-          if (life.w == -1.0 && motion.w < .5) {
+          if (pose.y < -150.0 || (life.w == -1.0 && motion.w < .5)
+            || (life.w == ${EMERGENCY_LIGHT.toFixed(1)} && (motion.w < 1.5 || cos(age*16.0) < -.16))) {
             gl_Position = vec4(2.0,2.0,2.0,1.0);
             return;
           }
@@ -561,6 +563,7 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const context={...initial,zoom:clamp(scene.size/41,1,maxZoom),center:point.y+1.35,
     anchorX:neighbor?point.x*.77+neighbor.x*.23:point.x,
     anchorZ:neighbor?point.z*.77+neighbor.z*.23:point.z};
+  if (scene.finished&&!target) close.zoom=Math.max(1,close.zoom*.8**2);
   return {initial,maxZoom,context,detail:target||focusLatest||scene.finished?close:context};
 }
 
@@ -572,6 +575,16 @@ export function finishTransition(elapsed) {
 const nearbySounds={shuttle:'rocket',road:'traffic',bus:'traffic',jetski:'traffic',hover:'rover','offroad-rover':'rover',
   wheel:'ride-cheer',coaster:'ride-cheer',slide:'ride-cheer',tram:'train'};
 const aircraft=new Set(['plane','helicopter','rocket']);
+const watercraft=new Set(['boat','swimmer','jetski']);
+
+export function underBridge({x,z},covers,progress=1) {
+  return covers.some(({a,b,width,at=0})=>{
+    if (at>progress) return false;
+    const dx=b.x-a.x,dz=b.z-a.z;
+    const t=clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz||1),0,1);
+    return (x-a.x-t*dx)**2+(z-a.z-t*dz)**2<width**2;
+  });
+}
 
 function projectPanorama(scene,initial,maxZoom) {
   const sites=Object.values(scene.sites??{});
@@ -684,6 +697,9 @@ export function mountProjectView(container, scene, interactive=false, {
     effects.age=age;
     effects.curvature=stars?lunarCurvature(camera.zoom):0;
     effects.actors=moveActors(age);
+    if (scene.waterCovers?.length) effects.actors=effects.actors.map((pose,i)=>
+      watercraft.has(scene.ambient[i].kind)&&underBridge(pose,scene.waterCovers,effects.road)
+        ?{...pose,y:-540,sound:0}:pose);
     const scale=Math.min(width,height)*camera.zoom/scene.size;
     if (stars) {
       const sky=lunarSkyCamera(camera,scale,age);

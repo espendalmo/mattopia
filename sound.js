@@ -134,9 +134,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
   async function startAmbience(scene,{delay=0,duration=Infinity}={}) {
     const world=typeof scene==='string'?scene:scene?.id;
     const buildings=Math.min(4,Math.ceil((scene?.soundscape?.buildings??Object.keys(scene?.landmarks??{}).length)/4));
-    const fun=Math.min(2,scene?.soundscape?.fun??0);
-    const {wheel=false,hotel=false}=scene?.soundscape??{};
-    const key=`${world}:${buildings}:${fun}:${wheel}:${hotel}`;
+    const key=`${world}:${world==='city'?buildings:0}`;
     const limited=Number.isFinite(duration);
     if (ambience?.key===key&&!ambience.limited&&!limited) return true;
     stopAmbience();
@@ -146,7 +144,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
       await unlock();
       if (!context || token!==ambienceGeneration) return false;
       if (!beds.has(key)) {
-        beds.set(key,ambienceBuffer(context,world,buildings,{fun,wheel,hotel}));
+        beds.set(key,ambienceBuffer(context,world,buildings));
         if (beds.size>8) beds.delete(beds.keys().next().value);
       }
       const source=context.createBufferSource(),gain=context.createGain();
@@ -208,7 +206,7 @@ export function createSoundPlayer(getContext=()=>new(window.AudioContext||window
     const now=context.currentTime;
     if (now<ambience.start||now>ambience.end-.8) return false;
     const [length,volume,rest]=clip;
-    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||!['tram-bell','train-start','monorail-start'].includes(kind)&&now-ambience.lastCue<.31) return false;
+    if (now-(ambience.heard.get(kind)??-Infinity)<length+rest||!['tram-bell','train-start','monorail-start'].includes(kind)&&now-ambience.lastCue<.78) return false;
     try {
       sample(kind,now,volume*Math.max(0,Math.min(1,intensity))/.07,{destination:ambience.gain,voice:false});
       ambience.heard.set(kind,now);

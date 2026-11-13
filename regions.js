@@ -29,6 +29,13 @@ function coastAt(layout,x,z) {
   return (rim-Math.hypot(dx,dz))*52;
 }
 
+export function insideIslandBelt(layout,center,x,z,reach=.75) {
+  // Project the point outwards from the main house to test against the coast
+  // in that direction, including the island's headlands and bays.
+  return coastAt(layout,x,z)>=6.2
+    &&coastAt(layout,center.x+(x-center.x)/reach,center.z+(z-center.z)/reach)>=0;
+}
+
 export function regionSurface(layout,x,z) {
   const {theme,phase,hills,basins}=layout;
   const detail=.55*Math.sin(x*.159+phase)*Math.cos(z*.158-phase)+.45*Math.cos((x+z)*.29+phase);
@@ -47,6 +54,18 @@ export function regionSurface(layout,x,z) {
     }
   }
   y+=relief+detail*(theme==='moon'?.38:.22);
+  const lake=layout.moonLake;
+  if (lake&&Math.abs(x-lake.x)<lake.w*1.17+3&&Math.abs(z-lake.z)<lake.w*1.17+3) {
+    const dx=x-lake.x,dz=z-lake.z,c=Math.cos(lake.yaw),s=Math.sin(lake.yaw);
+    const u=(dx*c-dz*s)/lake.w,v=(dx*s+dz*c)/lake.d,angle=Math.atan2(v,u);
+    const rim=1+.083*Math.sin(angle*3+phase)+.047*Math.cos(angle*5-phase)+.035*Math.sin(angle*2);
+    const bank=(Math.hypot(u,v)-rim)*lake.d;
+    if (bank<2.9) {
+      const edge=clamp(bank/2.9,0,1);
+      const dust=lake.y+.019*Math.sin(u*13+v*8)+.015*Math.cos(v*19-u*4);
+      return {y:mix(dust,y,edge*edge*(3-2*edge)),water:false,bank,basin:Math.min(basin,bank),detail,relief,moonLake:true};
+    }
+  }
   if (theme==='moon') return {y,water:false,bank:Infinity,basin,detail,relief};
   const outerBank=theme==='city' ? Math.abs(x-riverAt(layout,z))-riverWidth(layout,z) : coastAt(layout,x,z);
   const bank=Math.min(outerBank,basin);
@@ -142,10 +161,11 @@ function beachDistrict(layout) {
       const shores=[-12,-6,0,6,12].map(x=>resortShore(layout,site,x));
       if (shores.some(z=>z===null||z<8.1)) continue;
       const span=Math.max(...shores)-Math.min(...shores);
-      candidates.push({...site,y:ground.y,score:ground.grade*2.3+span*.24+setback*.07+i*.018});
+      candidates.push({...site,y:ground.y,south:Math.cos(yaw)>=Math.SQRT1_2,
+        score:ground.grade*2.3+span*.24+setback*.07+i*.018});
     }
   }
-  return candidates.sort((a,b)=>a.score-b.score)[0]??null;
+  return candidates.sort((a,b)=>Number(b.south)-Number(a.south)||a.score-b.score)[0]??null;
 }
 
 function airDistrict(layout) {
@@ -183,23 +203,33 @@ function airDistrict(layout) {
 
 function lunarResortDistrict(layout) {
   const candidates=[];
+  const airSites=[layout.airfield,layout.hangar].filter(Boolean);
+  const w=10.15+(layout.seed%7)*.37,d=6.55+((layout.seed>>>5)%7)*.29;
   for (let i=0;i<42;i++) {
     const angle=layout.phase+(i*.381966%1)*Math.PI*2;
     const yaw=Math.round((angle+Math.PI)/(Math.PI/2))*(Math.PI/2);
     for (const reach of [58,51,44,38]) {
       const site={...polar(angle,reach),yaw,halfWidth:8.6,halfDepth:6.45,spaceResort:true};
-      if ([layout.airfield,layout.hangar].some(other=>other&&distance(site,other)<27)) continue;
+      if (airSites.some(other=>distance(site,other)<27)) continue;
       const ground=districtGround(layout,site,site.halfWidth,site.halfDepth);
       if (!ground.dry||ground.grade>2.6) continue;
       const basin=Math.min(...layout.basins.map(crater=>distance(site,crater)-Math.max(crater.w,crater.d)));
-      candidates.push({...site,y:ground.y,score:ground.grade*2+Math.abs(basin-7)*.055+Math.abs(reach-53)*.054+i*.01});
+      const lake=regionalPoint(site,Math.sin(angle*2.31)*1.7,-site.halfDepth-d*1.12-1.8);
+      const edge=Math.max(Math.abs(lake.x),Math.abs(lake.z));
+      const airPenalty=airSites.reduce((sum,other)=>sum+Math.max(0,26-distance(lake,other))*2,0);
+      candidates.push({site:{...site,y:ground.y},lake:{...lake,w,d},
+        score:ground.grade*2+Math.abs(basin-7)*.055+Math.abs(reach-48)*.088+Math.max(0,edge-64)*.43+airPenalty+i*.01});
     }
   }
-  return candidates.sort((a,b)=>a.score-b.score)[0]??null;
+  const choice=candidates.sort((a,b)=>a.score-b.score)[0];
+  if (!choice) return null;
+  const {site,lake}=choice;
+  const y=Math.min(regionSurface(layout,lake.x,lake.z).y,site.y-.64);
+  return {site,lake:{...lake,y:Math.max(-.42,y-.29),yaw:site.yaw,halfWidth:w*1.04,halfDepth:d*1.08}};
 }
 
 export function regionalAnnex(layout,kind) {
-  if (kind==='lighthouse') return layout.berths.lighthouse;
+  if (kind==='lighthouse'||kind==='stoneLighthouse') return layout.berths[kind];
   if (kind==='hangar') return layout.hangar;
   if (kind==='megaResort') return layout.beachResort;
   if (kind==='lunarResort') return layout.spaceResort;
@@ -256,18 +286,35 @@ export function regionLayout(theme,seed,grand=false,capacity=grand?GRAND_REGION_
   }
   layout.sites=sites;
   layout.origin=sites[0];
-  if (grand&&theme==='city') berths.lighthouse=cityBerth(layout,bridgeZ>0?-56:54,-side);
+  const lighthouse=site=>({...site,halfWidth:3.53,halfDepth:3.38,lighthouse:true});
+  if (grand&&theme==='city') {
+    berths.lighthouse=lighthouse(cityBerth(layout,bridgeZ>0?-56:54,-side));
+    const banks=[-48,48,-57,57,35,-35,63,-63].flatMap(z=>[side,-side].map(bank=>cityBerth(layout,z,bank)));
+    const stone=banks.find(site=>Object.values(berths).every(berth=>distance(berth,site)>15));
+    if (stone) berths.stoneLighthouse=lighthouse(stone);
+  }
   if (grand&&theme==='island') {
-    berths.lighthouse=coastSite(layout,layout.phase+4.14);
+    berths.lighthouse=lighthouse(coastSite(layout,layout.phase+4.14));
+    const coast=Array.from({length:24},(_,i)=>coastSite(layout,layout.phase+i*Math.PI/12))
+      .filter(site=>Object.values(berths).every(berth=>distance(berth,site)>18))
+      .sort((a,b)=>a.z-b.z)[0];
+    if (coast) berths.stoneLighthouse=lighthouse(coast);
     layout.beachResort=beachDistrict(layout);
   }
   if (grand) {
     const {field,hangar}=airDistrict(layout);
     layout.airfield=field;
     layout.hangar=hangar;
-    if (theme==='moon') layout.spaceResort=lunarResortDistrict(layout);
+    if (theme==='moon') {
+      const resort=lunarResortDistrict(layout);
+      if (resort) {
+        layout.spaceResort=resort.site;
+        layout.moonLake=resort.lake;
+      }
+    }
   }
-  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort].filter(Boolean);
+  layout.regionalSites=[layout.airfield,layout.hangar,layout.beachResort,layout.spaceResort,layout.moonLake,
+    berths.lighthouse,berths.stoneLighthouse].filter(Boolean);
   const grid=Array.from({length:GRID*GRID},(_,i)=>{
     const x=i%GRID*STEP-EDGE,z=Math.floor(i/GRID)*STEP-EDGE;
     const sample=regionSurface(layout,x,z);
@@ -361,7 +408,7 @@ export function specialEntrances(site,kind) {
   if (site.beach) return [regionalPoint(site,0,-8.1)];
   if (site.spaceResort) return [regionalPoint(site,0,8.25)];
   if (kind==='bridge') return [-1,1].map(side=>({x:site.x+side*site.span*.5,y:site.y+.514,z:site.z}));
-  const land=polar(site.yaw+Math.PI,kind==='lighthouse'?5.2:3.4);
+  const land=polar(site.yaw+Math.PI,site.lighthouse?5.4:3.4);
   return [{x:site.x+land.x,z:site.z+land.z}];
 }
 
@@ -473,7 +520,7 @@ export function regionVisibility(plan,x,z,full=false) {
   const developed=full?clamp((EDGE+14-Math.hypot(x,z))/15,0,1):0;
   const distanceTo=(point)=>Math.hypot(point.x-x,point.z-z);
   let reach=Math.max(0,1-(distanceTo(plan.origin)-29)/23);
-  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-(plot.beach?32:plot.airfield?26:22))/23);
+  for (const plot of plan.plots) reach=Math.max(reach,1-(distanceTo(plot)-(plot.beach||plot.spaceResort?32:plot.airfield?26:22))/23);
   for (const path of plan.paths) {
     for (let i=1;i<path.length;i+=4) reach=Math.max(reach,1-(distanceTo(path[i])-7.4)/20);
   }
@@ -494,6 +541,34 @@ export function roadElevation(layout,x,z) {
     return Math.max(surface.y,...rim.map(([a,b])=>regionSurface(layout,x+a,z+b).y))+.19;
   }
   return Math.max(layout.theme==='city'&&surface.bank<1.1?.47:.13,surface.y+.108);
+}
+
+export function transportCorridor(segments,reach) {
+  const cell=6,grid=new Map();
+  const bucket=(x,z)=>Math.floor(x/cell)*4096+Math.floor(z/cell);
+  for (const [a,b] of segments) {
+    const dx=b.x-a.x,dz=b.z-a.z,span=dx*dx+dz*dz;
+    if (span<.000001) continue;
+    const segment={a,b,dx,dz,span};
+    for (let x=Math.floor((Math.min(a.x,b.x)-reach)/cell);x<=Math.floor((Math.max(a.x,b.x)+reach)/cell);x++) {
+      for (let z=Math.floor((Math.min(a.z,b.z)-reach)/cell);z<=Math.floor((Math.max(a.z,b.z)+reach)/cell);z++) {
+        const key=x*4096+z;
+        if (!grid.has(key)) grid.set(key,[]);
+        grid.get(key).push(segment);
+      }
+    }
+  }
+  return (x,z)=>{
+    let distance=reach*reach,nearest;
+    for (const {a,b,dx,dz,span} of grid.get(bucket(x,z))??[]) {
+      const t=clamp(((x-a.x)*dx+(z-a.z)*dz)/span,0,1);
+      const gap=(x-a.x-dx*t)**2+(z-a.z-dz*t)**2;
+      if (gap>=distance) continue;
+      distance=gap;
+      nearest={y:mix(a.y,b.y,t),blend:mix(a.blend,b.blend,t)};
+    }
+    return nearest&&{...nearest,gap:Math.sqrt(distance)};
+  };
 }
 
 export function residenceDrive(layout,plot,street=(x,z)=>roadElevation(layout,x,z)) {

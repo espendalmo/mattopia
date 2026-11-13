@@ -81,7 +81,7 @@ export function terrainFoundation(layout,part,seed) {
   return [wall,...blocks];
 }
 
-export function plotAccess(layout,plot,foundation) {
+export function plotAccess(layout,plot,foundation,elevation=(x,z)=>roadElevation(layout,x,z)) {
   const entry=plot.entries[0];
   if (plot.waterfront||!entry||!foundation) return null;
   const s=Math.sin(plot.yaw),c=Math.cos(plot.yaw);
@@ -106,7 +106,7 @@ export function plotAccess(layout,plot,foundation) {
   const path=Array.from({length:7},(_,i)=>{
     const t=i/6,ease=t*t*(3-2*t);
     const [x,,z]=pointOnSite([startX+(endX-startX)*ease,0,startZ+(endZ-startZ+direction*.06)*t],plot);
-    return {x,z,y:roadElevation(layout,x,z)*(1-ease)+(plot.y+.155)*ease};
+    return {x,z,y:elevation(x,z)*(1-ease)+(plot.y+.155)*ease};
   });
   return {path,drive};
 }

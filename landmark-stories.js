@@ -84,6 +84,21 @@ const moonStories={
 };
 
 const districtStories={
+  arcade:'En maskin heter «Utenomjordisk». Rekorden tilhører et romvesen som skrev «Helt normalt» i navnefeltet.',
+  library:'Hvorfor frøs bibliotekaren? Alle bøkene hadde åpne omslag.',
+  bookHall:'Bokhuset har glassatrium og en stille lesekrok. Den er så stille at noen hvisket «hysj» til sin egen skygge.',
+  cultureHouse:'En trommeslager ble bedt om å slå seg ned. Nå lurer alle på om han også kan slå an tonen.',
+  nightCinema:'Filmen om popkorn fikk en smell på premieren. Publikum mente den var litt for oppblåst.',
+  broadcastHouse:'På radioen leser de værmeldingen. Den viktigste nyheten er at vinden blåste forbi uten å stoppe.',
+  lagoonTower:'Toppen har 360 graders utsikt. Turistene får dessverre bare låne 180 grader om gangen.',
+  lagoonPark:'En frosk satt på broen og sa den ventet på en prins. Den andre satt og ventet på bussen.',
+  courthouse:'Dommeren ba alle reise seg. En gjest rakk å pakke kofferten før misforståelsen ble oppklart.',
+  church:'Hvorfor kom klokkeren for sent? Han slo av klokken.',
+  busStation:'Bussen stopper under taket. En passasjer sa «jeg har en skrue løs». Sjåføren satte ham av ved verkstedet.',
+  fireStation:'Brannbilen står klar. Sist noen ropte «det brenner!», var det en toast som hadde tatt litt for mye sats.',
+  policeStation:'Patruljen fikk melding om en mistenkelig bolle. Den satt i en deiglig situasjon.',
+  stoneLighthouse:'Fyret er murt av stein. Fyrvokteren kaller den siste steinen for prikken over fyret.',
+  casino:'Tårnet har lys i alle etasjer. Vaktmesteren regner med å vinne når han spiller stein, saks, lyspære.',
   riverSlides:'Den siste svingen er den våteste. Badevakten har begynt å ta med paraply.',
   breadWorks:'Den store bollen på taket er pynt. Byens duer har bedt om å få det skriftlig.',
   bookCastle:'Noen glemte et bokmerke i boken på taket. Det var visst en hel stige.',
@@ -99,6 +114,7 @@ const districtStories={
   dustSlides:'Ingen trenger badebukse her. De fleste trenger en støvsuger etterpå.',
   cometCafe:'Kakaokoppen har lokk. Sist var det selve kometen som ikke klarte å holde på marshmallowene.',
   roverWash:'En rover kom inn med så mye støv at de trodde den var et helt nytt krater.',
+  carWash:'En bil kom inn full av sand. Da den kjørte ut, manglet vaskehallen bare en badevakt.',
   craterCinema:'Her svever popkornet mot taket. Bakerste rad har med seg hov.',
   moonPost:'Merk pakken med planet og krater. «Ved siden av en stor stein» har vist seg å være litt upresist.',
   sunMirror:'Solspeilet er stort nok til at alle i byen kan sjekke romhjelmen sin samtidig.',
@@ -111,9 +127,9 @@ function originalLandmarkStory(theme,index,kind) {
   if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
   if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
-  if (kind==='residence') return theme==='moon'?'I krystallhagen glitrer steinene. Roverne har hver sin plass, med nok rom til å snu.':
-    theme==='island'?'Her kan du bade i hagen. De to bilene står klare for en tur langs kysten.':
-    'Fontenen står midt i hagen. Fra tårnene kan du se båtene passere ute på elven.';
+  if (kind==='residence') return theme==='moon'?'Et hus verdig en mattemester. I oppkjørselen står en rover og en svevebil. Selv bilen kan løfte seg et hakk.':
+    theme==='island'?'Et palass verdig en mattemester. Kabrioleten har taket nede, og endene i hagedammen krever bompenger i brødsmuler.':
+    'Et hus verdig en mattemester. Sportsbilen tar svingene, og endene tar seg av regningen. De er gode med desimalkvakk.';
   if (kind==='lighthouse') return 'På mørke kvelder viser lykten båtene vei forbi grunnen.';
   if (kind==='telescopeArray') return 'De små teleskopene hjelper det store med å finne riktig del av stjernehimmelen.';
   if (kind==='airport'&&theme==='city') return 'Se etter lysene langs rullebanen når flyet lander. Helikopteret har sin egen plass.';
@@ -152,7 +168,7 @@ const localStories={
 
 export function landmarkStory(theme,index,kind,seed) {
   const original=originalLandmarkStory(theme,index,kind);
-  if (districtStories[kind]||!Number.isInteger(seed)) return original;
+  if (kind==='residence'||districtStories[kind]||!Number.isInteger(seed)) return original;
   const alternatives=localStories[theme]??[];
   const pick=mapStorySeed(seed,`${theme}:${index}:${kind}`);
   if (original&&pick%3===0) return original;
@@ -196,6 +212,7 @@ const construction={
 };
 
 const openings={
+  residence:'Her kan en mattemester som deg parkere, telle ender eller ta en velfortjent pause i hagen.',
   lunarResort:'Bassengvakten har satt fram støvkoster. De to første gjestene har allerede badet seg grå.',
   moonBurger:'Første burger er klar. Kokken har festet ekstra måneost så den holder seg på plass.',
   spaceField:'Laget Månespark er klart. Hjelmene er på og ballen har lovet å oppføre seg.',

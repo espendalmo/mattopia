@@ -1,5 +1,5 @@
-import {beam,box,dome,tube,tunnelLandform} from './scenery.js';
-import {regionSurface,roadElevation,regionalFootprint,riverAt,riverWidth} from './regions.js';
+import {beam,box,dome,tube,tunnelLandform,isCarWash} from './scenery.js';
+import {regionSurface,roadElevation,regionalFootprint,riverAt,riverWidth,transportCorridor} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 
 const STREET_TONES={
@@ -11,6 +11,8 @@ const BRIDGE_TONES=['#d6bea3','#9f8775'];
 const key=({x,z})=>`${x}:${z}`;
 const length=(a,b)=>Math.hypot(b.x-a.x,b.z-a.z);
 const perpendicular=([ax,az],[bx,bz])=>Math.abs(ax*bx+az*bz)<.0001;
+const clamp=(n,min=0,max=1)=>Math.max(min,Math.min(max,n));
+const smooth=n=>{const t=clamp(n);return t*t*(3-2*t);};
 export const streetHalfWidth=theme=>theme==='island'?1.02:1.22;
 
 // The two street legs meet a circular bend at its tangents.
@@ -148,7 +150,7 @@ function streetFurniture(layout,plan,road,width,seed,gateway) {
     const sides=avenue?[-1,1]:[(seed+i)%2===0?1:-1];
     for (const side of sides) {
       const {x,z}=offsetPoint(center,side*(width+(avenue?1.04:.83)));
-      const ground=regionSurface(layout,x,z),y=ground.y;
+      const ground=regionSurface(layout,x,z),y=plan.streetGround?.(x,z,ground.y)??ground.y;
       if (ground.water||ground.bank<.58||plan.inRoadTunnel?.(x,z)
         ||plan.plots.some(site=>site.halfWidth?regionalFootprint(site,x,z,.57):Math.hypot(x-site.x,z-site.z)<5.71)
         ||plan.approaches?.some(access=>access.path.some(point=>Math.hypot(x-point.x,z-point.z)<1.1))
@@ -166,7 +168,8 @@ function streetFurniture(layout,plan,road,width,seed,gateway) {
         const [u,v]=center.tangent;
         const lamp=offsetPoint(center,side*(width+.68));
         const lx=lamp.x+u*(avenue?.86:0),lz=lamp.z+v*(avenue?.86:0);
-        const base=regionSurface(layout,lx,lz).y,top=base+(theme==='moon'?1.45:2.43);
+        const natural=regionSurface(layout,lx,lz).y;
+        const base=plan.streetGround?.(lx,lz,natural)??natural,top=base+(theme==='moon'?1.45:2.43);
         const hx=lx+v*side*.47,hz=lz-u*side*.47;
         const metal=theme==='moon'?'#8995b0':'#72817e';
         parts.push(tube(lx,lz,.22,.22,.11,metal,base),tube(lx,lz,.106,.105,top-base,metal,base),
@@ -233,7 +236,8 @@ function pavedRoute(layout,path,width,{junctions,plan,stage,gateway}={}) {
         work.push(...across(b,width+.19,0).map(([x,y,z])=>box(x,z,.2,.2,.42,'#d1b39b',y)));
       }
     }
-    if (layout.theme==='moon'&&!bridge&&!plan?.inRoadTunnel?.((a.x+b.x)*.5,(a.z+b.z)*.5)) {
+    const filled=plan?.streetGround&&[a,b].some(point=>point.y-regionSurface(layout,point.x,point.z).y>.38);
+    if ((layout.theme==='moon'||filled)&&!bridge&&!plan?.inRoadTunnel?.((a.x+b.x)*.5,(a.z+b.z)*.5)) {
       const topA=across(a,width+.27,-.053),topB=across(b,width+.27,-.053);
       const rim=(point,side)=>{
         const [x,y,z]=across(point,width+.61,-.19)[side];
@@ -241,7 +245,8 @@ function pavedRoute(layout,path,width,{junctions,plan,stage,gateway}={}) {
       };
       for (const side of [0,1]) {
         const outline=[topA[side],topB[side],rim(b,side),rim(a,side)];
-        work.push(surface(side===0?outline:outline.reverse(),i%4===0?'#9793aa':'#a39fb5',3.1));
+        const color=layout.theme==='moon'?i%4===0?'#9793aa':'#a39fb5':edge;
+        work.push(surface(side===0?outline:outline.reverse(),color,3.1));
       }
     }
     paint(work,(a.distance+b.distance)*.5/total);
@@ -285,6 +290,56 @@ function roadCap(layout,{x,z},radius,color) {
   return surface(outline,color,4);
 }
 
+export function prepareRoadGrades(layout,plan) {
+  const shoulder=4.8,bed=streetHalfWidth(layout.theme)+.96;
+  const roads=new Set(),segments=[];
+  for (const path of plan.paths) {
+    const road=measureRoad(layout,path),span=road.at(-1)?.distance??0;
+    if (span<8.8||path.some(point=>point.y!==undefined)) continue;
+    const count=Math.ceil(span/.81);
+    const profile=Array.from({length:count+1},(_,i)=>{
+      const distance=i/count*span,point=roadPoint(road,distance);
+      const surface=regionSurface(layout,point.x,point.z);
+      return {...point,distance,surface,dry:!surface.water&&surface.bank>.85};
+    });
+    const ground=i=>profile[Math.max(0,Math.min(count,i))].y;
+    const blended=profile.map((point,i)=>{
+      const {x,y,z,distance,surface}=point;
+      const levels=[ground(i-6),ground(i-3),y,ground(i+3),ground(i+6)];
+      const smoothed=(levels[0]+2*levels[1]+2*levels[2]+2*levels[3]+levels[4])/8;
+      const clearance=Math.max(0,y-surface.y-.34);
+      const grade=clamp(smoothed-y,-1.36,1.64);
+      // Feather earthworks back to the natural grade before junctions,
+      // ramps, riverbanks and beaches.
+      const end=smooth((Math.min(distance,span-distance)-1.6)/2.45);
+      const shore=smooth((surface.bank-.85)/2);
+      const limit=smooth((Math.max(Math.abs(grade),clearance)-.08)/.24);
+      return {x,z,y:y+grade,blend:point.dry?end*shore*limit:0};
+    });
+    for (let i=1;i<blended.length;i++) {
+      const a=blended[i-1],b=blended[i];
+      if (!profile[i-1].dry||!profile[i].dry||a.blend+b.blend===0) continue;
+      segments.push([a,b]);
+      roads.add(path);
+    }
+  }
+  if (!segments.length) return;
+  const corridor=transportCorridor(segments,shoulder);
+  const protectedLots=[...(plan.plots??[]),...(plan.starter?[plan.starter]:[])].map(plot=>plot.halfWidth?plot:
+    {...plot,yaw:plot.yaw??0,halfWidth:4.72,halfDepth:4.7});
+  plan.gradedRoads=roads;
+  plan.streetElevation=(x,z)=>{
+    const natural=roadElevation(layout,x,z),grade=corridor(x,z);
+    return grade?natural+(grade.y-natural)*grade.blend*smooth((2.75-grade.gap)/1.02):natural;
+  };
+  plan.streetGround=(x,z,natural)=>{
+    const grade=corridor(x,z);
+    if (!grade||grade.blend===0||regionSurface(layout,x,z).bank<.6
+      ||protectedLots.some(plot=>regionalFootprint(plot,x,z,-.1))) return natural;
+    return natural+(grade.y-.16-natural)*grade.blend*smooth((shoulder-grade.gap)/(shoulder-bed));
+  };
+}
+
 export function prepareRoadTunnels(layout,plan) {
   if (plan.plots.length<3) return [];
   const mouth=3.55,approach=5.8;
@@ -298,7 +353,8 @@ export function prepareRoadTunnels(layout,plan) {
     const heights=[-approach,-mouth,mouth,approach].map(d=>roadElevation(layout,x+dx*d,z+dz*d));
     if (Math.max(...heights)-Math.min(...heights)>.74
       ||plan.plots.some(plot=>Math.hypot(x-plot.x,z-plot.z)<6.7
-        ||plot.residence&&plot.entries.some(entry=>Math.hypot(x-entry.x,z-entry.z)<10))
+        ||(['residence','busStation','fireStation','policeStation'].includes(plot.kind)||isCarWash(plot.kind))
+          &&plot.entries.some(entry=>Math.hypot(x-entry.x,z-entry.z)<10))
       ||plan.transitPortals?.some(portal=>Math.hypot(x-portal.x,z-portal.z)<12)) return [];
     const seed=(Math.imul(Math.round(x*100),19)^Math.imul(Math.round(z*100),37)^layout.seed)>>>0;
     const relief=regionSurface(layout,x,z).relief;
@@ -326,12 +382,15 @@ export function prepareRoadTunnels(layout,plan) {
   };
   plan.tunnelPaths=new Set(selected.map(tunnel=>tunnel.path));
   plan.inRoadTunnel=(x,z)=>Boolean(profile(x,z,3.4));
+  const gradedHeight=plan.streetElevation??((x,z)=>roadElevation(layout,x,z));
+  const gradedGround=plan.streetGround??((x,z,natural)=>natural);
   plan.streetElevation=(x,z)=>{
-    const natural=roadElevation(layout,x,z);
+    const natural=gradedHeight(x,z);
     const grade=profile(x,z,1.58);
     return grade?natural+(grade.level-natural)*grade.mix:natural;
   };
   plan.streetGround=(x,z,natural)=>{
+    natural=gradedGround(x,z,natural);
     const grade=profile(x,z,3.4);
     return grade?natural-Math.max(0,natural-(grade.level-.14))*grade.mix:natural;
   };
@@ -344,7 +403,7 @@ export function prepareRoadTunnels(layout,plan) {
   });
 }
 
-export function regionRoads(layout,plan,animate=false) {
+export function regionRoads(layout,plan,animate=false,waterCovers=[]) {
   const width=streetHalfWidth(layout.theme);
   const nodes=plan.junctions??[];
   const junctions=new Set(nodes.filter(node=>node.arms.length>=3||node.connector).map(key));
@@ -356,7 +415,7 @@ export function regionRoads(layout,plan,animate=false) {
   const paths=roundedStreetPaths(plan).flatMap((path,i)=>{
     const work=additions.get(plan.paths[i]);
     const stage=work&&((t)=>(work.index+(work.reverse&&t!==1?1-t:t))/count);
-    const fine=plan.tunnelPaths?.has(plan.paths[i])?path.flatMap((point,j)=>{
+    const fine=plan.tunnelPaths?.has(plan.paths[i])||plan.gradedRoads?.has(plan.paths[i])?path.flatMap((point,j)=>{
       if (!j) return [point];
       const before=path[j-1],count=Math.ceil(length(before,point)/.5);
       return Array.from({length:count},(_,k)=>{
@@ -364,6 +423,12 @@ export function regionRoads(layout,plan,animate=false) {
         return t===1?point:{x:before.x+(point.x-before.x)*t,z:before.z+(point.z-before.z)*t};
       });
     }):path;
+    if (layout.theme==='city') for (let j=1;j<fine.length;j++) {
+      const a=fine[j-1],b=fine[j],x=(a.x+b.x)*.5,z=(a.z+b.z)*.5;
+      const tile=regionSurface(layout,x,z);
+      if (tile.water&&!tile.pond) waterCovers.push({a,b,width:width+.24,
+        at:stage?.((j-.5)/(fine.length-1))});
+    }
     return pavedRoute(layout,fine,width,{junctions,plan:plan.plots?plan:null,stage,gateway:plan.gateways?.has(plan.paths[i])});
   });
   for (const {path,drive,latest,width,color=drive?'#a7a699':'#d3c09e'} of plan.approaches??[]) {

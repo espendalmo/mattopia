@@ -29,6 +29,10 @@ export const personStories={
       'Har fått seg en ny turkamerat. Det er en svært langsom snegl.',
       'Skal ta en snarvei. Kjenner ingen av veiene, så alle er spennende.',
       'Har pakket badetøy og vinterlue. Liker å være klar for alt.',
+      'Prøvde å fortelle en vits om bygging. Den er fortsatt under arbeid.',
+      'Hva sa den ene veggen til den andre? Vi møtes på hjørnet.',
+      'Gikk ut for å få litt frisk luft. Kjøpte to liter på flaske, bare for sikkerhets skyld.',
+      'Ba om en vits om papir. Fikk høre at den var altfor tynn.',
     ],
   },
   astronaut:{
@@ -57,6 +61,9 @@ export const personStories={
       'Følger en rar lyd. Det kan være et romvesen eller en sulten mage.',
       'Har med kikkert for å se etter stjerner. Fant en liten flekk på egen hjelm.',
       'Skal lage månekake. Vil gjerne ha oppskriften på deigen fra jorden.',
+      'Hva er astronautens favorittast? Mellomromstasten.',
+      'Prøvde å bestille bord på månen. Maten var god, men stedet manglet atmosfære.',
+      'Prøvde å låne litt rom til en fest. Nå er hele verdensrommet invitert.',
     ],
   },
   alien:{
@@ -78,6 +85,9 @@ export const personStories={
       'Tror en månebuss er en veldig stor kjæledyrrover.',
       'Har kjøpt én sokk til hver antenne. Nå mangler det bare sko.',
       'Har en hemmelig oppskrift på kraterkakao. Den hemmelige ingrediensen er kakao.',
+      'Spurte om å få snakke med sjefen. Ble sendt til et veldig skuffet trafikklys.',
+      'Tester en jordisk vits om tyngdekraft. Den falt flatt, men brukte god tid.',
+      'Har hørt at tall aldri lyver. Nå sitter romvesenet og venter på et helt ærlig svar fra tallet sju.',
       'Håper å finne en fin gave til bestemor. Hun ønsker seg noe med minst tre knapper.',
       'Har øvd på å gå rett fram. Tar en liten sving for å feire.',
       'Skal hente en pakke. Den inneholder en tom pakke til neste gang.',
@@ -90,6 +100,29 @@ export const personStories={
 };
 
 export const vehicleStories={
+  classic:[['Krom-Klara','Palmeglideren','Ferskenfarten','Kabrio-Kåre','Kokoskupeen'],[
+    'Kjører med taket nede. Føreren har festet solhatten med sikkerhetsbelte.',
+    'Hvorfor kjører den så rolig? Den har god tid og god krom.',
+    'Bagasjerommet er fullt av havluft. Sjåføren tok med litt ekstra til hjemturen.',
+    'Føreren pusset støtfangeren så blank at to palmer tok seg en titt i speilet.',
+  ]],
+  sport:[['Elvepilen','Turbolyn','Svingprinsen','Strømpilen','Kobberraketten'],[
+    'Har to striper som gjør den dobbelt så rask på tegningen.',
+    'Bilen skal ta en skarp sving. Føreren foreslo å la den bli der den er.',
+    'Føreren skulle ta en liten tur. Kilometerne hadde en helt annen plan.',
+    'Har plass til to personer eller én person med veldig mange boller.',
+  ]],
+  police:[['Blåblink','Bollepatruljen','Ordensvognen','Patrulje Pling'],[
+    'Rykket ut til en melding om månestøv. Det var nøyaktig så mye måne som vanlig.',
+    'Har tatt et trafikklys i å stå stille på samme sted hele dagen.',
+    'Holder utkikk etter en rømningstruet vaffel. Det er bare syltetøy på åstedet.',
+    'Fikk melding om en mistenkelig pose. Sjåføren sier den er i godt selskap med to mistenkelige poser til.',
+  ]],
+  'fire-engine':[['Elveby brannbil','Blink og Sprut','Utrykning 1'],[
+    'Stigen kan nå nesten alt, bortsett fra en vits som går over hodet på deg.',
+    'Brannfolkene pakket sammen etter en vellykket redning. Katten gikk rett opp i neste tre.',
+    'Den rykker ut når det trengs. Føreren øver fortsatt på å si «slange» uten å se seg rundt.',
+  ]],
   road:[['Bolle-bilen','Bybilen Tut','Snarveien','Lille Sving','Krumkakekupeen'],[
     'Sjåføren er sikker på at dette er en snarvei. Det er tredje runden i dag.',
     'Frakter nybakte boller. Hele bilen lukter frokost.',
@@ -171,11 +204,12 @@ export const vehicleStories={
     'Sjåføren teller kratere for å finne riktig stopp. Kaffen teller som én.',
   ]],
   hover:[['Svevebil Zoom','Stjernekabrioleten','Rakett-Rita','Susepil','Himmelbobla','Blink 3000'],[
-    'Sjåføren håper at «veiarbeid» ikke finnes i luften.',
+    'Astronauten med gullhjelm kjører. Sjåføren håper at «veiarbeid» ikke finnes i luften.',
     'Motorene gløder når bilen suser av gårde. Passasjeren har pakket vindtett lue.',
     'Har lett etter parkeringsplass i tre høyder. Den nederste var ledig hele tiden.',
     'Kjører en ekstra runde for å tørke det nyvaskede visiret.',
     'Skal prøve en ny motor. Passasjeren har tatt med en ekstra stor pute.',
+    'Hjulene ble tatt av på verkstedet. «Da slipper vi å være firehjulsdrevne», sa astronauten.',
   ]],
   train:[['Elveby-ekspressen','Skinnesus','Bollebanen','Tunnelpendelen','Kveldstoget'],[
     'Konduktøren teller billetter. Toget teller tunneler. Begge liker å telle.',

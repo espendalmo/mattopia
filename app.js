@@ -608,7 +608,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
     let dispose,selection=null;
     const inspect=(index,{focus=false,playSound=false,discovery}={})=>{
       if (!card) return;
-      const character=mapCharacterInfo(scene,index,discovery);
+      const character=mapCharacterInfo(scene,index,discovery,chosenProfileName(profile));
       const site=typeof index==='number'?scene.sites?.[index]:null;
       const building=site&&worldBuilding(id,index,map);
       selection=building||character?index:null;

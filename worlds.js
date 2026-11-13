@@ -8,8 +8,8 @@ export const GRAND_REGION_PLACES=30;
 export const GRAND_REGION_CATALOG=44;
 export const LUNAR_REGION_CATALOG=48;
 export const LARGE_REGION_PLACES=40;
-export const LARGE_REGION_CATALOG=GRAND_REGION_CATALOG+7;
-export const LARGE_LUNAR_CATALOG=LUNAR_REGION_CATALOG+8;
+export const LARGE_REGION_CATALOG=54;
+export const LARGE_LUNAR_CATALOG=57;
 // Keep saved residences separate from the expandable building catalogs.
 export const RESIDENCE_PLACE=1000;
 export const largeRegion=map=>map?.layout===3&&map.catalog===4;

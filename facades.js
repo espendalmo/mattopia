@@ -6,7 +6,7 @@ const colors={
   moon:['#acaacb','#6596b4','#9dd8e4'],
 };
 const sides=[['front',0],['right',Math.PI/2],['back',Math.PI],['left',-Math.PI/2]];
-const openSites=new Set(['bridge','garden','park','greatPark','moonGarden','palmGarden','gravityPark','bandstand',
+const openSites=new Set(['bridge','garden','park','greatPark','moonGarden','palmGarden','gravityPark','bandstand','lagoonPark',
   'field','spaceField','pool','solar','solarGarden','tropicalPools','wheel','coaster','riverSlides','mangoSlides','dustSlides']);
 
 function bounds(part) {

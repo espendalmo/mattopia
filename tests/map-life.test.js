@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectScene,worldBuildingPreview} from '../projects.js';
-import {freshWorld} from '../worlds.js';
+import {freshWorld,RESIDENCE_PLACE} from '../worlds.js';
 import {projectCameras,projectFaces} from '../project-view.js';
 import {entityAt} from '../project-picking.js';
 import {residentPoint,walkingClock,lunarSkyCamera,lunarCurvature,lunarSurfaceY} from '../scene-motion.js';
 import {mapCharacterInfo,footballMoment,footballActors} from '../map-life.js';
-import {actor,actorPose,createTraffic,MAX_ACTORS,vehicle,visitor} from '../scenery.js';
+import {actor,actorPose,createTraffic,MAX_ACTORS,RESIDENCE_DRIVER,vehicle,visitor} from '../scenery.js';
 
 test('Touch cameras allow a closer look while overview and desktop framing stay unchanged',()=>{
   for (const id of ['city','moon','island','armor']) {
@@ -30,6 +30,24 @@ test('Residents on every completed plot keep moving independently of the vehicle
     assert.notDeepEqual(residentPoint([person.x,person.y,person.z],person.life,0,0),residentPoint([person.x,person.y,person.z],person.life,0,2));
     assert.deepEqual(mapCharacterInfo(scene,person.entity),mapCharacterInfo(scene,person.entity));
     assert.ok(mapCharacterInfo(scene,person.entity).story.length>20);
+  }
+});
+
+test('One driver at each residence takes the chosen profile name on the map',()=>{
+  const map={...freshWorld(()=>6163/2**32),order:[0,3,RESIDENCE_PLACE],progress:9,residenceName:'Første navn'};
+  for (const [theme,model,kind] of [['city','sport','human'],['island','classic','human'],['moon','hover','astronaut']]) {
+    const scene=projectScene(theme,map);
+    const drivers=scene.ambient.filter(actor=>actor.parts.some(part=>part.entity===RESIDENCE_DRIVER));
+    assert.equal(drivers.length,1);
+    assert.equal(drivers[0].vehicleModel,model);
+    const riders=drivers[0].parts.filter(part=>part.characterKind);
+    assert.ok(riders.length>0&&riders.every(part=>part.characterKind===kind));
+    if (theme==='moon') assert.ok(riders.some(part=>part.color==='#e7b75a'));
+    assert.equal(mapCharacterInfo(scene,RESIDENCE_DRIVER).name,'Første navn');
+    assert.equal(mapCharacterInfo(scene,RESIDENCE_DRIVER,undefined,'Nytt navn').name,'Nytt navn');
+    assert.equal(mapCharacterInfo(scene,RESIDENCE_DRIVER).sound,kind);
+    const visible=projectFaces(scene).filter(face=>face.entity===RESIDENCE_DRIVER);
+    assert.ok(visible.length>0&&visible.every(face=>face.group>=2));
   }
 });
 

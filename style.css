@@ -696,6 +696,8 @@ dialog button:focus-visible, dialog a:focus-visible, dialog summary:focus-visibl
 .pause-dialog .project-peek canvas { height: clamp(130px, 30dvh, 180px); }
 .completion-garden.completion-project { width: min(100%, 410px); height: auto; margin-bottom: 18px; }
 .completion-project .earned-star svg { fill: none; stroke: #8b6825; stroke-width: 1.8; }
+.complete .completion-project,
+.complete .completion-project .project-peek { width: 100%; }
 .project-dialog {
   width: min(100% - 20px, 970px);
   max-height: 94svh;
@@ -757,7 +759,7 @@ canvas.lunar-starfield,
 .project-latest small { display: block; margin-bottom: 3px; color: #6a592f; font-size: .77rem; }
 .project-latest strong { font-size: .96rem; }
 .project-latest .secondary { min-height: 44px; padding: 6px 11px; font-size: .85rem; }
-.result-latest { width: min(100%, 470px); margin: 12px auto 15px; }
+.result-latest { width: 100%; margin: 12px auto 15px; }
 
 @media (prefers-reduced-motion: no-preference) {
   dialog[open]:not(.retry-sheet) { animation: dialog-appear 190ms ease-out; }
@@ -1566,7 +1568,7 @@ body:has(> .project-dialog.project-fullscreen[open]) {
 .complete .result-latest .build-story { margin: 5px 0 0; font-size: .88rem; line-height: 1.4; }
 .complete .completion-bonus {
   display: flex; align-items: center; gap: .7rem; margin: 1rem auto;
-  max-width: 26rem; padding: .8rem 1rem; border: 1px solid #d7bc78; border-radius: 1rem;
+  width: 100%; padding: .8rem 1rem; border: 1px solid #d7bc78; border-radius: 1rem;
   background: #fff1cf; color: #624713; text-align: left; font-weight: 700; line-height: 1.38;
 }
 .completion-bonus svg { width: 1.45rem; height: 1.45rem; flex: 0 0 auto; }

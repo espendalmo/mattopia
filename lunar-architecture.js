@@ -141,8 +141,8 @@ export function lunarArchitecture(style,stages,index) {
     extra.push(...ring(0,-.71,hotel?2.81:2.43,hotel?4.18:3.35,gold,.12,hotel?.35:.0),
       ...antenna(0,-.72,hotel?3.8:2.95,hotel?pink:cyan),
       ...pair.map(side=>d(side*3.23,2.73,.68,.68,.53,pink,.39)));
-  } else if (['oxygen','refinery','generator','batteryVault'].includes(style)) {
-    const power=style==='generator'||style==='batteryVault';
+  } else if (['oxygen','refinery','generator'].includes(style)) {
+    const power=style==='generator';
     extra.push(...ring(power?1.79:-1.55,power?.1:-.7,2.29,4.43,power?cyan:pink,.16,power?.77:.38),
       cone(power?1.79:-1.55,power?.1:-.7,.81,1.56,gold,4.29));
     if (style==='refinery') extra.push(...[-1,0,1].map((v,i)=>cone(v*1.37,2.59,.77,1.07+i*.29,['#b8b6e0','#c0d9d0','#e1b8cf'][i],.35)));

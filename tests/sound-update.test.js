@@ -216,12 +216,12 @@ test('A finished build schedules the firework sounds and world tail while iOS ke
   player.stop();
 });
 
-test('World beds have distinct long loops with recurring local music',()=>{
+test('World beds are distinct, quiet environmental loops with isolated local cues',()=>{
   const context={createBuffer(_channels,frames,rate) {
     const samples=new Float32Array(frames);
     return {duration:frames/rate,getChannelData:()=>samples};
   }};
-  const phrases=[];
+  const signatures=[];
   const energy=(samples,from,to)=>{
     const window=samples.subarray(from*16000,to*16000);
     return Math.sqrt(window.reduce((sum,value)=>sum+value*value,0)/window.length);
@@ -231,19 +231,17 @@ test('World beds have distinct long loops with recurring local music',()=>{
     assert.equal(bed.duration,length);
     const samples=bed.getChannelData();
     assert.ok(samples[0]===0);
-    assert.ok(energy(samples,4,7)>energy(samples,12,15),world);
-    phrases.push(Array.from(samples.subarray(80000,80008)));
-  
+    assert.ok(energy(samples,4,7)>.008&&energy(samples,4,7)<.2,world);
+    signatures.push(Array.from(samples.subarray(80000,80008)));
   }
-  assert.equal(new Set(phrases.map(JSON.stringify)).size,3);
+  assert.equal(new Set(signatures.map(JSON.stringify)).size,3);
   const quiet=ambienceBuffer(context,'island',2).getChannelData();
-  const music=ambienceBuffer(context,'island',2,{hotel:true,wheel:true}).getChannelData();
-  assert.equal(quiet[1000],music[1000]);
-  assert.ok(music.subarray(4*16000,7*16000).some((sample,i)=>sample!==quiet[4*16000+i]));
-  assert.ok(music.subarray(45*16000,47*16000).some((sample,i)=>sample!==quiet[45*16000+i]));
+  assert.deepEqual(ambienceBuffer(context,'island',4,{hotel:true,wheel:true}).getChannelData(),quiet);
+  assert.ok(energy(quiet,0,2)<energy(quiet,2,5),'the waves come and go');
+  const radio=ambienceBuffer(context,'moon',2).getChannelData();
+  assert.ok(energy(radio,10.7,11.8)>energy(radio,12,13),'there is a short radio burst');
   assert.ok(soundClip(context,'tram-bell').getChannelData().some(n=>Math.abs(n)>.2));
   assert.ok(soundClip(context,'horn').getChannelData().some(n=>Math.abs(n)>.2));
-
 });
 
 test('Task rewards rise in pitch from first to last at every round length',()=>{

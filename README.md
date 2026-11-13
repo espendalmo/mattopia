@@ -1,4 +1,4 @@
-# Mattopia 1.40.0
+# Mattopia 1.43.0
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.40.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.43.0.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -56,6 +56,31 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 Åpne `locale-nb.js` i en teksteditor og endre teksten til høyre for nøkkelen. Filen inneholder sentrale tekster i veiviseren, profilredigeringen, oppgavene, hjelpen og kartvisningen. Behold nøklene, anførselstegnene og eventuelle plassholdere som `{count}`. Noen faglige alternativer, stedsnavn, historier og hjelpetekster i innstillingene ligger fortsatt i modulene der de brukes.
 
 Ta vare på filen eller legg ved den redigerte utgaven til neste versjon. Kopier den til kildemappen før du bygger samme versjon, slik at både beta og vanlig utgave får teksten. I senere versjoner fletter du inn de endrede verdiene i den nye språkfilen, så nye nøkler blir med. Last opp hele pakken med et nytt versjonsnummer for at installerte apper skal hente filen. Redigert oppgavetekst gjelder for nye øvingsrunder. Nye språk kan få egne katalogfiler med de samme nøklene og norsk som reserve.
+
+## Nytt i 1.43.0
+
+- Gangstien i Lagunehagen ligger litt over plenen og vises stabilt på kartet.
+- Passasjerer går opp trappene til toget, monorailen og trikken, venter på perrongen og går ned igjen.
+- Rover-vasken, Elveby bilvask og Kokosvasken har biler som kjører gjennom vaskehallen og stopper mens boblene stiger.
+- Luna Grand Resort bygges ved Månestøvsjøen, en blågrå sjø av fint støv. Tomten beregnes på nytt også på lagrede månekart.
+
+## Nytt i 1.42.0
+
+- Veier og spor får jevnere stigning. Små søkk kan fylles igjen, og korte knauser kan senkes lokalt der traseen går.
+- Biler og rovere står plant på parkeringsplassen. Brannbilen og patruljebilene parkerer inne i garasjer med åpen port.
+- Én sjåfør ved hver residens får spillerens navn. Trykk på sportsbilen, kabrioleten eller svevebilen for å se hvem som kjører.
+- Trikkesporet holder seg omtrent tre fjerdedeler av veien fra hovedhuset til kysten i hver retning. Det kan knytte sammen flere kvartaler inne på øyen.
+
+## Nytt i 1.41.0
+
+- Kartet, bonusfeltet, byggkortet og knappene på rundeslutt har samme bredde. Kartet viser mer av nabolaget når et bygg står ferdig.
+- Elvebyen har elvelyd og fugler, Palmeøyen har bølger og vind, og Månebasen har dempet ventilasjon og radioglimt. Byggene har egne lydsignaler når de velges.
+- Privathusene har en sportsbil i Elvebyen, en klassisk kabriolet på Palmeøya og en svevebil med gullhjelmet astronaut på Månebasen. Kabrioleten kjører også i gatene på Palmeøya.
+- Bussen svinger inn og stopper på terminalen. Brannbilen bruker oppkjørselen, og hvert kart får en politistasjon med patruljebil og blålys.
+- Trikken dekker flere kvartaler når øyen vokser. T-banenedgangene ligger langs gaten, og tog kan gå under kvartalene. Båter og annet på vannet skjules mens de passerer under brudekket.
+- Flyplassene har dekker med mer tekstur. Laguneressorten prioriterer sørkysten. Fyrene har avstand til andre bygg, og Elvebyen og Palmeøya får hvert sitt steinfyr.
+- Pikselpalasset, Kveldskinoen, Kulturhuset, Biblioteket, Elvekatedralen og kasinoene har nye modeller. Elvebyen beholder rådhuset som startbygg, og den tidligere rådhusplassen blir Elveby tinghus. Campingplassen er større, og de plasskrevende byggene søker tomter i utkanten.
+- Framgangen lagres videre. Kart som er bygget fra før kan få enkelte bygg og veier på nye steder når tomtene beregnes på nytt.
 
 ## Nytt i 1.40.0
 

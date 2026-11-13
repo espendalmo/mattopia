@@ -31,119 +31,55 @@ function phrase(t,notes,beat) {
     (wave(age,pitch)*.53+wave(age,pitch*2)*.17+wave(age,pitch*.5)*.24);
 }
 
-function waltz(t) {
-  const beat=.38;
-  const melody=phrase(t,[523,659,784,698,659,587,523,392,494,523,659,784,880,784,698,659,587,523],beat);
-  const index=Math.floor(t/beat);
-  if (index<0||index>=18) return 0;
-  const age=t-index*beat;
-  const root=[130.81,130.81,146.83,98,130.81,98][Math.floor(index/3)];
-  const chord=index%3===0?wave(age,root)*.54:(wave(age,root*3)*.34+wave(age,root*4)*.19);
-  return melody*.68+unit(age*38)*Math.exp(-age*10)*chord;
-}
-
-const jazzNotes=[392,466,523,587,554,523,466,392,349,392,466,523,0,466,392,349,392,0];
-const jazzBass=[130.81,155.56,164.81,174.61,146.83,130.81,98,130.81];
-const cubanNotes=[523,659,0,784,698,659,0,587,698,0,880,784,698,659,587,523,0,659,784,0,698,659,587,523];
-const claveHits=[0,.324,.648,1.08,1.404];
-
-const jazzPhrases=[jazzNotes,
-  [523,0,622,587,523,466,440,466,392,0,349,392,466,440,392,0,349,0],
-  [349,392,415,440,466,523,587,523,0,466,415,392,349,392,466,392,349,0],
-  [392,466,0,523,466,0,349,392,440,523,554,523,466,392,349,330,349,0]];
-const islandPhrases=[cubanNotes,
-  [659,0,784,880,784,0,659,587,659,784,0,1047,988,880,784,698,0,659,698,0,784,659,587,523],
-  [392,523,0,659,587,523,698,0,784,880,0,784,659,523,587,659,0,523,587,698,659,0,587,523],
-  [784,0,698,659,523,0,587,659,784,0,880,988,880,784,698,0,659,587,0,698,659,587,523,0]];
-const moonPhrases=[
-  [220,261.63,329.63,293.66,261.63,196,220,0,329.63,392,329.63,261.63],
-  [196,246.94,293.66,369.99,0,329.63,293.66,220,246.94,196],
-  [261.63,392,349.23,293.66,329.63,392,0,440,392,349.23,293.66,261.63],
-  [164.81,246.94,329.63,0,311.13,246.94,196,220,261.63,196,164.81],
-];
-function jazz(t,mid,variation) {
-  if (t<0||t>=7.6) return 0;
-  const beat=t%.46,index=Math.floor(t/.46);
-  const offbeat=beat>=.306;
-  const age=offbeat?beat-.306:beat;
-  const notes=jazzPhrases[variation];
-  const melody=notes[(index+(offbeat?1:0))%notes.length];
-  const lead=unit(age*42)*Math.exp(-age*7)*(wave(age,melody)*.57+wave(age,melody*2)*.15);
-  const root=jazzBass[index%jazzBass.length];
-  const bass=unit(beat*34)*Math.exp(-beat*10)*(wave(beat,root)*.52+wave(beat,root*2)*.19);
-  const brush=mid*unit(age*45)*Math.exp(-age*14)*(index%2?.62:.25);
-  return (lead*.7+bass*.57+brush)*unit((7.6-t)*3);
-}
-
-function salsa(t,mid,variation) {
-  if (t<0||t>7.6) return 0;
-  const figure=phrase(t-.13,islandPhrases[variation],.216);
-  const bar=t%1.728;
-  const bassAge=bar<.648?bar:bar-.648;
-  const root=Math.floor(t/1.728)%2?98:130.81;
-  const bass=(wave(bassAge,root)*.49+wave(bassAge,root*1.5)*.18)*unit(bassAge*40)*Math.exp(-bassAge*8);
-  const claveAge=claveHits.reduce((age,hit)=>bar>=hit?Math.min(age,bar-hit):age,1);
-  const clave=(wave(claveAge,1160)+mid*.78)*Math.exp(-claveAge*85)*unit(claveAge*430);
-  return (figure*.84+bass*.62+clave*.25)*unit((7.6-t)*2);
-}
-
-function moonPhrase(t,variation) {
-  if (t<0||t>7.5) return 0;
-  const note=phrase(t,moonPhrases[variation],.59);
-  const glide=(208+variation*29)*t+19*Math.sin(t*(1.55+variation*.19))+.085*Math.sin(t*31);
-  const halo=Math.sin(TAU*glide)*Math.sin(Math.PI*t/7.5)**2*.2;
-  return note*.42+halo;
-}
-
-export function ambienceBuffer(context,world,buildings,{fun=0,wheel=false,hotel=false}={}) {
+export function ambienceBuffer(context,world,buildings) {
   const loopLength=loopLengths[world]??48;
-  const birds=world==='city'?[[1.9,1550],[2.16,1790],[17.4,1850],[17.69,1580],[34.33,1710]]
-    :world==='island'?[[6.2,1220],[19.6,1360],[36.7,1530],[39.1,1480]]:[];
-  const starts=world==='moon'?[3.5,18,34,49]:world==='island'?[3.5,15.5,28,42]:[3.5,14,25,39];
+  const birds=world==='city'?[[2.3,1520],[2.53,1720],[17.4,1830],[17.69,1560],[34.33,1630],[42.1,1320]]
+    :world==='island'?[[6.2,1210],[6.58,960],[21.4,1330],[36.7,1510],[39.1,1180],[52.9,1390]]:[];
+  const gust=(t,center,length)=>Math.exp(-(((t-center)/length)**2));
   return synthesize(context,loopLength,(t,noise,low,mid)=>{
-    const variation=t>=starts[3]?3:t>=starts[2]?2:t>=starts[1]?1:0;
-    const age=t-starts[variation];
-    let bed,music;
+    let bed;
     if (world==='island') {
-      const swell=.18+.82*(.5-.5*Math.cos(t*TAU/7))**2;
-      bed=swell*(low*1.66+mid*.47+noise*.19);
-      music=(hotel?.57:.47)*salsa(age,mid,variation);
+      const waveBreak=.18+.82*(.5-.5*Math.cos(t*TAU/7))**2;
+      const shore=waveBreak*(low*.82+mid*.44+noise*.072);
+      const palms=(gust(t,13,3.5)+gust(t,31,4.1)+gust(t,48,3.5))*(mid*.24+low*.14);
+      bed=shore+palms;
     } else if (world==='moon') {
-      bed=low*.36+mid*.07+.065*wave(t,56)*(.8+.2*Math.cos(t*TAU/12));
-      music=.73*moonPhrase(age,variation);
+      // Ventilation and brief bursts of radio static from inside the base.
+      const fans=.57+.27*wave(t,1/20)+.13*wave(t,1/7.5);
+      const radio=(gust(t,11,.31)+gust(t,11.61,.22)+gust(t,27,.27)+gust(t,46,.4)+gust(t,46.8,.24));
+      bed=fans*(low*.51+mid*.055+wave(t,47)*.023+wave(t,51)*.016)
+        +radio*(mid*.21+noise*.025);
     } else {
-      const breeze=.67+.33*wave(t,1/12);
-      const river=.49+.28*wave(t,1/3.5);
-      bed=breeze*(low*.73+mid*.12)+river*(mid*.41+noise*.045);
-      music=.55*jazz(age,mid,variation);
+      const breeze=.38+.25*wave(t,1/16)+.13*wave(t,1/4.8);
+      const ripples=.44+.28*wave(t,1/3.9);
+      const street=(gust(t,8,2.5)+gust(t,29,3.2)+gust(t,43,1.5))*buildings*.033;
+      bed=breeze*low*.54+ripples*(mid*.36+noise*.018)+street*low;
     }
-    for (const [at,pitch] of birds) bed+=.085*chirp(t-at,world==='island'?.3:.15,pitch);
-    const passes=(.4+.32*wave(t,1/8)+.23*wave(t,3/16))**2;
-    const street=buildings*.043*passes*(low*1.2+mid*.12);
-    const fairAge=t-(world==='city'?33:36);
-    const fair=world==='moon'?0:wheel?.19*waltz(fairAge)*unit((5.6-fairAge)*2)
-      :fun?.105*phrase(fairAge,[392,523,659,784,659,698,587,523],.31):0;
-    return (bed+street+music+fair)*Math.min(1,t*3,(loopLength-t)*3);
+    for (const [at,pitch] of birds) {
+      if (t>=at&&t<at+.33) bed+=(world==='island'?.061:.077)*chirp(t-at,world==='island'?.32:.17,pitch);
+    }
+    return bed*Math.min(1,t*3,(loopLength-t)*3);
   });
 }
 
 export const ACTIVITY_SOUNDS=Object.freeze({
-  rocket:[2.25,.055,4],
-  plane:[2.8,.058,4],
-  helicopter:[3.45,.057,5],
-  train:[1.9,.058,5],
+  rocket:[2.25,.042,8],
+  plane:[2.8,.044,10],
+  helicopter:[3.45,.04,12],
+  train:[1.9,.046,10],
   'tram-bell':[.65,.24,0],
   'train-start':[.76,.18,0],
   'monorail-start':[.59,.17,0],
-  horn:[.52,.085,12],
+  horn:[.52,.064,16],
+  'blue-lights':[1.15,.078,8],
   'queue-horn':[.55,.085,1.9],
   monorail:[1.65,.052,5],
-  traffic:[1.45,.047,6.5],
-  rover:[1.65,.045,7.5],
+  traffic:[1.45,.031,11],
+  rover:[1.65,.028,13],
   people:[1.63,.145,9],
   astronaut:[1.55,.14,11],
   alien:[1.57,.145,13],
-  'ride-cheer':[1.45,.2,7],
+  'ride-cheer':[1.45,.13,16],
 });
 
 const syllables={
@@ -166,16 +102,16 @@ function voices(t,kind) {
 
 const buildingKinds={
   birds:['park','garden','greatPark','palmGarden','camp','beachCamp','biodome','moonGarden'],
-  water:['pool','tropicalPools','beachClub','dock','pier','quay','marina','bridge','lighthouse','tank'],
+  water:['pool','tropicalPools','beachClub','dock','pier','quay','marina','bridge','lighthouse','stoneLighthouse','tank'],
   flight:['airport','airstrip','hangar','shuttlePort','launch','rocketPort','orbitalPort'],
   rail:['railwayStation','tramStation','monorailStation'],
-  motor:['roverGarage','hoverDealer','busStation'],
-  clock:['school','church','hall','bank','prison','bookHall'],
-  fair:['wheel','coaster','cinema','nightCinema','bandstand','dance','casino','riverSlides','mangoSlides','dustSlides'],
+  motor:['roverGarage','hoverDealer','busStation','fireStation','policeStation'],
+  clock:['school','church','hall','bank','prison','bookHall','library','courthouse'],
+  fair:['wheel','coaster','cinema','nightCinema','cultureHouse','bandstand','dance','casino','riverSlides','mangoSlides','dustSlides'],
   arcade:['arcade','lunarArcade','islandArcade'],
   crowd:['field','spaceField','fitness','square','market','tropicalMarket'],
   work:['mill','factory','sawmill','moonWorkshop','moonCargo','oxygen','generator','refinery','supplyDepot','cargoDepot'],
-  signal:['solar','solarGarden','telescope','telescopeArray','craterLab','radioTower','lunarRadio','prismTower','novaTower','haloTower'],
+  signal:['solar','solarGarden','telescope','telescopeArray','craterLab','radioTower','broadcastHouse','lunarRadio','prismTower','novaTower','haloTower'],
   dining:['restaurant','bistro','coralCafe','tikiBar','dustCafe','moonBurger','cosmicIce','needleTower'],
   hotel:['hotel','resort','sunsetHotel','moonHotel','auroraHotel','megaResort','glassHotel','lunarResort'],
 };
@@ -224,7 +160,7 @@ export function buildingClip(context,world,index,kind) {
         cue=chirp(t-.035,.17,1530*pitch)+.66*chirp(t-second,.20,1840*pitch)+low*swell*.38;
         break;
       case 'water':
-        cue=swell*(low*1.6+mid*.55+noise*.12)+.48*pluck(t,second,kind==='lighthouse'?204:670,7);
+        cue=swell*(low*1.6+mid*.55+noise*.12)+.48*pluck(t,second,kind?.toLowerCase().endsWith('lighthouse')?204:670,7);
         break;
       case 'flight':
         cue=swell*(low*1.6+mid*.58+.5*wave(t,(world==='moon'?57:119)*pitch*(1+.85*t)));
@@ -315,6 +251,10 @@ export function soundClip(context,kind) {
       const call=(age,frequency)=>age<0?0:unit(age*45)*unit(((moon?.14:.25)-age)*15)*
         (wave(age,frequency)*.62+wave(age,frequency*(moon?2:1.26))*.29);
       return call(t-.014,moon?660:174)+call(t-(moon?.18:.29),moon?850:196)*.88;
+    }
+    if (kind==='blue-lights') {
+      const rate=wave(t,1.85),siren=wave(t,475+65*rate)+.24*wave(t,950+120*rate);
+      return pass*siren*.53;
     }
     if (kind==='horn'||kind==='queue-horn') {
       const toot=age=>age<0?0:unit(age*105)*unit((.16-age)*27)*(wave(age,392)*.63+wave(age,512)*.31+wave(age,783)*.13);

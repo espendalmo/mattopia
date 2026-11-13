@@ -1,4 +1,5 @@
 import {residentPoint,residentNormal,lunarSurfaceY} from './scene-motion.js';
+import {EMERGENCY_LIGHT} from './scenery.js';
 
 function triangleDepth(point,a,b,c) {
   const [x,y]=point;
@@ -18,6 +19,7 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
     if ((!face.entity&&!Number.isInteger(face.landmark))||face.group===1&&effects.growth===0) return [];
     const actor=face.group>=2?effects.actors?.[face.group-2]:null;
     if (actor?.y< -150) return [];
+    if (face.life?.[3]===-1&&!actor?.thrust||face.life?.[3]===EMERGENCY_LIGHT&&actor?.thrust!==2) return [];
     let [nx,ny,nz]=residentNormal(face.normal,face.life,effects.age);
     const tilt=actor?.pitch??0,up=Math.cos(tilt),along=Math.sin(tilt);
     if (actor) {

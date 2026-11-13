@@ -3,16 +3,16 @@ import assert from 'node:assert/strict';
 import { freshState, restoreState } from '../core.js';
 import { selectRewardMode, prepareReward, awardPractice } from '../rewards.js';
 import { PROJECTS, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from '../projects.js';
-import { projectFaces, buildMotion, projectCameras, finishTransition, rasterizeLunarTerrain } from '../project-view.js';
-import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite } from '../scenery.js';
-import { AIRPORT_HELIPAD, REGIONAL_HELIPAD, districtRail } from '../transport.js';
+import { projectFaces, buildMotion, projectCameras, finishTransition, rasterizeLunarTerrain, underBridge } from '../project-view.js';
+import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite, WASH_BAY } from '../scenery.js';
+import { AIRPORT_HELIPAD, REGIONAL_HELIPAD, districtRail, districtTram } from '../transport.js';
 import {landmarkAt} from '../project-picking.js';
 import {seasonForDate} from '../seasons.js';
 import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, RESIDENCE_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
-import {planRegion,regionLayout,regionalFootprint,regionalPoint,regionSurface,regionVisibility,residenceDrive,riverAt,riverWidth} from '../regions.js';
+import {insideIslandBelt,planRegion,regionLayout,regionalFootprint,regionalPoint,regionSurface,regionVisibility,residenceDrive,riverAt,riverWidth,roadElevation} from '../regions.js';
 import {planStreetRegion,STREET_TURN_RADIUS} from '../street-grid.js';
 import {joinStreetPaths,streetNetwork,destinationRoutes,roadProjections} from '../street-network.js';
-import {prepareRoadTunnels,regionRoads,roundedStreetPaths,streetHalfWidth} from '../region-roads.js';
+import {prepareRoadGrades,prepareRoadTunnels,regionRoads,roundedStreetPaths,streetHalfWidth} from '../region-roads.js';
 
 test('A completed round adds one step to the selected project and preserves other rewards', () => {
   let state = freshState();
@@ -174,13 +174,16 @@ test('An automatic river crossing has a separate deck, rails and piers', () => {
   const layout=regionLayout('city',6163);
   const z=layout.berths.bridge.z+23,x=riverAt(layout,z);
   const path=Array.from({length:19},(_,i)=>({x:x+i-9,z}));
-  const parts=regionRoads(layout,{paths:[path]});
+  const covers=[];
+  const parts=regionRoads(layout,{paths:[path]},false,covers);
   const deck=parts.filter(part=>part.color==='#9f8775');
   assert.ok(deck.length>=4);
   assert.ok(deck.every(part=>part.layer===4&&Math.abs(part.x-x)<riverWidth(layout,z)+2));
   assert.ok(parts.some(part=>part.color==='#647686'));
   assert.ok(parts.some(part=>part.shape==='beam'&&part.color==='#efdbc2'));
   assert.ok(parts.some(part=>part.color==='#997f78'&&part.y<=0));
+  assert.ok(underBridge({x,z},covers));
+  assert.ok(!underBridge({x,z:z+3},covers));
 });
 
 test('A construction site shows its neighborhood and only a finished ride animates', () => {
@@ -203,6 +206,7 @@ test('A construction site shows its neighborhood and only a finished ride animat
   assert.equal(result.detail.anchorX,building.latestTarget.x);
   assert.equal(result.detail.anchorZ,building.latestTarget.z);
   assert.ok(after.detail.zoom>after.context.zoom);
+  assert.ok(Math.abs(after.detail.zoom-projectCameras(finished,finished.latestTarget).detail.zoom*.8**2)<.0001);
   assert.equal(after.detail.yaw,before.detail.yaw);
   assert.equal(projectCameras(projectScene('armor',4)).initial.yaw,projectScene('armor',4).yaw);
   assert.equal(finishTransition(0).travel,0);
@@ -267,6 +271,8 @@ test('The city pier and red bridge are sited on the river, and the boat arrives 
   assert.equal(bridge.x,riverAt(layout,bridge.z));
   assert.ok(bridge.span>2*riverWidth(layout,bridge.z));
   assert.equal(regionSurface(layout,pier.x+3.1*Math.sin(pier.yaw),pier.z+3.1*Math.cos(pier.yaw)).water,true);
+  assert.ok(underBridge(bridge,scene.waterCovers));
+  assert.ok(!underBridge({...bridge,z:bridge.z+5},scene.waterCovers));
   assert.ok(projectScene(id,{...map,progress:18}).ambient.length>scene.ambient.length);
 });
 
@@ -642,13 +648,50 @@ test('Growing railway districts can add a real lower rail segment and a surface 
     assert.ok(rail.parts.some(part=>part.railWalkway));
     assert.ok(rail.surfaceStops.length);
     assert.ok(rail.surfaceStops.every(stop=>stop.parts.some(part=>part.platformStair)));
-    assert.equal(rail.walkers.length,rail.undergroundStops.length);
-    const descent=Array.from({length:300},(_,i)=>actorPose(rail.walkers[0],i*.1));
+    const subwayPassengers=rail.walkers.filter(actor=>actor.transitPassenger==='subway');
+    assert.equal(subwayPassengers.length,rail.undergroundStops.length);
+    const descent=Array.from({length:300},(_,i)=>actorPose(subwayPassengers[0],i*.1));
     assert.ok(descent.some(p=>p.y> -150&&p.y<regionSurface(layout,p.x,p.z).y-.22));
     assert.ok(descent.some(p=>p.y< -150));
     const samples=Array.from({length:980},(_,i)=>actorPose(rail.actors[0],i*.1));
     assert.ok(samples.some((point,i)=>i>0&&point.y< -500&&point.x===samples[i-1].x&&point.z===samples[i-1].z));
     assert.ok(samples.some(point=>point.y>1&&point.sound));
+  }
+});
+
+test('Lagunehagen’s walkway is above the lawn in the preview and on the finished map',()=>{
+  const fresh=freshWorld(()=>6163/2**32),index=41;
+  const map={...fresh,order:[0,3,index],progress:9};
+  assert.equal(worldBuilding('island',index,map).name,'Lagunehagen');
+  const preview=worldBuildingPreview('island',index,map);
+  const scene=projectScene('island',map);
+  for (const parts of [preview.parts,scene.parts.filter(part=>part.landmark===index)]) {
+    const lawn=parts.find(part=>part.color==='#95ae76'&&part.w>9);
+    const path=parts.filter(part=>part.color==='#e6c995');
+    assert.equal(path.length,7);
+    assert.ok(path.every(part=>part.y+part.h>=lawn.y+lawn.h+.045));
+    assert.ok(projectFaces({parts:path,latest:[]}).filter(face=>face.normal[1]>.99).length===path.length);
+  }
+});
+
+test('Passengers climb from the street level to their train, monorail or tram platforms',()=>{
+  for (const [theme,service] of [['city','train'],['moon','monorail'],['island','tram']]) {
+    const fresh=freshWorld(()=>6163/2**32),map={...fresh,order:[0,3,RAIL_PLACE],progress:9};
+    const scene=projectScene(theme,map);
+    const walkers=scene.ambient.filter(actor=>actor.transitPassenger===service);
+    assert.ok(walkers.length>=2,theme);
+    assert.ok(!projectScene(theme,{...map,progress:8}).ambient.some(actor=>actor.transitPassenger));
+    assert.ok(new Set(walkers.map(actor=>actor.characterSlot)).size===walkers.length);
+    for (const walker of walkers) {
+      const points=Array.from({length:550},(_,i)=>actorPose(walker,i*.1));
+      assert.ok(points.every(p=>Object.values(p).every(Number.isFinite)));
+      const visible=points.filter(point=>point.y>-150);
+      assert.ok(visible.some((point,i)=>i>=15&&point.y-visible[i-15].y>.55));
+      assert.ok(visible.some((point,i)=>i>=15&&visible[i-15].y-point.y>.55));
+      const highest=Math.max(...visible.map(point=>point.y));
+      assert.ok(visible.some((point,i)=>i>=15&&point.stride===0&&point.y>highest-.08
+        &&point.x===visible[i-15].x&&point.y===visible[i-15].y&&point.z===visible[i-15].z));
+    }
   }
 });
 
@@ -698,6 +741,12 @@ test('Residences get a dry, road-connected garden without displacing earlier plo
     const {parts}=worldBuildingPreview(theme,RESIDENCE_PLACE,map);
     assert.ok(parts.some(p=>p.shape==='tube'&&p.w>3&&p.z< -5));
     assert.ok(parts.filter(p=>p.z< -7&&p.h>.7&&p.w<.25).length>20);
+    const vehicles=[...new Set(parts.flatMap(p=>p.parking?[p.parking.kind]:[]))];
+    assert.deepEqual(vehicles,theme==='city'?['sport','compact']:theme==='island'?['classic','compact']:['hover','rover']);
+    if (theme==='moon') {
+      assert.ok(parts.some(p=>p.parking?.kind==='hover'&&p.characterKind==='astronaut'&&p.color==='#e7b75a'));
+      assert.ok(!parts.some(p=>p.parking?.kind==='hover'&&p.characterKind==='alien'));
+    }
   }
 });
 
@@ -775,6 +824,128 @@ test('Tram stops along its loop and the city airport opens a flight path',()=>{
   const city={...base,order:[0,3,37]};
   assert.ok(projectScene('city',city).ambient.some(actor=>actor.kind==='plane'));
   assert.ok(!projectScene('city',{...city,progress:8}).ambient.some(actor=>actor.kind==='plane'));
+});
+
+test('The tram serves several blocks after the island grows beyond its starter streets',()=>{
+  const theme='island',seed=83291,map=freshWorld(()=>seed/2**32);
+  const order=[...new Set([0,3,RAIL_PLACE,...worldChoices(map,theme)])];
+  const layout=regionLayout(theme,seed,true,LARGE_REGION_PLACES);
+  assert.ok(layout.beachResort.south&&layout.beachResort.z>Math.abs(layout.beachResort.x)*.8);
+  const routeLength=count=>{
+    const plan=planStreetRegion(layout,order.slice(0,count).map(index=>({index,kind:worldBuilding(theme,index,map).kind})),
+      LARGE_REGION_PLACES,{starter:true});
+    const depot=plan.plots.find(plot=>plot.kind==='tramStation');
+    const {points}=districtTram(layout,depot,plan);
+    assert.ok(points.every(({x,z})=>insideIslandBelt(layout,plan.starter,x,z)&&!regionSurface(layout,x,z).water));
+    return points.slice(1).reduce((sum,point,i)=>sum+Math.hypot(point.x-points[i].x,point.z-points[i].z),0);
+  };
+  assert.ok(routeLength(20)>routeLength(3)*1.45);
+});
+
+test('The tram can extend across inland neighborhoods while waterfront streets open',()=>{
+  const theme='island',seed=4294967295,map=freshWorld(()=>seed/2**32);
+  const order=[...new Set([0,3,RAIL_PLACE,...worldChoices(map,theme)])].slice(0,25);
+  const scene=projectScene(theme,{...map,order,progress:order.length*3});
+  const layout=regionLayout(theme,seed,true,LARGE_REGION_PLACES);
+  const tram=scene.ambient.find(actor=>actor.kind==='tram');
+  const samples=Array.from({length:700},(_,i)=>actorPose(tram,i*.2));
+  assert.ok(samples.every(({x,z})=>insideIslandBelt(layout,scene.discoveries.headquarters,x,z)&&!regionSurface(layout,x,z).water));
+  assert.ok(Math.max(...samples.map(p=>p.x))-Math.min(...samples.map(p=>p.x))>29);
+  assert.ok(scene.parts.filter(part=>part.railStop).length>=15);
+});
+
+test('A station vehicle leaves its yard, uses the streets and returns to the bay',()=>{
+  const order=[26,9,51,RESIDENCE_PLACE];
+  const map={...freshWorld(()=>6163/2**32),order,progress:order.length*3,residenceName:'Ada'};
+  const scene=projectScene('city',map);
+  const services=scene.ambient.flatMap((actor,index)=>actor.service?[[index,actor.service]]:[]);
+  assert.deepEqual(services.map(([,kind])=>kind).sort(),['busStation','fireStation','policeStation']);
+  const run=createTraffic(scene.ambient,scene.junctions,scene.trafficObstacles,scene.roadworks);
+  const start=run(0),away=new Set(),returned=new Set(),lights=new Set();
+  for (const [index] of services) {
+    const {bay}=scene.ambient[index].parking;
+    assert.equal(start[index].y,bay.y);
+    assert.equal(start[index].pitch,0);
+    assert.equal(start[index].cos,Math.cos(bay.yaw));
+  }
+  for (let frame=1;frame<=4500&&returned.size<services.length;frame++) {
+    const poses=run(frame/30);
+    for (const [index,kind] of services) {
+      const {x,z,y,thrust}=poses[index];
+      if (y< -150) continue;
+      const distance=Math.hypot(x-start[index].x,z-start[index].z);
+      if (distance>6) away.add(kind);
+      if (distance<.00001&&away.has(kind)&&poses[index].sound===0) {
+        assert.equal(y,start[index].y);
+        assert.equal(poses[index].pitch,0);
+        returned.add(kind);
+      }
+      if (thrust===2) lights.add(kind);
+    }
+  }
+  assert.equal(returned.size,services.length);
+  assert.deepEqual([...lights].sort(),['fireStation','policeStation']);
+});
+
+test('All three maps offer a car wash with a timed stop, rising bubbles and an exit to the street',()=>{
+  for (const [theme,index,model] of [['city',53,'compact'],['moon',50,'rover'],['island',53,'classic']]) {
+    const fresh=freshWorld(()=>6163/2**32);
+    assert.ok(worldBuildingOptions(theme,{...fresh,order:[0,1,2,3,4],progress:15}).includes(index));
+    const map={...fresh,order:[0,3,index],progress:9};
+    assert.ok(!projectScene(theme,{...map,progress:8}).ambient.some(actor=>actor.carWash||actor.washBubble));
+    const scene=projectScene(theme,map),site=scene.landmarks[index];
+    const driver=scene.ambient.findIndex(actor=>actor.carWash);
+    const vehicle=scene.ambient[driver];
+    assert.equal(vehicle.vehicleModel,model);
+    const particles=scene.ambient.flatMap((actor,i)=>actor.washBubble?[i]:[]);
+    assert.ok(particles.length>=3);
+    const move=createTraffic(scene.ambient,scene.junctions,scene.trafficObstacles,scene.roadworks);
+    const local=({x,z})=>{
+      const a=x-site.x,b=z-site.z,c=Math.cos(site.yaw),s=Math.sin(site.yaw);
+      return [a*c-b*s,a*s+b*c];
+    };
+    const visit=[],bubbleHeight=[];
+    let left=false,back=false;
+    for (let i=0;i<3600&&!back;i++) {
+      const time=i/30,poses=move(time),car=poses[driver];
+      const [x,z]=local(car);
+      const bubbles=particles.filter(p=>poses[p].y>-150);
+      if (i===0) assert.equal(bubbles.length,0);
+      if (bubbles.length) {
+        assert.ok(Math.abs(x+WASH_BAY.lane)<.15&&Math.abs(z-WASH_BAY.stop)<.24);
+        visit.push(car);
+        if (poses[particles[0]].y>-150) bubbleHeight.push(poses[particles[0]].y);
+      }
+      if (visit.length&&x>WASH_BAY.lane-.5&&z>4.55) left=true;
+      const {bay}=vehicle.parking;
+      if (left&&Math.hypot(car.x-bay.x,car.z-bay.z)<.001) {
+        assert.equal(car.y,bay.y);
+        assert.equal(bubbles.length,0);
+        back=true;
+      }
+    }
+    assert.ok(visit.length>65&&back,theme);
+    assert.ok(visit.every(car=>car.x===visit[0].x&&car.y===visit[0].y&&car.z===visit[0].z));
+    assert.ok(Math.max(...bubbleHeight)-Math.min(...bubbleHeight)>1);
+    const saved=restoreState({...freshState(),roundsCompleted:9,worlds:{[theme]:[map]}});
+    assert.deepEqual(currentWorld(saved,theme),map);
+  }
+});
+
+test('The emergency vehicles sit behind an open garage door with a paved bay',()=>{
+  const map=freshWorld(()=>6163/2**32);
+  for (const [theme,index,front] of [['city',9,1.25],['city',51,1.075],['island',51,1.075],['moon',56,1.075]]) {
+    const {parts}=worldBuildingPreview(theme,index,map);
+    const car=parts.filter(part=>part.parking);
+    const {x,y,z}=car[0].parking;
+    assert.ok(z<front-1);
+    assert.ok(Math.max(...car.map(part=>part.z+(part.d??0)*.5))<front+.05);
+    const structure=parts.filter(part=>!part.parking&&part.shape==='box');
+    assert.ok(structure.some(part=>Math.abs(part.x-x)<.001&&Math.abs(part.y+part.h-y)<.001
+      &&Math.abs(z-part.z)<part.d*.5));
+    assert.ok(!structure.some(part=>Math.abs(part.x-x)<part.w*.5
+      &&Math.abs(front-part.z)<part.d*.5&&part.y<y+1.5&&part.y+part.h>y+.2));
+  }
 });
 
 test('Street traffic yields to a slower bus without overlapping or standing still permanently',()=>{
@@ -890,7 +1061,8 @@ test('Moon hovercars use starter roads before the dealership is built',()=>{
     const moon=projectScene('moon',{...map,order:[1],progress});
     const hover=moon.ambient.find(actor=>actor.kind==='hover');
     assert.ok(hover?.route.length>0);
-    assert.ok(hover.parts.some(part=>part.color==='#f1e8d7'&&part.x<0),'the driver sits at the left');
+    assert.ok(hover.parts.some(part=>part.characterKind==='astronaut'&&part.color==='#e7b75a'&&part.x<0),
+      'the astronaut with the gold helmet drives on the left');
     assert.ok(hover.parts.some(part=>part.color==='#a8df91'&&part.x>0),'the passenger sits at the right');
     assert.ok(!moon.landmarks[24]);
   }
@@ -914,6 +1086,44 @@ test('Road tunnel portals meet a level road shared by both traffic lanes',()=>{
     found=true;
   }
   assert.ok(found);
+});
+
+test('Road earthworks cut ridges, fill dips and keep both traffic lanes on the same roadbed',()=>{
+  const layout={theme:'moon',seed:42,phase:0,hills:[{x:0,z:0,w:3.4,d:4.5,h:4.5}],basins:[{x:24,z:0,w:4.6,d:4.9,h:4.4}]};
+  const paths=[[-10,10],[14,34]].map(([a,b])=>Array.from({length:21},(_,i)=>({x:a+i,z:0})));
+  const lot={x:1,z:3.5,yaw:0,halfWidth:1.1,halfDepth:1.1};
+  const plan={paths,plots:[lot]};
+  prepareRoadGrades(layout,plan);
+  const terrain=(x,z)=>regionSurface(layout,x,z).y;
+  const ground=(x,z)=>plan.streetGround(x,z,terrain(x,z));
+  assert.ok(ground(0,0)<terrain(0,0)-.7);
+  assert.ok(ground(24,0)>terrain(24,0)+.7);
+  assert.equal(ground(0,5),terrain(0,5));
+  assert.equal(ground(lot.x,lot.z),terrain(lot.x,lot.z));
+  assert.equal(plan.streetElevation(-10,0),roadElevation(layout,-10,0));
+  for (const x of [0,24]) for (const z of [-.87,.87]) {
+    assert.ok(Math.abs(plan.streetElevation(x,z)-plan.streetElevation(x,0))<.001);
+    assert.ok(ground(x,z)<plan.streetElevation(x,z));
+  }
+  const pavement=regionRoads(layout,plan).filter(part=>part.color==='#767d9d');
+  assert.ok(pavement.some(part=>part.outline.some(([x,y,z])=>Math.abs(x)<.001&&Math.abs(z)===1.22
+    &&Math.abs(y-plan.streetElevation(x,z))<.001)));
+});
+
+test('A raised rail line can cut through a short ridge without moving the station or distant ground',()=>{
+  const station={x:0,y:1,z:0,yaw:0,index:RAIL_PLACE,kind:'monorailStation',streetSpan:13.4};
+  const plan={origin:station,plots:[station],paths:[]};
+  const plain={theme:'moon',phase:0,seed:44,hills:[],basins:[]};
+  const normal=districtRail(plain,station,plan);
+  const {x,z}=normal.points.find(point=>Math.hypot(point.x,point.z)>19);
+  const layout={...plain,hills:[{x,z,w:2.8,d:2.9,h:5}]};
+  const rail=districtRail(layout,station,plan);
+  const natural=regionSurface(layout,x,z).y;
+  const track=rail.points.find(point=>Math.hypot(point.x-x,point.z-z)<.001);
+  assert.deepEqual(rail.points[0],normal.points[0]);
+  assert.ok(natural-rail.ground(x,z,natural)>.25);
+  assert.ok(track.y-rail.ground(x,z,natural)>.45);
+  assert.equal(rail.ground(0,12,1),1);
 });
 
 test('Transportation choices preview their vehicles and Palmeparken has one shared footprint shape',()=>{
@@ -1074,7 +1284,13 @@ test('Rovers and workshop cars leave their bays and park in the same place again
         const a=start[index],b=positions[index];
         const distance=Math.hypot(a.x-b.x,a.z-b.z);
         if (distance>5) away.add(index);
-        if (away.has(index)&&distance<.02&&b.sound===0) returned.add(index);
+        if (away.has(index)&&distance<.00001&&b.sound===0) {
+          assert.equal(b.y,a.y);
+          assert.equal(b.pitch,0);
+          assert.equal(b.cos,a.cos);
+          assert.equal(b.sin,a.sin);
+          returned.add(index);
+        }
       }
     }
     assert.equal(returned.size,parking.length);
@@ -1194,5 +1410,33 @@ test('Luna Grand Resort has its own large site and animated bathers inside the d
       assert.ok(Math.abs(across)<4.4&&along>.68&&along<5.1);
       assert.ok(y>site.y+.6&&y<site.y+.75);
     }
+  }
+});
+
+test('Luna Grand Resort and the dust lake share a reserved shoreline on different Moon maps',()=>{
+  for (const seed of [6163,83291,3920017217,4294967295]) {
+    const fresh=freshWorld(()=>seed/2**32);
+    const layout=regionLayout('moon',seed,true,LARGE_REGION_PLACES);
+    const {moonLake:lake,spaceResort:resort}=layout;
+    assert.ok(lake&&resort&&layout.regionalSites.includes(lake));
+    const center=regionSurface(layout,lake.x,lake.z);
+    assert.ok(center.moonLake&&center.bank< -4);
+    assert.equal(center.water,false);
+    const shoreGap=Math.hypot(lake.x-resort.x,lake.z-resort.z)-lake.d-resort.halfDepth;
+    assert.ok(shoreGap>1&&shoreGap<4);
+    const order=[0,3,55,44],map={...fresh,order,progress:12};
+    const plan=planStreetRegion(layout,order.map(index=>({index,kind:worldBuilding('moon',index,map).kind})),LARGE_REGION_PLACES,{starter:true});
+    const [entry]=plan.plots.find(plot=>plot.kind==='lunarResort').entries;
+    assert.ok(roadProjections(plan.paths,entry,.001).length);
+    assert.ok(plan.paths.flat().every(({x,z})=>{
+      const tile=regionSurface(layout,x,z);
+      return !tile.moonLake||tile.bank>=0;
+    }));
+    const scene=projectScene('moon',map);
+    assert.ok(scene.landmarks[55].spaceResort);
+    assert.equal(scene.landmarks[55].x,resort.x);
+    assert.equal(scene.landmarks[55].z,resort.z);
+    assert.equal(scene.discoveries['moon-lake'].name,'Månestøvsjøen');
+    assert.ok(scene.parts.filter(part=>part.entity==='moon-lake').length>24);
   }
 });

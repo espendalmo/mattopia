@@ -475,6 +475,11 @@ export function worldBuildingOptions(id,map,owner='') {
     available.splice(available.indexOf(driveThrough),1);
     available.unshift(driveThrough);
   }
+  const wash=id==='moon'?50:53;
+  if (worldStatus(map).built%8===5&&available.includes(wash)) {
+    available.splice(available.indexOf(wash),1);
+    available.unshift(wash);
+  }
   const slide=id==='moon'?48:44;
   if (worldStatus(map).built%6===1 && available.includes(slide)) {
     available.splice(available.indexOf(slide),1);
@@ -508,7 +513,7 @@ function regionLandmarkParts(id,index,site,map) {
       [...steps[2],...steps[3]], [...steps[4],...steps[5]],
     ];
   }
-  if (site?.waterfront&&custom?.[2]!=='lighthouse') return stages;
+  if (site?.waterfront&&!site.lighthouse) return stages;
   const kind=custom?.[2]??PLACES[id][index][1];
   stages=shapeLandmarkGround(detailFacades(stages,id,kind),kind);
   // Broad, thin surfaces stay in elevation order in the Canvas painter.

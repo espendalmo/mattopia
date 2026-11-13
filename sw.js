@@ -1,7 +1,7 @@
 const SCOPE = new URL('./', self.location.href);
 const INDEX = new URL('index.html', SCOPE);
 const PREFIX = `tallvenn:${SCOPE.pathname}:`;
-const VERSION = '1.40.0';
+const VERSION = '1.43.0';
 const CACHE = `${PREFIX}${VERSION}`;
 const ASSETS = ['./', './index.html', './style.css', './app.js', './i18n.js', './locale-nb.js', './core.js', './learning.js', './sound.js', './sound-art.js', './update.js', './rewards.js', './plants.js', './breaks.js', './profiles.js', './illustrations.js', './curriculum.js', './projects.js', './worlds.js', './regions.js', './street-grid.js', './street-network.js', './roadworks.js', './facades.js', './region-roads.js', './map-art.js', './map-life.js', './map-stories.js', './map-discoveries.js', './scene-motion.js', './lunar-architecture.js', './region-scenery.js', './world-landmarks.js', './slide-parks.js', './scenery.js', './transport.js', './project-view.js', './project-picking.js', './landmark-ground.js', './landmark-stories.js', './seasons.js', './project-fireworks.js', './manifest.webmanifest', './assets/icon.svg', './assets/moon-stars.svg', './assets/apple-touch-icon.png', './assets/icon-192.png', './assets/icon-512.png', './assets/icon-maskable.png'];
 let activationReady = Promise.resolve();
