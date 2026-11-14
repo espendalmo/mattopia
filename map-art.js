@@ -1,8 +1,9 @@
 import {isSlidePark,slideRiders} from './slide-parks.js';
 import {footballActors} from './map-life.js';
 import {box,rounded,tube,dome,beam,placeParts,pointOnSite,actor,coasterActor,visitor,swimmer} from './scenery.js';
+import {randomGenerator} from './worlds.js';
 import {regionSurface,regionalPoint,resortShore} from './regions.js';
-import {airportRunway,COASTER_TRACK,planeModel,lightPlaneModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
+import {airportRunway,COASTER_TRACK,WOOD_COASTER_TRACK,woodCoasterScale,planeModel,lightPlaneModel,shuttleModel,ROCKET_PAD,WHEEL_HUB} from './world-landmarks.js';
 
 const paint='#e3ae55';
 const rust='#bf8651';
@@ -98,9 +99,13 @@ export function rideModels(plot,stages) {
     const [x,y,z]=pointOnSite(WHEEL_HUB,plot);
     return [{kind:'wheel',x,y,z,yaw:plot.yaw,parts}];
   }
-  if (plot.kind==='coaster') {
-    const points=COASTER_TRACK.map(([x,y,z])=>pointOnSite([x,y+.11,z],plot));
-    return ['#da866a','#70aeb0'].map((color,i)=>coasterActor(coasterCarModel(color,true),points,.23+i*.039));
+  if (plot.kind==='coaster'||plot.kind==='woodCoaster') {
+    const wood=plot.kind==='woodCoaster';
+    const track=wood?WOOD_COASTER_TRACK:COASTER_TRACK;
+    const scale=wood?woodCoasterScale(plot):1;
+    const points=track.map(([x,y,z])=>pointOnSite([x*scale,y+.11,z],plot));
+    const colors=wood?['#af5141','#ad5742','#a74d3d']:['#da866a','#70aeb0'];
+    return colors.map((color,i)=>coasterActor(coasterCarModel(color,true,wood),points,wood?.14:.23+i*.039,{wood,car:i}));
   }
   if (plot.kind==='field'||plot.kind==='spaceField') return footballActors(plot);
   if (plot.kind==='lunarResort') return moonDustBathers(plot);
@@ -150,7 +155,18 @@ function moonDustBathers(plot) {
   });
 }
 
-export function coasterCarModel(color,passenger=false) {
+export function coasterCarModel(color,passenger=false,wood=false) {
+  if (wood) return [
+    rounded(0,0,.83,1.19,.23,color,.016),box(0,.32,.67,.46,.15,'#e8ca9e',.16),
+    box(0,.581,.59,.055,.099,'#d99462',.107),box(0,-.34,.63,.16,.24,'#d7b892',.217),
+    ...[-1,1].flatMap(side=>[
+      box(side*.363,0,.09,.94,.145,'#a04b3a',.161),box(side*.414,.035,.038,.65,.055,'#e8c486',.163),
+      ...[-.33,.33].map(way=>tube(side*.282,way,.16,.17,.17,'#454247',-.07,'x')),
+      ...(passenger?[rounded(side*.197,-.11,.26,.29,.24,side<0?'#608b88':'#b78868',.227),
+        dome(side*.197,-.12,.21,.22,.21,side<0?'#e8b98e':'#b47b5e',.44)]:[]),
+    ]),
+    box(0,.138,.65,.07,.062,'#525960',.345),
+  ];
   return [rounded(0,0,.68,.91,.24,color,.013),rounded(0,-.19,.64,.32,.19,'#f3dbb3',.22),
     box(0,.16,.57,.095,.12,'#596f7d',.13),
     ...(passenger?[rounded(0,-.1,.36,.32,.25,'#668f9a',.22),dome(0,-.09,.26,.28,.28,'#efc391',.44)]:[])];
@@ -172,6 +188,7 @@ const mealVisitors=[[-2.75,.54,3.28,Math.PI,true],[.13,.54,3.65,Math.PI,true],[2
 const campVisitors=[[1.63,.83,-.1,.12,true],[-.01,.42,2.3,-.42]];
 const hotelVisitors=[[-2.27,.35,2.63,.29],[.69,.35,3.91,-.67]];
 const VISITORS={
+  house:[[1.4,.36,2.9,-.35],[-1.35,.36,2.85,.36]],
   riverSlides:[[-3.25,.36,3.45,-.45]],mangoSlides:[[2.45,.36,3.56,-.45],[3.31,.36,3.34,-.42]],
   dustSlides:[[1.57,.36,3.08,-.58],[2.74,.36,3.32,-.55]],
   greatPark:parkVisitors,palmGarden:parkVisitors,moonGarden:parkVisitors,
@@ -210,18 +227,26 @@ const VISITORS={
   cargoDepot:[[-2.79,.35,3.78,-.42]],
 };
 
-export function landmarkVisitors(theme,plot) {
+export function landmarkVisitors(theme,plot,mobile,seed=0) {
   const positions=plot.residence?[[-4.53,.18,-4.94,.62],[3.3,.18,-6.66,-.65]]
     :VISITORS[plot.kind]??(plot.kind==='bridge'?[]:theme==='moon'?[[-2.1,.36,3.14,-.25],[1.53,.36,2.82,.4]]:[[1.4,.36,2.9,-.35]]);
+  const random=randomGenerator(seed^Math.imul(plot.index+1,0x716ac613));
+  const front=positions.length===2&&positions.every(([,y,z,,seated])=>!seated&&z>2&&y<.64)&&!plot.beach;
+  const count=front?Math.floor(random()*4):positions.length;
+  const placements=count===3&&front?[...positions,[(positions[0][0]+positions[1][0])*.5,.36,Math.max(...positions.map(p=>p[2]))+.65,.1]]:positions.slice(0,count);
   const outfits=['#ca8677','#6c9cb4','#e0b375','#8a80b0'];
   const skins=['#deae85','#aa765b','#ebbf91'];
   const deckX=plot.beach?1.5:1,deckZ=plot.beach?1.22:1;
-  const people=positions.flatMap(([u,y,v,yaw,seated],i)=>{
+  const people=placements.flatMap(([u,y,v,yaw,seated],i)=>{
     const x=u*deckX,z=v*deckZ;
     const kind=theme==='moon'?(i===1?'alien':'astronaut'):'human';
     const model=visitor(kind,outfits[(plot.index+i)%outfits.length],skins[(plot.index+i)%skins.length],seated,.83,(plot.index*3+i)%8);
     const [px,py,pz]=pointOnSite([x,y,z],plot);
-    return placeParts(model,{x,y,z,yaw}).map(part=>({...part,entity:`resident:${plot.index}:${i}`,life:[px,py,pz,1+plot.index*.87+i*2.3]}));
+    const entity=`resident:${plot.index}:${i}`;
+    if (mobile&&!seated&&!plot.residence&&plot.entries?.length&&z>1.6&&y<.65) {
+      mobile.push({plot,x:px,y:py,z:pz,yaw:yaw+plot.yaw,kind,entity,model});
+    }
+    return placeParts(model,{x,y,z,yaw}).map(part=>({...part,entity,life:[px,py,pz,1+plot.index*.87+i*2.3]}));
   });
   const pools=plot.kind==='megaResort'?[[-1.64,.65,2.52],[2.06,.65,2.83]]
     :plot.kind==='tropicalPools'?[[1.5,.65,-.93],[-1.72,.65,2.02]]
@@ -269,10 +294,11 @@ export function resortBeach(layout,plot) {
   // Boards and steps connect the sun deck to the sand.
   const shore=resortShore(layout,plot,0);
   if (shore!==null) {
-    const length=Math.max(1,shore-9.7);
+    const start=6.08;
+    const length=Math.max(1,shore-3.62-start);
     const count=Math.ceil(length/.65);
     for (let i=0;i<count;i++) {
-      const z=6.08+(i+.5)*length/count;
+      const z=start+(i+.5)*length/count;
       const deck=plot.y+.27;
       const site=ground(0,z);
       const y=Math.max(site.y,deck-(i+1)*.22);
@@ -291,7 +317,7 @@ export function resortBeach(layout,plot) {
     const visitor=actor(swimmer(['#dda97d','#b78464','#ebbe9c'][i],colors[i]),route,
       {kind:'swimmer',ground:.029,speed:.54+i*.08,phase:i*.31,corner:.47});
     if (visitor.route.segments.every(({x,z,dx,dz})=>[0,.5,1].every(t=>regionSurface(layout,x+dx*t,z+dz*t).water))) {
-      swimmers.push(visitor);
+      swimmers.push({...visitor,coastal:true,coastalSource:plot.index});
     }
   }
   return {parts,swimmers};

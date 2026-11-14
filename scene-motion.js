@@ -22,6 +22,15 @@ export function lightPulse(phase,seconds=0) {
   return 0;
 }
 
+export function clipAtRailPortal(points,{railClipX:nx,railClipZ:nz,railClipOffset:offset}) {
+  const distance=([x,,z])=>nx*x+nz*z+offset;
+  return points.flatMap((point,i)=>{
+    const next=points[(i+1)%points.length],a=distance(point),b=distance(next);
+    const crossing=(a<0)!==(b<0)?[point.map((v,j)=>v+(next[j]-v)*a/(a-b))]:[];
+    return a>=0?[point,...crossing]:crossing;
+  });
+}
+
 export function walkingClock(seconds,encounter) {
   if (!encounter||seconds<encounter.first) return {time:seconds,thinking:false};
   const {first,period,pause}=encounter;

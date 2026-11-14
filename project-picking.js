@@ -1,4 +1,4 @@
-import {residentPoint,residentNormal,lunarSurfaceY} from './scene-motion.js';
+import {residentPoint,residentNormal,lunarSurfaceY,clipAtRailPortal} from './scene-motion.js';
 import {EMERGENCY_LIGHT} from './scenery.js';
 
 function triangleDepth(point,a,b,c) {
@@ -28,7 +28,7 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
       [nx,nz]=[nx*actor.cos+nz*actor.sin,nz*actor.cos-nx*actor.sin];
     }
     if (nx*s*slope+ny*rise+nz*c*slope<=0) return [];
-    const project=point=>{
+    const transform=point=>{
       let [x,y,z]=residentPoint(point,face.life,face.stride??0,effects.age);
       if (actor) {
         const [px,py]=face.hinge??[x,y];
@@ -40,11 +40,17 @@ function visibleFaces(faces,{camera,scale,width,height,effects}) {
         [x,y,z]=[actor.x+x*actor.cos+z*actor.sin,actor.y+y+Math.max(0,step)*.58,actor.z+z*actor.cos-x*actor.sin];
       }
       if (face.group===1) y=effects.ground+(y-effects.ground)*effects.growth+effects.lift;
+      return [x,y,z];
+    };
+    const project=([x,y,z])=>{
       if (face.lunar) y=lunarSurfaceY(x,y,z,effects.curvature);
       const forward=x*s+z*c,top=y-camera.center;
       return [width*.5+camera.x+(x*c-z*s)*scale,height*.5+camera.y-(top*slope-forward*rise)*scale,top*rise+forward*slope];
     };
-    return [{landmark:face.landmark,key:face.entity??face.landmark,points:face.points.map(project),origin:face.origin?project(face.origin):null}];
+    const transformed=face.points.map(transform);
+    const clipped=actor?.railClipOffset===undefined?transformed:clipAtRailPortal(transformed,actor);
+    return clipped.length<3?[]:[{landmark:face.landmark,key:face.entity??face.landmark,
+      points:clipped.map(project),origin:face.origin?project(transform(face.origin)):null}];
   });
 }
 

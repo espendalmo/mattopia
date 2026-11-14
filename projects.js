@@ -485,6 +485,11 @@ export function worldBuildingOptions(id,map,owner='') {
     available.splice(available.indexOf(slide),1);
     available.unshift(slide);
   }
+  const featured=worldStatus(map).built%9===4?54:worldStatus(map).built%9===7?55:null;
+  if (id!=='moon'&&available.includes(featured)) {
+    available.splice(available.indexOf(featured),1);
+    available.unshift(featured);
+  }
   if (available.includes(RESIDENCE_PLACE)) {
     available.splice(available.indexOf(RESIDENCE_PLACE),1);
     available.splice(1,0,RESIDENCE_PLACE);

@@ -437,6 +437,7 @@ export function terrainDiscoveries(layout,plan,full) {
       const x=plan.origin.x+Math.cos(angle)*radius;
       const z=plan.origin.z+Math.sin(angle)*radius;
       if (Math.abs(x)>63||Math.abs(z)>61||regionVisibility(plan,x,z,full)<.66) continue;
+      if (layout.shoreWalkNear?.(x,z)?.gap<4.9) continue;
       if (finds.some(site=>Math.hypot(x-site.x,z-site.z)<7.3)) continue;
       if (plots.some(plot=>plot.residence?regionalFootprint(plot,x,z,type.mine?5:3.9)
         :Math.hypot(x-plot.x,z-plot.z)<(plot.airfield?15:(plot.span??9.1)))) continue;

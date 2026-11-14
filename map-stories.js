@@ -293,6 +293,13 @@ export const vehicleStories={
     'Har fått øye på en venn i en vindusrute. Vennen hermer hele tiden.',
     'Sjekker om noen har satt fram mat. Det er en veldig viktig fuglejobb.',
   ]],
+  seagull:[['Måken Skvalp','Kaptein Skrik','Måke-Maja','Frøken Pommes','Bris'],[
+    'Har fått øye på en pommes frites. Resten av middagen kan godt vente.',
+    'Følger etter seilbåten. Den har vinger, men hvorfor bruker den dem ikke?',
+    'Prøver å lande pent på en stolpe. Stolpen har stått helt stille under hele øvingen.',
+    'Leier ut måkeskrik til båter som har glemt tåkeluren.',
+    'Leter etter en stille strand. Skal bare rope på de andre først.',
+  ]],
   drone:[['Kartroboten Pip','Pip 7','Dronen Tutti','Lille Radar','Sveveskanneren'],[
     'Har tatt 42 bilder av sin egen antenne.',
     'Måler månestein. Har oppdaget at de er for store til å få plass i lommen.',

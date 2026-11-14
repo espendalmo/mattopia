@@ -3,7 +3,7 @@ import {box as b,rounded as r,dome as d,tube as t,roof,beam,worldSign,pointOnSit
 import {transitStation,helipadParts,REGIONAL_HELIPAD} from './transport.js';
 import {slidePark} from './slide-parks.js';
 import {detailFacades} from './facades.js';
-import {RESIDENCE_PLOT} from './regions.js';
+import {RESIDENCE_PLOT,WOOD_COASTER_PLOT} from './regions.js';
 
 const cream='#f3e5c8', stone='#c9bda6', dark='#344451', glass='#68a4ba', ice='#a1dae2';
 const brass='#e5bc68', teal='#347e81', rose='#c86173';
@@ -209,17 +209,18 @@ function harbor(theme,style) {
 function suspension(span=14.6) {
   const towers=span*.275, vermilion='#bd5553', highlight='#e68465', deck='#5c6879';
   const zRails=pair.map(s=>s*1.25);
+  const rise=1+Math.max(0,Math.min(11,span-17))*.026;
   return [
     pair.flatMap(s=>[r(s*towers,0,1.57,3.27,.52,'#a99992',-.53),...zRails.map(z=>b(s*towers,z,.64,.62,1.08,vermilion,-.32))]),
     [b(0,0,span,2.78,.36,vermilion,.04),b(0,0,span,2.49,.12,deck,.394),
-      ...pair.flatMap(s=>[...zRails.map(z=>r(s*towers,z,.54,.6,5.21,vermilion,.25)),
-        ...[2.32,4.27,5.27].map(y=>b(s*towers,0,.56,2.69,.27,highlight,y)),
-        ...zRails.map(z=>b(s*towers,z,.73,.76,.32,highlight,5.39))])],
+      ...pair.flatMap(s=>[...zRails.map(z=>r(s*towers,z,.54,.6,5.21*rise,vermilion,.25)),
+        ...[2.32,4.27,5.27].map(y=>b(s*towers,0,.56,2.69,.27,highlight,y*rise)),
+        ...zRails.map(z=>b(s*towers,z,.73,.76,.32,highlight,5.39*rise))])],
     [...zRails.flatMap(z=>{
       const points=Array.from({length:21},(_,i)=>{
         const x=(i/20-.5)*span;
         const y=Math.abs(x)<towers ? 1.83+3.87*(x/towers)**2 : 5.68-(Math.abs(x)-towers)/(span*.5-towers)*4.75;
-        return [x,y,z];
+        return [x,.65+(y-.65)*rise,z];
       });
       return [...points.slice(1).map((point,i)=>beam(points[i],point,.15,highlight)),
         ...points.filter((_,i)=>i>0&&i<20&&i%2===1).map(([x,y,z])=>beam([x,.56,z],[x,y,z],.06,'#f0a17f')),
@@ -283,6 +284,200 @@ function coaster() {
       b(2.04,3.63,3.33,.09,.10,'#d4a179',.89),
       ...palm(3.48,3.49,2.18),...palm(-4.34,-.79,2.19),...umbrella(1.03,-.28,'#e6bd75')],
   ];
+}
+
+// Leave the station on the straight, climb the main ridge, then dive into
+// a lower, parallel run. The return track passes below the lift twice.
+const WOOD_COASTER_TURNS=[
+  [4,1.27,6.13],[0,1.27,6.13],[-4.25,1.27,6.13],[-6.48,1.32,6.13],
+  [-8.12,1.66,5.61],[-9.16,2.41,4.42],[-9.27,3.42,3.08],[-8.38,4.55,1.87],
+  [-6.79,5.69,1.39],[-4.34,7.49,1.34],[-1.15,9.87,1.29],[2.16,11.77,1.13],
+  [4.90,12.48,.77],[6.79,12.07,.14],[7.87,11.25,-.89],[7.71,10.05,-1.94],
+  [6.57,8.79,-2.66],[4.01,6.98,-3.01],[.43,3.19,-3.10],[-3.10,1.46,-3.06],
+  [-5.93,2.11,-3.01],[-7.67,3.05,-3.49],[-8.42,3.98,-4.57],[-8.17,4.80,-5.71],
+  [-7,5.39,-6.31],[-4.72,6.37,-6.32],[-1.45,7.50,-6.22],[1.33,7.89,-6.19],
+  [4.05,6.46,-6.26],[6.66,3.95,-6.37],[8.47,3.24,-5.92],[9.39,3.17,-4.53],
+  [9.16,3.04,-3.19],[8.06,2.78,-.69],[5.97,2.69,.78],[3.08,2.54,.99],
+  [-.25,2.44,.84],[-2.93,2.34,.77],[-4.46,2.31,1.11],[-5.19,2.28,1.94],[-5.15,2.25,2.80],
+  [-4.31,2.19,3.74],[-2.82,2.11,4.02],[-.35,1.92,4.02],[2.70,1.73,3.90],
+  [5.38,1.58,3.30],[7.28,1.46,3.48],[8.33,1.38,4.46],[8.15,1.30,5.43],
+  [7.03,1.27,6.04],[5.53,1.27,6.13],
+];
+
+const trackDistance=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]);
+
+function coasterTrack(turns) {
+  const gap=(a,b)=>Math.sqrt(Math.hypot(a[0]-b[0],a[2]-b[2]));
+  const curve=turns.flatMap((point,i)=>{
+    const a=turns.at(i-1),b=turns[(i+1)%turns.length],c=turns[(i+2)%turns.length];
+    const left=gap(a,point),span=gap(point,b),right=gap(b,c);
+    // Centripetal Catmull–Rom preserves a continuous tangent through each turn.
+    const enter=point.map((v,j)=>span*((v-a[j])/left-(b[j]-a[j])/(left+span)+(b[j]-v)/span));
+    const exit=point.map((v,j)=>span*((b[j]-v)/span-(c[j]-v)/(span+right)+(c[j]-b[j])/right));
+    return Array.from({length:12},(_,k)=>{
+      const t=k/12,t2=t*t,t3=t2*t;
+      return point.map((v,j)=>(2*t3-3*t2+1)*v+(t3-2*t2+t)*enter[j]+(3*t2-2*t3)*b[j]+(t3-t2)*exit[j]);
+    });
+  });
+  const vertices=[...curve,curve[0]];
+  const distances=[0];
+  for (let i=1;i<vertices.length;i++) distances.push(distances[i-1]+trackDistance(vertices[i-1],vertices[i]));
+  const length=distances.at(-1),steps=Math.ceil(length/.45);
+  let segment=0;
+  return Array.from({length:steps},(_,i)=>{
+    const distance=i/steps*length;
+    while (distances[segment+1]<distance) segment++;
+    const t=(distance-distances[segment])/(distances[segment+1]-distances[segment]);
+    return vertices[segment].map((v,j)=>v+(vertices[segment+1][j]-v)*t);
+  });
+}
+
+export const WOOD_COASTER_TRACK=coasterTrack(WOOD_COASTER_TURNS);
+export const woodCoasterScale=site=>site?.streetSpan?Math.min(1,(site.streetSpan-2.65)/(WOOD_COASTER_PLOT.halfWidth*2)):1;
+
+function woodCoaster(theme,site) {
+  const island=theme==='island';
+  const timber='#9a6039',braces='#b47b4a',girder='#774b35',trim='#b35540',steel='#514c49';
+  const roofColor=island?'#3b8175':'#945245';
+  const {halfWidth,halfDepth}=WOOD_COASTER_PLOT;
+  const track=WOOD_COASTER_TRACK;
+  const frames=track.map(([x,y,z],i)=>{
+    const a=track.at(i-1),b=track[(i+1)%track.length];
+    const span=Math.hypot(b[0]-a[0],b[2]-a[2]);
+    const nx=(b[2]-a[2])/span,nz=(a[0]-b[0])/span;
+    return {x,y,z,at:(side,drop)=>[x+nx*side,y-drop,z+nz*side]};
+  });
+  const section=i=>frames[i%frames.length];
+  const tracks=frames.flatMap((frame,i)=>{
+    const next=section(i+1);
+    const deck=height=>[frame.at(-.49,height),next.at(-.49,height),next.at(.49,height),frame.at(.49,height)];
+    const top=deck(.185),bottom=deck(.335),outer=deck(.104);
+    const panel=(outline,color)=>{
+      const [x,y,z]=outline[0];
+      return {shape:'terrain',outline,color,x,y,z,h:0};
+    };
+    const rail=side=>{
+      const a=frame.at(side*.30-.044,.031),b=next.at(side*.30-.044,.031);
+      const c=next.at(side*.30+.044,.031),d=frame.at(side*.30+.044,.031);
+      return panel([a,b,c,d],steel);
+    };
+    return [panel(top,'#9b7657'),panel([bottom[0],outer[0],outer[1],bottom[1]],trim),
+      panel([bottom[2],outer[2],outer[3],bottom[3]],trim),...pair.map(rail),
+      beam(frame.at(-.51,.125),frame.at(.51,.125),.082,'#bd976c')];
+  });
+  // The threaded return track needs room for a car and a rider under the lift.
+  const passesBelow=(frame,other)=>frame.y>other.y+1.3&&Math.hypot(frame.x-other.x,frame.z-other.z)<2.05;
+  const framesAt=frames.filter((_,i)=>i%4===2);
+  const feetY=.42;
+  const topAt=(frame,side)=>frame.at(side*.51,.34);
+  const footAt=(frame,side,flare=.65+Math.min(.48,Math.max(0,frame.y-2.6)*.057))=>{
+    const [x,,z]=frame.at(side*flare,0);
+    return [x,feetY,z];
+  };
+  const verticalPost=(foot,top)=>{
+    const [x,,z]=foot;
+    return [b(x,z,.44,.44,.135,'#b7a291',.355),beam(foot,top,.19,timber)];
+  };
+  const clearPost=(foot,top,below)=>below.every(({x,y,z})=>{
+    const f=(y+.31-feetY)/(top[1]-feetY);
+    const a=foot[0]+(top[0]-foot[0])*f,c=foot[2]+(top[2]-foot[2])*f;
+    return Math.hypot(a-x,c-z)>.83;
+  });
+  const rackPost=(frame,below,side)=>{
+    const top=topAt(frame,side);
+    const foot=!below.length?footAt(frame,side):[1.04,1.37,1.79,2.26,2.68].map(flare=>footAt(frame,side,flare)).find(foot=>
+      Math.abs(foot[0])<halfWidth-.46&&Math.abs(foot[2])<halfDepth-.46&&clearPost(foot,top,below));
+    return foot?{foot,top}:null;
+  };
+  const atLevel=(foot,top,y)=>{
+    const f=(y-feetY)/(top[1]-feetY);
+    return foot.map((v,i)=>v+(top[i]-v)*f);
+  };
+  const racks=framesAt.map(frame=>{
+    const below=frames.filter(other=>passesBelow(frame,other));
+    return {opening:Math.max(.63,...below.map(other=>other.y+1.18)),
+      posts:pair.map(side=>rackPost(frame,below,side))};
+  });
+  const supports=racks.flatMap(({opening,posts},i)=>{
+    const next=racks[(i+1)%racks.length];
+    const frame=framesAt[i];
+    const girders=[beam(frame.at(-.51,.53),frame.at(.51,.53),.153,girder)];
+    const tiers=[opening];
+    for (let y=2.22;y<=frame.y-.68;y+=1.6) if (y>opening+.6) tiers.push(y);
+    const [left,right]=posts;
+    const timberwork=posts.flatMap((post,k)=>{
+      if (!post) return [];
+      const column=verticalPost(post.foot,post.top);
+      const peer=next.posts[k];
+      if (!peer) return column;
+      const first=Math.max(opening,next.opening);
+      const shared=[first,...tiers.slice(1).filter(y=>y>first+.60)].filter(y=>y<Math.min(post.top[1],peer.top[1])-.12);
+      const from=y=>atLevel(post.foot,post.top,y),to=y=>atLevel(peer.foot,peer.top,y);
+      return [...column,...shared.map(y=>beam(from(y),to(y),.135,timber)),
+        ...shared.slice(1).flatMap((y,j)=>[
+          beam(from(shared[j]),to(y),.105,braces),
+          ...((i+j)%3!==1?[beam(to(shared[j]),from(y),.105,braces)]:[]),
+        ])];
+    });
+    if (left&&right) for (const y of tiers.filter(y=>y<frame.y-.51)) {
+      timberwork.push(beam(atLevel(left.foot,left.top,y),atLevel(right.foot,right.top,y),.132,timber));
+    }
+    return [...girders,...timberwork];
+  });
+  const lift=frames.flatMap((frame,i)=>{
+    const next=section(i+1);
+    if (frame.y<2.45||next.y-frame.y<.19||i>frames.length*.40) return [];
+    return [beam(frame.at(-.64,.25),next.at(-.64,.25),.23,braces),
+      beam(frame.at(-.75,-.36),next.at(-.75,-.36),.072,timber),
+      ...(i%3===0?[beam(frame.at(-.75,.23),frame.at(-.75,-.38),.078,timber)]:[])];
+  });
+  const landscaping=island?'#849d68':'#829765';
+  const station=[
+    b(.36,6.70,7.22,.88,.83,'#b38660',.38),b(.36,6.69,7.32,.93,.085,'#eac494',1.16),
+    ...[-3.26,-1.32,.61,2.57,3.92].flatMap(x=>[-.71,1.02].map(z=>b(x,6.08+z,.17,.17,1.46,timber,1.18))),
+    {...roof(.34,6.18,2.15,7.56,.68,roofColor,2.57),angle:Math.PI/2},
+    ...pair.map(side=>b(.35,6.18+side*1.024,7.49,.095,.155,'#edcd9c',2.52)),
+    ...nameplate(island?'PALMESUSET':'TRETORDEN',.34,2.28,7.247,roofColor,.104),
+    ...[6.98,7.25,7.48].map((z,i)=>b(0,z,1.56,.31,.77-i*.24,'#c0956d',.39)),
+    ...[-3.22,-1.65,1.66,3.22].map(x=>b(x,7.223,.12,.076,.11,'#ffdb87',2.05)),
+  ];
+  const garden=[
+    r(0,-.17,15.9,10.92,.042,landscaping,.378),
+    r(-8.55,-5.28,2.76,2.55,.057,'#96a674',.381),
+    r(8.35,2.12,3.71,1.73,.045,'#97a770',.382),
+    ...[[-9.21,6.38],[-9.50,-1.71],[9.23,5.90],[9.08,-1.42],[6.72,-7.05],[-5.52,-7.05],
+      [-2.03,-4.7],[2.70,-4.79],[-1.58,2.94]].flatMap(([x,z],i)=>island&&i%3!==2
+        ?palm(x,z,1.9+(i%4)*.34)
+        :[t(x,z,.157,.17,.95,'#8a6f50',.39),d(x,z,1.56+i%3*.21,1.48,1.10,'#55835f',.94),d(x-.21,z+.19,1.21,1.15,.91,'#79a472',1.49)]),
+    ...[[-7.19,6.83],[-.78,-7],[3.31,-7.02],[7.72,6.67],[-9.72,-3.80]].flatMap(([x,z],i)=>shrub(x,z,i%2?'#769a68':'#688955',.54)),
+  ];
+  const fence='#aa8c6e';
+  const boundary=[-10.20,10.20].flatMap(x=>[
+    ...[-6.86,-4.17,-1.40,1.40,4.17,6.86].map(z=>b(x,z,.105,.12,.56,fence,.38)),
+    ...[.63,.886].map(y=>b(x,0,.075,13.78,.069,fence,y)),
+  ]);
+  const flags=[-6.44,6.18].flatMap(x=>[
+    b(x,6.63,.83,.77,.89,'#e1c8a0',.39),b(x,6.99,.34,.06,.37,'#536d64',.63),
+    roof(x,6.62,.99,.95,.65,roofColor,1.24),...worldSign('flag',x,.83,7.05,roofColor),
+  ]);
+  const stages=[
+    [...base(halfWidth*2,halfDepth*2,island?'#b2af85':'#9e9e77'),
+      b(0,7.03,13.5,.95,.055,'#d5ba94',.376)],
+    [...supports,...tracks,...lift],
+    [...garden,...boundary,...station,...flags],
+  ];
+  const scale=woodCoasterScale(site);
+  if (scale===1) return stages;
+  const fit=([x,y,z])=>[x*scale,y,z];
+  return stages.map(stage=>stage.map(part=>({...part,x:part.x*scale,...(part.w!==undefined&&{w:part.w*scale}),
+    ...(part.from&&{from:fit(part.from),to:fit(part.to)}),...(part.outline&&{outline:part.outline.map(fit)})})));
+}
+
+function shoreWalkPreview(island) {
+  const deck=island?'#b8875d':'#c2b597';
+  return [[b(0,0,12,2.4,.23,deck,.02)],
+    Array.from({length:17},(_,i)=>b(i*.69-5.52,0,.63,2.31,.1,island?'#d5a978':'#dad3b6',.27)),
+    [-4,0,4].flatMap(x=>[b(x,-.89,.13,.13,1.16,'#566966',.34),d(x,-.89,.28,.28,.28,'#f4d48a',1.46)])];
 }
 
 function fitness() {
@@ -2069,7 +2264,7 @@ const art={
   residence,driveThrough,lunarResort,hotel:()=>grandHotel(false),resort:()=>grandHotel(true),courthouse,bank:()=>civic(true),cinema,prison,
   restaurant:theme=>dining(theme==='island'),garden:theme=>gardens(theme==='island'),bandstand:theme=>gardens(theme==='island',true),
   pier:(theme)=>harbor(theme,'pier'),quay:theme=>harbor(theme,'quay'),marina:theme=>harbor(theme,'marina'),
-  bridge:(_,site)=>suspension(site?.span),wheel:theme=>ferris(theme==='island'),coaster,fitness,biodome,
+  bridge:(_,site)=>suspension(site?.span),wheel:theme=>ferris(theme==='island'),coaster,woodCoaster,shoreWalk:()=>shoreWalkPreview(true),riverWalk:()=>shoreWalkPreview(false),fitness,biodome,
   habitat:()=>habitat(),moonHotel:()=>habitat(true),oxygen:()=>utility('oxygen'),generator,
   refinery:()=>utility('refinery'),spaceField,rocketPort:()=>rocketPort(),telescope,craterLab,supplyDepot,beachClub,sunsetHotel,
   greatPark,factory,sawmill,busStation,camp:camping,arcade,radioTower:()=>radioTower(),broadcastHouse,spire:()=>glassTower('spire'),
@@ -2093,9 +2288,9 @@ const art={
 };
 
 export const RAIL_LANDMARKS={
-  city:['Elveby stasjon','Toget går i en stor sløyfe med flere perronger.','railwayStation'],
+  city:['Elveby stasjon','Tre spor møtes under et buet tak. Togene kjører videre til perrongene ute i byen.','railwayStation'],
   island:['Palmetrikkens depot','En turkis trikk kjører rundt øyen og stopper på tre perronger.','tramStation'],
-  moon:['Månesporet','En svevebane som går i ring gjennom månebasen.','monorailStation'],
+  moon:['Månesporet','Tre svevespor møtes under et buet tak. Månetogene stopper her før de fortsetter gjennom basen.','monorailStation'],
 };
 
 export const RESIDENCE_LANDMARKS={
@@ -2231,6 +2426,8 @@ export const GRAND_LANDMARKS={
     51:['Elveby politistasjon','Patruljebilen står klar til utrykning med blålys.','policeStation'],
     52:['Granittfyret','Et høyt steinfyr med messinglanterne og utsiktsgang.','stoneLighthouse','lighthouse'],
     53:['Elveby bilvask','Biler kjører gjennom vaskebåsen og kommer ut blanke og fine.','carWash'],
+    54:['Tretorden','Tre røde vogner klatrer til toppen. På returen suser de under sporet mellom de kryssavstivede trebukkene.','woodCoaster'],
+    55:['Elvepromenaden','En turvei med benker og lykter som følger elven.','riverWalk'],
   },
   moon:{
     37:['Målenåla','En restaurant som roterer over månebasen.','needleTower'],
@@ -2272,6 +2469,8 @@ export const GRAND_LANDMARKS={
     51:['Palmeøyens politistasjon','Et politihus med grønt tak og en patruljebil til øyens gater.','policeStation'],
     52:['Stormfyret','Et klassisk, høyt steinfyr med gyllen lampe og veranda rundt lykten.','stoneLighthouse','lighthouse'],
     53:['Kokosvasken','En vaskehall med palmegrønne søyler og skum til sandete biler.','carWash'],
+    54:['Palmesuset','En stor trebane med brede svinger, et høyt stup og en stasjon mellom palmene.','woodCoaster'],
+    55:['Strandpromenaden','En lang gangvei i tre med utsikt over stranden og havet.','shoreWalk'],
   },
 };
 

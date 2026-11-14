@@ -8,11 +8,12 @@ import { actor, actorPose, createTraffic, vehicle, MAX_ACTORS, pointOnSite, WASH
 import { AIRPORT_HELIPAD, REGIONAL_HELIPAD, districtRail, districtTram } from '../transport.js';
 import {landmarkAt} from '../project-picking.js';
 import {seasonForDate} from '../seasons.js';
-import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, RESIDENCE_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
-import {insideIslandBelt,planRegion,regionLayout,regionalFootprint,regionalPoint,regionSurface,regionVisibility,residenceDrive,riverAt,riverWidth,roadElevation} from '../regions.js';
+import { WORLD_IDS, WORLD_PLACES, REGION_PLACES, REGION_CATALOG_PLACES, GRAND_REGION_PLACES, LARGE_REGION_PLACES, EXTENDED_REGION_PLACES, LARGE_REGION_CATALOG, LARGE_LUNAR_CATALOG, RAIL_PLACE, RESIDENCE_PLACE, currentWorld, freshWorld, startNewWorld, worldAdvance, worldChoices, worldCompletedPlaces, worldLayout, worldPoolSize, worldSelect, worldStatus } from '../worlds.js';
+import {insideIslandBelt,islandCoastPoint,planRegion,regionLayout,regionalFootprint,regionalPoint,regionSurface,regionVisibility,residenceDrive,riverAt,riverWidth,roadElevation,SHORE_WALK_HALF_WIDTH} from '../regions.js';
 import {planStreetRegion,STREET_TURN_RADIUS} from '../street-grid.js';
 import {joinStreetPaths,streetNetwork,destinationRoutes,roadProjections} from '../street-network.js';
 import {prepareRoadGrades,prepareRoadTunnels,regionRoads,roundedStreetPaths,streetHalfWidth} from '../region-roads.js';
+import {clipAtRailPortal} from '../scene-motion.js';
 
 test('A completed round adds one step to the selected project and preserves other rewards', () => {
   let state = freshState();
@@ -101,7 +102,7 @@ test('A 1.14 world keeps its landscape, selected landmark and expansion order', 
     assert.deepEqual(state.worlds[id][0],map);
     const next=currentWorld(state,id);
     assert.equal(next.layout,3);
-    assert.equal(worldStatus(next).capacity,LARGE_REGION_PLACES);
+    assert.equal(worldStatus(next).capacity,EXTENDED_REGION_PLACES);
     assert.notEqual(next.seed,initial.seed);
     assert.notDeepEqual(worldLayout(id,next.seed),worldLayout(id,initial.seed));
     assert.equal(worldStatus(next).built,0);
@@ -587,20 +588,22 @@ test('The city helicopter circles and the island helicopter lands only on a comp
   assert.notEqual(actorPose(rotor,17).sin,actorPose(rotor,17.1).sin);
 });
 
-test('New regions complete after 40 buildings and keep earlier saves intact',()=>{
+test('New regions complete after 150 steps and keep earlier saves intact',()=>{
   for (const theme of WORLD_IDS) {
     const empty=freshWorld(()=>6163/2**32);
-    const order=worldChoices(empty,theme).slice(0,LARGE_REGION_PLACES);
+    const order=worldChoices(empty,theme).slice(0,EXTENDED_REGION_PLACES);
     const catalogSize=theme==='moon'?LARGE_LUNAR_CATALOG:LARGE_REGION_CATALOG;
     assert.equal(worldChoices(empty,theme).length,catalogSize-1);
     const active={...empty,order,progress:order.length*3};
     assert.equal(worldStatus(active).full,true);
+    assert.equal(worldStatus(active).total,150);
+    assert.equal(worldStatus({...active,progress:149}).full,false);
     const scene=projectScene(theme,active);
-    assert.equal(Object.keys(scene.landmarks).length,LARGE_REGION_PLACES);
+    assert.equal(Object.keys(scene.landmarks).length,EXTENDED_REGION_PLACES);
     if (theme==='city') {
-      const layout=regionLayout(theme,active.seed,true,LARGE_REGION_PLACES);
+      const layout=regionLayout(theme,active.seed,true,EXTENDED_REGION_PLACES);
       const west=Object.values(scene.landmarks).filter(plot=>plot.x<riverAt(layout,plot.z)).length;
-      assert.ok(west>=13&&west<=27,'both riverbanks are developed');
+      assert.ok(west>=15&&west<=35,'both riverbanks are developed');
     }
     for (let i=37;i<catalogSize;i++) {
       const preview=worldBuildingPreview(theme,i,empty);
@@ -614,8 +617,10 @@ test('New regions complete after 40 buildings and keep earlier saves intact',()=
     assert.equal(worldStatus(grand).total,90);
     const earlier={...grand,order:[0],progress:3};
     assert.ok(worldBuildingOptions(theme,earlier).includes(theme==='moon'?48:44));
-    const restored=restoreState({...freshState(),roundsCompleted:282,worlds:{[theme]:[old,grand,active]}});
-    assert.deepEqual(restored.worlds[theme],[old,grand,active]);
+    const previous={...active,catalog:4,order:order.slice(0,LARGE_REGION_PLACES),progress:120};
+    const restored=restoreState({...freshState(),roundsCompleted:432,worlds:{[theme]:[old,grand,previous,active]}});
+    assert.deepEqual(restored.worlds[theme],[old,grand,previous,active]);
+    assert.equal(worldStatus(previous).total,120);
   }
 });
 
@@ -1167,23 +1172,153 @@ test('Platforms and retaining walls share their outline across the building cata
   assert.equal(pitch.outline.length,4);
 });
 
-test('Long railway loops can carry two separate trains while small towns have one',()=>{
-  const kind='railwayStation',layout=regionLayout('city',6163,true);
-  const buildings=Array.from({length:20},(_,index)=>({index,kind:index===2?kind:'hotel'}));
-  const build=count=>{
-    const plan=planStreetRegion(layout,buildings.slice(0,count),30);
-    return districtRail(layout,plan.plots[2],plan);
-  };
-  const small=build(3),large=build(20);
-  const trackLength=rail=>rail.points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-rail.points[i].x,p.z-rail.points[i].z),0);
-  assert.ok(trackLength(large)>trackLength(small));
-  assert.equal(small.actors.filter(actor=>actor.kind==='train').length,1);
-  const trains=large.actors.filter(actor=>actor.kind==='train');
-  assert.equal(trains.length,2);
-  for (let i=0;i<400;i++) {
-    const [a,b]=trains.map(train=>actorPose(train,i*.25));
-    assert.ok(Math.hypot(a.x-b.x,a.z-b.z)>6);
+test('The river and lunar stations share three working tracks between two trains',()=>{
+  for (const [theme,kind,engine,count] of [['city','railwayStation','train',20],['moon','monorailStation','monorail',15]]) {
+    const layout=regionLayout(theme,6163,true);
+    const buildings=Array.from({length:count},(_,index)=>({index,kind:index===2?kind:'hotel'}));
+    const build=count=>{
+      const plan=planStreetRegion(layout,buildings.slice(0,count),30);
+      return districtRail(layout,plan.plots[2],plan);
+    };
+    const small=build(3),large=build(count);
+    const trackLength=rail=>rail.points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-rail.points[i].x,p.z-rail.points[i].z),0);
+    assert.ok(trackLength(large)>trackLength(small));
+    assert.equal(small.actors.filter(actor=>actor.kind===engine).length,1);
+    const trains=large.actors.filter(actor=>actor.kind===engine);
+    assert.equal(trains.length,2);
+    assert.equal(small.actors.filter(actor=>actor.kind==='train-car').length,1);
+    assert.equal(large.actors.filter(actor=>actor.kind==='train-car').length,4);
+    assert.deepEqual([...new Set(large.parts.flatMap(part=>part.stationTrack?[part.stationTrack]:[]))].sort(),[-2.08,2.08]);
+    const station=planStreetRegion(layout,buildings,30).plots[2];
+    const stops=new Set();
+    let together=false;
+    const local=({x,z})=>{
+      const dx=x-station.x,dz=z-station.z,c=Math.cos(station.yaw),s=Math.sin(station.yaw);
+      return [dx*c-dz*s,dx*s+dz*c+2.45];
+    };
+    for (let i=0;i<1900;i++) {
+      const sample=large.actors.map(train=>({...actorPose(train,i*.19),train:train.train}));
+      for (const [j,a] of sample.entries()) for (const b of sample.slice(j+1)) {
+        if (a.train===b.train||Math.min(a.y,b.y)<-150) continue;
+        assert.ok(Math.hypot(a.x-b.x,a.z-b.z)>1.9);
+      }
+      const [a,b]=trains.map(train=>actorPose(train,i*.19));
+      const atStation=pose=>{
+        const [along,across]=local(pose);
+        return pose.y>-150&&Math.abs(along)<5.58&&Math.abs(across)<2.5;
+      };
+      together||=sample.every(atStation);
+      for (const p of [a,b].filter(atStation)) stops.add(Math.round(local(p)[1]));
+    }
+    assert.ok(together);
+    assert.deepEqual([...stops].sort((a,b)=>a-b),[-2,0,2]);
   }
+});
+
+test('Tunnel mouths clip the train against either portal before a carriage is fully covered',()=>{
+  const map={...freshWorld(()=>6163/2**32),order:[0,3,RAIL_PLACE],progress:9};
+  const scene=projectScene('city',map);
+  const train=scene.ambient.find(actor=>actor.kind==='train');
+  const poses=Array.from({length:5500},(_,i)=>actorPose(train,i*.021));
+  const clipped=poses.filter(p=>p.railClipOffset!==undefined);
+  assert.ok(clipped.length>4&&poses.some(p=>p.y< -500));
+  const a=clipped[0];
+  const b=clipped.find(p=>Math.abs(p.railClipOffset-a.railClipOffset)>1);
+  assert.ok(b,'both portals clip the train');
+  for (const model of [a,b]) {
+    const {railClipX:nx,railClipZ:nz,railClipOffset:offset}=model;
+    const plane=[-nx*offset,1,-nz*offset];
+    const square=[[-1,-1],[-1,1],[1,1],[1,-1]].map(([u,v])=>[plane[0]+u*nx-v*nz,1,plane[2]+u*nz+v*nx]);
+    const visible=clipAtRailPortal(square,model);
+    assert.equal(visible.length,4);
+    assert.ok(visible.every(([x,,z])=>nx*x+nz*z+offset>=-1e-6));
+  }
+});
+
+test('Mature Moon rail adds four spaced trains on a long route that runs mostly along the grid',()=>{
+  const theme='moon',map=freshWorld(()=>6163/2**32);
+  const order=[0,3,RAIL_PLACE,44,45,46,47,48,49,1,2,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27];
+  const layout=regionLayout(theme,map.seed,true,EXTENDED_REGION_PLACES);
+  const plan=planStreetRegion(layout,order.map(index=>({index,kind:worldBuilding(theme,index,map).kind})),EXTENDED_REGION_PLACES,{starter:true});
+  const rail=districtRail(layout,plan.plots[2],plan);
+  const segments=rail.points.slice(1).map((point,i)=>[Math.abs(point.x-rail.points[i].x),Math.abs(point.z-rail.points[i].z)]);
+  const length=segments.reduce((sum,segment)=>sum+Math.hypot(...segment),0);
+  assert.ok(length>380);
+  assert.ok(segments.reduce((sum,[x,z])=>sum+Math.min(x,z),0)<length*.15);
+  assert.equal(rail.actors.filter(actor=>actor.kind==='monorail').length,4);
+  for (let t=0;t<rail.passengerService.period*3;t+=.23) {
+    const poses=rail.actors.map(actor=>({...actorPose(actor,t),train:actor.train})).filter(p=>p.y> -150);
+    for (const [i,a] of poses.entries()) for (const b of poses.slice(i+1)) {
+      if (a.train===b.train) continue;
+      assert.ok(Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z)>1.9);
+    }
+  }
+});
+
+test('Palmeøya reserves a volcanic crater and extends the tram inland as the island grows',()=>{
+  const theme='island',map=freshWorld(()=>6163/2**32);
+  const older=regionLayout(theme,map.seed,true,LARGE_REGION_PLACES);
+  const layout=regionLayout(theme,map.seed,true,EXTENDED_REGION_PLACES);
+  assert.ok(layout.radiusX>older.radiusX&&layout.radiusZ>older.radiusZ);
+  const {x,z,halfWidth}=layout.volcano;
+  const center=regionSurface(layout,x,z);
+  assert.ok(!center.water&&regionSurface(layout,x+halfWidth*.46,z).y>center.y+4);
+  const order=[...new Set([0,3,RAIL_PLACE,...worldChoices(map,theme)])].slice(0,34);
+  const build=count=>{
+    const plan=planStreetRegion(layout,order.slice(0,count).map(index=>({index,kind:worldBuilding(theme,index,map).kind})),
+      EXTENDED_REGION_PLACES,{starter:true});
+    const rail=districtTram(layout,plan.plots[2],plan);
+    assert.ok(rail.points.every(p=>insideIslandBelt(layout,plan.starter,p.x,p.z)&&!(regionSurface(layout,p.x,p.z).volcanic<.83)));
+    return rail;
+  };
+  const small=build(3),large=build(order.length);
+  assert.ok(large.points.length>small.points.length*1.5&&large.actors.length>=2);
+  const scene=projectScene(theme,{...map,order,progress:order.length*3});
+  assert.ok(scene.parts.some(p=>p.entity==='volcano')&&scene.discoveries.volcano.name.includes('vulkankrater'));
+});
+
+test('The red bridge spans the wider river, and the river flows through a lagoon',()=>{
+  const seed=6163;
+  const layout=regionLayout('city',seed,true,EXTENDED_REGION_PLACES);
+  const {lagoon,bridge}=layout.riverLagoon;
+  assert.ok(riverWidth(layout,lagoon)>riverWidth(layout,lagoon+Math.sign(lagoon)*18)+3);
+  assert.ok(layout.berths.bridge.span>22&&layout.berths.bridge.span>riverWidth(layout,bridge)*2);
+  for (let z=-45;z<45;z++) assert.ok(regionSurface(layout,riverAt(layout,z),z).water);
+});
+
+test('Residences favor quieter outskirts and keep industry at a distance regardless of build order',()=>{
+  for (const theme of WORLD_IDS) {
+    const layout=regionLayout(theme,6163,true,EXTENDED_REGION_PLACES);
+    for (const kinds of [['factory','hotel','residence','factory'],['residence','hotel','factory','factory']]) {
+      const specs=kinds.map((kind,index)=>({kind,index:kind==='residence'?RESIDENCE_PLACE:index}));
+      const plan=planStreetRegion(layout,specs,EXTENDED_REGION_PLACES,{starter:true});
+      const home=plan.plots.find(plot=>plot.residence);
+      assert.ok(home&&Math.hypot(home.x-plan.origin.x,home.z-plan.origin.z)>24);
+      assert.ok(plan.plots.filter(plot=>plot.kind==='factory').every(plot=>Math.hypot(home.x-plot.x,home.z-plot.z)>27));
+    }
+  }
+});
+
+test('The lunar station preview spans three monorails with a curved canopy',()=>{
+  const preview=worldBuildingPreview('moon',RAIL_PLACE,freshWorld(()=>.45));
+  const rails=preview.parts.filter(part=>part.transitPreview&&part.shape==='beam');
+  assert.equal(rails.length,3);
+  assert.ok(rails.every(({from,to})=>from[2]===to[2]&&from[1]===to[1]&&to[0]-from[0]>11));
+  const arches=preview.parts.filter(part=>part.shape==='beam'&&part.color==='#e7bc84');
+  assert.equal(new Set(arches.map(({x})=>x)).size,2);
+  assert.ok(Math.max(...arches.map(({y,h})=>y+h))-Math.min(...arches.map(({y})=>y))>2);
+  assert.ok(projectFaces(preview).every(face=>face.points.flat().every(Number.isFinite)));
+});
+
+test('The three-track lunar station can fit a shorter approach around established plots',()=>{
+  const layout=regionLayout('moon',367988,true,EXTENDED_REGION_PLACES);
+  const buildings=Array.from({length:12},(_,index)=>index===2
+    ?{index:RAIL_PLACE,kind:'monorailStation'}:{index,kind:'hotel'});
+  const plan=planStreetRegion(layout,buildings,EXTENDED_REGION_PLACES,{starter:true});
+  const rail=districtRail(layout,plan.plots[2],plan);
+  assert.ok(rail?.actors.some(actor=>actor.kind==='monorail'));
+  assert.deepEqual(rail.points[0],rail.points.at(-1));
+  assert.equal(new Set(rail.parts.flatMap(part=>part.stationTrack?[part.stationTrack]:[])).size,2);
 });
 
 test('Outlying airfields have a long usable runway and the shuttle lands back on it',()=>{
@@ -1202,6 +1337,26 @@ test('Outlying airfields have a long usable runway and the shuttle lands back on
     assert.equal(pose(18.3).y,pose(0).y);
     assert.ok(Math.hypot(pose(17.45).x-pose(20.49).x,pose(17.45).z-pose(20.49).z)>15);
     assert.ok(projectFaces(scene).every(face=>face.points.flat().every(Number.isFinite)));
+  }
+});
+
+test('The airport and its hangar keep their ground clear after the city horizon appears',()=>{
+  const theme='city',seed=83291;
+  let map={...freshWorld(()=>seed/2**32),order:[37,39],progress:6};
+  while (!worldStatus(map).full) {
+    const [choice]=worldBuildingOptions(theme,map);
+    map=worldAdvance(worldSelect(map,choice,theme),theme);
+  }
+  const scene=projectScene(theme,map);
+  for (const index of [37,39]) {
+    const site=scene.landmarks[index],c=Math.cos(site.yaw),s=Math.sin(site.yaw);
+    assert.ok(site.airportDistrict&&site.x>65);
+    const terrain=scene.parts.filter(part=>part.layer===0).flatMap(part=>part.outline).filter(([x,,z])=>{
+      const a=x-site.x,b=z-site.z;
+      return Math.abs(a*c-b*s)<site.halfWidth&&Math.abs(a*s+b*c)<site.halfDepth;
+    });
+    assert.ok(terrain.length>40);
+    assert.ok(terrain.every(([,y])=>y<=site.y-.1),index);
   }
 });
 
@@ -1362,9 +1517,9 @@ test('Pocket park walkers reach the street shoulder by following paved paths',()
   const theme='island',fresh=freshWorld(()=>83291/2**32);
   const order=[...new Set([27,25,38,34,7,17,37,RAIL_PLACE,...worldChoices(fresh,theme)])].slice(0,36);
   const map={...fresh,order,progress:order.length*3};
-  const layout=regionLayout(theme,map.seed,true,LARGE_REGION_PLACES);
+  const layout=regionLayout(theme,map.seed,true,EXTENDED_REGION_PLACES);
   const plan=planStreetRegion(layout,order.map(index=>({index,kind:worldBuilding(theme,index,map).kind})),
-    LARGE_REGION_PLACES,{starter:true});
+    EXTENDED_REGION_PLACES,{starter:true});
   const scene=projectScene(theme,map);
   const walkers=scene.ambient.filter(actor=>actor.parkWalk);
   assert.ok(walkers.length>=1);
@@ -1413,12 +1568,13 @@ test('Luna Grand Resort has its own large site and animated bathers inside the d
   }
 });
 
-test('Luna Grand Resort and the dust lake share a reserved shoreline on different Moon maps',()=>{
+test('Luna Grand Resort faces the dust lake from the west, with a road clear of the shore',()=>{
   for (const seed of [6163,83291,3920017217,4294967295]) {
     const fresh=freshWorld(()=>seed/2**32);
     const layout=regionLayout('moon',seed,true,LARGE_REGION_PLACES);
     const {moonLake:lake,spaceResort:resort}=layout;
     assert.ok(lake&&resort&&layout.regionalSites.includes(lake));
+    assert.ok(resort.x<lake.x);
     const center=regionSurface(layout,lake.x,lake.z);
     assert.ok(center.moonLake&&center.bank< -4);
     assert.equal(center.water,false);
@@ -1438,5 +1594,140 @@ test('Luna Grand Resort and the dust lake share a reserved shoreline on differen
     assert.equal(scene.landmarks[55].z,resort.z);
     assert.equal(scene.discoveries['moon-lake'].name,'Månestøvsjøen');
     assert.ok(scene.parts.filter(part=>part.entity==='moon-lake').length>24);
+    const camera=projectCameras(scene,scene.landmarks[55]).detail;
+    const front=(x,z)=>x*Math.sin(camera.yaw)+z*Math.cos(camera.yaw);
+    assert.ok(front(lake.x-resort.x,lake.z-resort.z)>5);
+    assert.ok(front(Math.sin(resort.yaw),Math.cos(resort.yaw))>0);
+    assert.ok(camera.anchorX>resort.x&&camera.anchorX<lake.x);
+    assert.ok(camera.anchorZ>resort.z&&camera.anchorZ<lake.z);
   }
+});
+
+test('The new seaside and river build choices have active promenades and a separate wooden coaster',()=>{
+  const fresh=freshWorld(()=>6163/2**32);
+  for (const theme of ['city','island']) {
+    const order=theme==='city'?[0,3,22,54,55]:[0,3,27,54,55];
+    const scene=projectScene(theme,{...fresh,order,progress:15});
+    assert.ok(scene.parts.filter(part=>part.landmark===55&&part.outline?.length===4).length>20);
+    const walker=scene.ambient.find(actor=>actor.promenade);
+    assert.ok(walker);
+    const a=actorPose(walker,0),b=actorPose(walker,8);
+    assert.ok(Math.hypot(b.x-a.x,b.z-a.z)>3);
+    const trains=scene.ambient.filter(actor=>actor.kind==='coaster');
+    assert.equal(trains.length,3);
+    const coaster=scene.landmarks[54];
+    assert.ok(coaster.coasterPark&&4*coaster.halfWidth*coaster.halfDepth>=2*15.4*10.65);
+    assert.ok(scene.parts.some(part=>part.landmark===54&&part.shape==='beam'&&part.h>9));
+    const [front]=trains;
+    const {segments,length}=front.route;
+    assert.ok(length>110);
+    for (const [i,segment] of segments.entries()) {
+      const delta=segment.yaw-segments.at(i-1).yaw;
+      assert.ok(Math.abs(Math.atan2(Math.sin(delta),Math.cos(delta)))<.54);
+    }
+    const points=Array.from({length:100},(_,i)=>actorPose(front,i*.2));
+    assert.ok(points.some(pose=>pose.pitch>.45));
+    assert.ok(points.some(pose=>pose.pitch<-.72));
+    const firstCar=actorPose(trains[0],7),secondCar=actorPose(trains[1],7);
+    assert.ok(Math.hypot(firstCar.x-secondCar.x,firstCar.y-secondCar.y,firstCar.z-secondCar.z)<1.4);
+    assert.ok(!projectScene(theme,{...fresh,order,progress:11}).ambient.some(actor=>actor.kind==='coaster'));
+  }
+});
+
+test('Strandpromenaden reserves the inland side of the beach resort in old and new islands',()=>{
+  for (const capacity of [GRAND_REGION_PLACES,LARGE_REGION_PLACES,EXTENDED_REGION_PLACES]) {
+    for (const seed of [21,6163,83291,2084666018,3864916430,1343480570,1443947862]) {
+      const layout=regionLayout('island',seed,true,capacity),hotel=layout.beachResort;
+      const building={...hotel,beach:false};
+      const [path]=layout.shoreWalk;
+      const c=Math.cos(hotel.yaw),s=Math.sin(hotel.yaw);
+      const inland=({x,z})=>(x-hotel.x)*s+(z-hotel.z)*c;
+      const across=({x,z})=>(x-hotel.x)*c-(z-hotel.z)*s;
+      const deck=path.flatMap((point,i)=>i===0?[point]:[point,{x:(point.x+path[i-1].x)/2,z:(point.z+path[i-1].z)/2}]);
+      assert.ok(path.length>65);
+      assert.ok(deck.every(point=>Math.abs(across(point))>=hotel.halfWidth+1.1||inland(point)<-hotel.halfDepth-1.1));
+      const behind=deck.find(point=>Math.abs(across(point))<.1);
+      assert.ok(behind&&inland(behind)<-hotel.halfDepth-2);
+      assert.ok(inland(layout.shoreWalkSite)<-hotel.halfDepth-2);
+      for (const [i,point] of path.entries()) {
+        const a=path[Math.max(0,i-1)],b=path[Math.min(path.length-1,i+1)];
+        const dx=b.x-a.x,dz=b.z-a.z,span=Math.hypot(dx,dz);
+        for (const side of [-1,1]) {
+          const x=point.x+side*SHORE_WALK_HALF_WIDTH*dz/span,z=point.z-side*SHORE_WALK_HALF_WIDTH*dx/span;
+          assert.ok(!regionSurface(layout,x,z).water);
+          assert.ok(!regionalFootprint(building,x,z,.52));
+        }
+      }
+    }
+  }
+});
+
+test('Palmeøya keeps coastal activity and an unobstructed promenade after 150 steps',()=>{
+  const theme='island';
+  for (const seed of [6163,2084666018,3188030857]) {
+    const fresh=freshWorld(()=>seed/2**32);
+    const pick=kind=>worldChoices(fresh,theme).find(index=>worldBuilding(theme,index,fresh).kind===kind);
+    const shore=['pier','marina','lighthouse','stoneLighthouse','megaResort'].map(pick);
+    const first=[...shore,pick('airport'),pick('hangar'),pick('woodCoaster'),RAIL_PLACE,RESIDENCE_PLACE];
+    const promenade=pick('shoreWalk');
+    const order=[...first,...worldChoices(fresh,theme).filter(index=>!first.includes(index)&&index!==promenade)
+      .slice(0,49-first.length),promenade];
+    const before=planStreetRegion(regionLayout(theme,seed,true,EXTENDED_REGION_PLACES),
+      order.slice(0,-1).map(index=>({index,kind:worldBuilding(theme,index,fresh).kind})),EXTENDED_REGION_PLACES,{starter:true});
+    const scene=projectScene(theme,{...fresh,order,progress:150,residenceName:'Iben'});
+    const layout=regionLayout(theme,seed,true,EXTENDED_REGION_PLACES);
+    assert.equal(Object.keys(scene.landmarks).length,50);
+    const [path]=layout.shoreWalk;
+    const length=path.slice(1).reduce((sum,point,i)=>sum+Math.hypot(point.x-path[i].x,point.z-path[i].z),0);
+    assert.ok(length>=90);
+    assert.ok(scene.parts.filter(part=>part.landmark===promenade&&part.outline).length>=90);
+    for (const {x,z} of path) assert.ok(!regionSurface(layout,x,z).water);
+    for (const plot of before.plots) {
+      assert.equal(scene.landmarks[plot.index].x,plot.x);
+      assert.equal(scene.landmarks[plot.index].z,plot.z);
+      if (!plot.waterfront&&!plot.halfWidth) assert.ok((layout.shoreWalkNear(plot.x,plot.z)?.gap??Infinity)>=8.2);
+    }
+    const beachActors=scene.ambient.filter(actor=>actor.coastal&&['boat','swimmer','jetski'].includes(actor.kind));
+    for (const index of shore) for (const kind of ['swimmer','jetski']) {
+      assert.ok(beachActors.some(actor=>actor.kind===kind&&actor.coastalSource===index),kind+' at '+index);
+    }
+    assert.ok(scene.ambient.filter(actor=>actor.kind==='boat').length>=2);
+    assert.ok(scene.ambient.filter(actor=>actor.seagull).length>=2);
+    assert.ok(scene.ambient.some(actor=>actor.kind==='bus'));
+    assert.ok(scene.ambient.filter(actor=>actor.promenade).length>=2);
+    const tick=createTraffic(beachActors);
+    for (let i=0;i<600;i++) for (const pose of tick(i/20)) {
+      const water=regionSurface(layout,pose.x,pose.z);
+      assert.ok(water.water&&!water.pond&&pose.y>-.1);
+    }
+  }
+});
+
+test('Seaward fog leaves a visible ocean and coastal life at the start of Palmeøya',()=>{
+  const fresh=freshWorld(()=>6163/2**32);
+  const scene=projectScene('island',fresh),layout=regionLayout('island',fresh.seed,true,EXTENDED_REGION_PLACES);
+  assert.ok(scene.ambient.some(actor=>actor.kind==='boat')&&scene.ambient.some(actor=>actor.seagull));
+  const {x,z}=islandCoastPoint(layout,-Math.PI/4,-20);
+  const ocean=scene.parts.filter(part=>part.layer===0&&Math.hypot(part.x-x,part.z-z)<4);
+  const sky=scene.background.slice(1).match(/../g).map(channel=>parseInt(channel,16)/255);
+  assert.ok(ocean.some(part=>part.colors.every(color=>sky[0]-color[0]>.24)));
+  assert.ok(scene.parts.filter(part=>part.layer===2&&part.colors&&part.outline?.length===4).length>=90);
+});
+
+test('Palmeøya uses the map seed to pick different volcano slopes',()=>{
+  const sites=[6163,83291,3920017217,4294967295,61884,5419].map(seed=>regionLayout('island',seed,true,50).volcano);
+  assert.ok(sites.every(Boolean));
+  assert.ok(new Set(sites.map(({x,z})=>Math.round(Math.atan2(z,x)*10))).size>=3);
+});
+
+test('A resident catches the local bus and steps off in another neighborhood',()=>{
+  const fresh=freshWorld(()=>6163/2**32),order=[0,3,36,54,55,1,2,4,5,7,8,10,11,12,14];
+  const scene=projectScene('city',{...fresh,order,progress:order.length*3});
+  const passenger=scene.ambient.find(person=>person.busJourney);
+  assert.ok(passenger);
+  assert.ok(scene.ambient.some(person=>person.kind==='bus'&&typeof person.pose==='function'));
+  const samples=Array.from({length:1000},(_,i)=>actorPose(passenger,i*.19));
+  const board=samples.findIndex(p=>p.y<-500);
+  const off=samples.findIndex((p,i)=>i>board&&p.y>0);
+  assert.ok(board>0&&off>board&&Math.hypot(samples[off].x-samples[board].x,samples[off].z-samples[board].z)>10);
 });

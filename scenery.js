@@ -1,5 +1,5 @@
 import {roadworkAge,walkingClock} from './scene-motion.js';
-import {regionSurface,regionVisibility,roadElevation,regionalFootprint,regionalPoint,riverAt,residenceDrive} from './regions.js';
+import {islandCoastPoint,regionSurface,regionVisibility,roadElevation,regionalFootprint,regionalPoint,riverAt,residenceDrive} from './regions.js';
 import {STREET_TURN_RADIUS} from './street-grid.js';
 import {randomGenerator} from './worlds.js';
 import {destinationRoutes,joinStreetPaths,roadProjections,streetNetwork} from './street-network.js';
@@ -49,7 +49,7 @@ export function placeParts(parts,site) {
 
 // Front-facing plaques use a few simple painted shapes, at the same scale as the buildings.
 // Sweep one ridge from portal to portal, following the grade and turns of the track.
-export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
+export function tunnelLandform(path,layout,{width=1.25,height=2.05,rail=false}={}) {
   const moon=layout.theme==='moon';
   const rock=moon?['#9a96ae','#a5a0b6','#9290a8']:['#95a379','#a7ae81','#8e9c73'];
   const stone=moon?'#c1b9cb':'#d5c4a8',shadow=moon?'#414356':'#42494b';
@@ -67,7 +67,8 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
       const [a,,b]=point([side*width*(2.12+.65*ridge),0]);
       return [a,regionSurface(layout,a,b).y-.15,b];
     });
-    return {inner,outer,skirt};
+    const feet=[inner[0],inner.at(-1)].map(([a,y,b])=>[a,Math.min(y-.06,regionSurface(layout,a,b).y-.2),b]);
+    return {inner,outer,skirt,feet};
   });
   const surface=(outline,color)=>{
     const [x,y,z]=outline[0];
@@ -82,6 +83,10 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
     }
     parts.push(surface([a.skirt[0],b.skirt[0],b.outer[0],a.outer[0]],rock[0]),
       surface([a.outer.at(-1),b.outer.at(-1),b.skirt[1],a.skirt[1]],rock[0]));
+    if (rail) for (const [side,j] of [[0,0],[1,arch.length-1]]) {
+      const wall=[a.feet[side],b.feet[side],b.inner[j],a.inner[j]];
+      parts.push(surface(wall,rock[1]),surface([...wall].reverse(),shadow));
+    }
   }
   for (const [index,ring] of [[0,rings[0]],[1,rings.at(-1)]]) {
     for (let j=1;j<arch.length;j++) {
@@ -91,7 +96,12 @@ export function tunnelLandform(path,layout,{width=1.25,height=2.05}={}) {
     }
     for (const [side,j] of [[0,0],[1,arch.length-1]]) {
       const edge=[ring.inner[j],ring.outer[j],ring.skirt[side]];
-      parts.push(surface((index===side)?edge:edge.reverse(),rock[2]));
+      const outside=index===side?edge:edge.reverse();
+      parts.push(surface(outside,rock[2]));
+      if (rail) {
+        const wing=[ring.feet[side],...edge];
+        parts.push(surface(wing,rock[2]),surface([...wing].reverse(),rock[2]));
+      }
     }
   }
   return parts;
@@ -466,6 +476,7 @@ export function districtActors(theme,lots) {
 }
 
 const engineKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
+const segmentPitch=part=>Math.atan2(part.dy,Math.hypot(part.dx,part.dz));
 
 export function actorPose(actor, seconds, distanceOverride) {
   if (actor.pose) return actor.pose(seconds);
@@ -478,7 +489,7 @@ export function actorPose(actor, seconds, distanceOverride) {
   if (actor.kind==='plane'||actor.kind==='shuttle') return planePose(actor,seconds);
   if (actor.kind==='rocket'||actor.kind==='rocket-flame') return rocketPose(actor,seconds);
   const clock=walkingClock(seconds,actor.encounter);
-  const traveled=distanceOverride??clock.time*actor.speed;
+  const traveled=distanceOverride??(actor.distanceAt?.(clock.time)??clock.time*actor.speed);
   let path=actor.route, at=traveled+(distanceOverride===undefined?path.length*actor.phase:0);
   if (actor.wander&&distanceOverride===undefined) {
     at%=actor.wander.length;
@@ -501,6 +512,14 @@ export function actorPose(actor, seconds, distanceOverride) {
   const t=(distance-segment.start)/(segment.end-segment.start);
   const x=segment.x+segment.dx*t,z=segment.z+segment.dz*t;
   let yaw=clock.thinking?Math.atan2(actor.encounter.x-x,actor.encounter.z-z):segment.yaw;
+  let tilt=0;
+  if (actor.woodCoaster) {
+    const next=segments[(low+1)%segments.length],previous=segments.at(low-1);
+    const from=t<.5?previous:segment,to=t<.5?segment:next;
+    const ease=(t+.5)%1;
+    yaw=from.yaw+Math.atan2(Math.sin(to.yaw-from.yaw),Math.cos(to.yaw-from.yaw))*ease;
+    tilt=segmentPitch(from)+(segmentPitch(to)-segmentPitch(from))*ease;
+  }
   if (actor.parking&&distance<actor.parking.reverseUntil) {
     const turn=Math.max(0,Math.min(1,(actor.parking.reverseUntil-distance)/2.1));
     yaw+=Math.PI*turn*turn*(3-2*turn);
@@ -527,16 +546,17 @@ export function actorPose(actor, seconds, distanceOverride) {
   const pitch=actor.elevation&&engineKinds.has(actor.kind)
     ? Math.atan2(actor.elevation(x+Math.sin(yaw)*.7,z+Math.cos(yaw)*.7)
         -actor.elevation(x-Math.sin(yaw)*.7,z-Math.cos(yaw)*.7),1.4)
-    : 0;
+    : tilt;
   const bob=actor.kind==='bird' ? Math.sin(traveled*.44)*.35
     : ['boat','swimmer','jetski'].includes(actor.kind) ? Math.sin(traveled*2.1)*.045
     : actor.kind==='hover' ? Math.sin(traveled*2.7)*.079
     : walking ? Math.abs(Math.sin(traveled*6))*.035 : 0;
   const cycle=seconds+actor.phase*11;
   const sound=engineKinds.has(actor.kind)?Number(cycle%9.5<3.35)
-    :actor.kind==='coaster'?Number(segment.dy<-.1&&cycle%7.4<4.3)
+    :actor.kind==='coaster'?Number((actor.woodCoaster?segmentPitch(segment)<-.29:segment.dy<-.1)&&cycle%7.4<4.3)
     :actor.voice?Number(cycle%14.5<2.4)*.8:0;
-  return {x,y:y+bob*approach,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking&&!clock.thinking?Math.sin(traveled*6)*.17:0,rollCos:1,rollSin:0,pitch:pitch*approach,sound,thought:Number(clock.thinking),thrust:Number(actor.kind==='hover')};
+  const roll=actor.coastal&&actor.kind==='bird'?Math.sin(seconds*2+actor.phase*9)*.20:0;
+  return {x,y:y+bob*approach,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:walking&&!clock.thinking?Math.sin(traveled*6)*.17:0,rollCos:Math.cos(roll),rollSin:Math.sin(roll),pitch:pitch*approach,sound,thought:Number(clock.thinking),thrust:Number(actor.kind==='hover')};
 }
 
 const streetKinds=new Set(['road','bus','hover','offroad-rover','jetski']);
@@ -979,7 +999,7 @@ function planePose({x,y,z,yaw,delay,runway,kind,lightAircraft},seconds) {
     sound:Number(clock>0&&(t>=2.42&&t<8.16||t>=15.4&&t<21.2))};
 }
 
-export function coasterActor(parts,points,phase) {
+export function coasterActor(parts,points,phase,{wood=false,car=0}={}) {
   let length=0;
   const segments=points.map(([x,y,z],i)=>{
     const [a,b,c]=points[(i+1)%points.length];
@@ -987,7 +1007,23 @@ export function coasterActor(parts,points,phase) {
     length+=Math.hypot(dx,dy,dz);
     return {x,y,z,dx,dy,dz,start,end:length,yaw:Math.atan2(dx,dz)};
   });
-  return {kind:'coaster',parts,phase,speed:3.4,route:{segments,length},roads:[]};
+  const train={kind:'coaster',parts,phase,speed:3.4,route:{segments,length},roads:[]};
+  if (!wood) return train;
+  // Advance all cars with the same clock, keeping their spacing around the
+  // whole loop while the lift is slow and the downhill run is faster.
+  let duration=0;
+  const times=segments.map(({dy,start,end,y})=>{
+    const rise=dy/(end-start),lift=smoothStep((rise-.16)/.22);
+    const speed=4.35-lift*2.2+Math.max(0,-rise)*5.4+smoothStep((3.8-y)/2.6)*.45;
+    const at=duration;
+    duration+=(end-start)/speed;
+    return {at,until:duration,start,speed};
+  });
+  return {...train,woodCoaster:true,phase:-car*1.36/length,distanceAt(seconds){
+    const t=(((seconds+duration*phase)%duration)+duration)%duration;
+    const step=times.find(step=>t<step.until)??times.at(-1);
+    return step.start+(t-step.at)*step.speed;
+  }};
 }
 
 function laneLoop(path,offset) {
@@ -1248,13 +1284,9 @@ function regionBird(moon) {
     rounded(0,.56,.12,.22,.08,'#e4ad73',.14)];
 }
 
-function boatRoute(theme,layout,plot) {
-  if (theme==='city') {
-    const sample=Array.from({length:10},(_,i)=>plot.z+(i-4.5)*2.2);
-    return [...sample.map(z=>[riverAt(layout,z)-.62,z]),...sample.reverse().map(z=>[riverAt(layout,z)+.62,z])];
-  }
-  const c=Math.cos(plot.yaw),s=Math.sin(plot.yaw);
-  return [[-5,6],[-6,13],[5,14],[8,10],[4,6]].map(([x,z])=>[plot.x+x*c+z*s,plot.z+z*c-x*s]);
+function riverBoatRoute(layout,plot) {
+  const sample=Array.from({length:10},(_,i)=>plot.z+(i-4.5)*2.2);
+  return [...sample.map(z=>[riverAt(layout,z)-.62,z]),...sample.reverse().map(z=>[riverAt(layout,z)+.62,z])];
 }
 
 export function swimmer(skin='#dfa881',cap='#d78684') {
@@ -1273,33 +1305,50 @@ export function jetski(color) {
     beam([-.32,.56,.4],[.32,.56,.4],.09,'#445e6a')];
 }
 
-function islandWaterLife(layout,plan,completed) {
-  const water=(x,z)=>{ const tile=regionSurface(layout,x,z); return tile.water&&tile.basin>=0; };
-  const safe=actor=>actor.route.segments.every(({x,z,dx,dz})=>water(x,z)&&water(x+dx*.5,z+dz*.5));
-  let beach=[];
-  for (const plot of completed.slice().reverse()) {
-    const yaw=plot.waterfront?plot.yaw:Math.atan2(plot.x,plot.z);
-    const site={...plot,y:0,yaw};
-    for (const across of (plot.waterfront?[-5.4,5.4,-8.4,8.4]:[0,-5,5])) {
-      for (const out of [4.6,7.8,11.1,14.3]) {
-        const at=(dx,dz)=>{ const [x,,z]=pointOnSite([across+dx,0,out+dz],site); return [x,z]; };
-        const lagoon=[[-1.32,-.82],[1.32,-.82],[1.32,.82],[-1.32,.82]].map(([x,z])=>at(x,z));
-        if (!lagoon.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.57)) continue;
-        const swimRoute=(dx,dz)=>[[-1.1,-.32],[-.68,-.77],[.68,-.65],[1.18,-.19],[.88,.63],[-.4,.76]].map(([x,z])=>at(x+dx,z+dz));
-        const swimmers=[actor(swimmer(),swimRoute(0,0),{kind:'swimmer',ground:.034,speed:.68,phase:.17,corner:.6}),
-          actor(swimmer('#a67457','#e9c67e'),swimRoute(.38,.25).reverse(),{kind:'swimmer',ground:.034,speed:.57,phase:.67,corner:.55})];
-        if (!swimmers.every(safe)) continue;
-        if (!beach.length) beach=swimmers;
-        const route=[[-4.3,2.4],[-5.5,5.2],[-2.5,6.45],[2.4,6.25],[4.85,5.2],[4.4,3]].map(([x,z])=>at(x,z));
-        if (route.every(([x,z])=>water(x,z)&&regionVisibility(plan,x,z)>.45)) {
-          const scooters=['#d37d6d','#4d9cac'].map((color,i)=>actor(jetski(color),route,
-            {kind:'jetski',ground:.045,speed:4.6,phase:.23+i*.52,corner:1.67}));
-          if (safe(scooters[0])) return [...swimmers,...scooters];
-        }
+function seagull() {
+  return [rounded(0,0,.43,.82,.24,'#f8f4e7',.01),dome(0,.33,.30,.37,.25,'#fdf9eb',.16),
+    ...[-1,1].flatMap(side=>[
+      dome(side*.43,-.09,.96,.29,.13,'#cbd6d6',.13,side*.3),
+      beam([side*.76,.2,-.18],[side*1.02,.19,-.31],.15,'#5b727c'),
+      dome(side*.102,.43,.051,.08,.07,'#475b5f',.277),
+    ]),rounded(0,.6,.12,.24,.09,'#e8ac54',.2)];
+}
+
+function islandWaterLife(layout,completed) {
+  const landmarks=completed.filter(plot=>plot.beach||['pier','marina','lighthouse','stoneLighthouse'].includes(plot.kind));
+  const water=(x,z)=>{ const tile=regionSurface(layout,x,z); return tile.water&&!tile.pond&&tile.bank<-.57; };
+  const loop=(yaw,depth,width,reach)=>Array.from({length:16},(_,i)=>{
+    const angle=i*Math.PI/8;
+    const {x,z}=islandCoastPoint(layout,yaw+Math.sin(angle)*width,-(depth+Math.cos(angle)*reach));
+    return [x,z];
+  });
+  const create=(model,options,yaw,depth,width,reach,source)=>{
+    for (const extra of [0,1.5,3.4,6.5]) {
+      const route=loop(yaw,depth+extra,width,reach);
+      const craft=actor(model,route,options);
+      if (craft.route.segments.every(({x,z,dx,dz})=>[0,.25,.5,.75].every(t=>water(x+dx*t,z+dz*t)))) {
+        return {...craft,coastal:true,coastalSource:source};
       }
     }
-  }
-  return beach;
+    return null;
+  };
+  const foreground=layout.beachResort?.yaw??.12+(layout.seed%7-3)*.11;
+  const piers=landmarks.filter(plot=>plot.kind==='pier'||plot.kind==='marina');
+  const seasideHorizon=-Math.PI/4+.11*(layout.seed%5-2);
+  const sails=[null,piers[0],piers[1]].map((plot,i)=>create(sailboat(i===2||plot?.kind==='marina'),
+    {kind:'boat',ground:.04,speed:1.38+.18*i,phase:.23+i*.21,corner:2.2},
+    plot?.yaw??[seasideHorizon,foreground+.23,seasideHorizon+Math.PI][i],13+i*5,.16+i*.036,4.8,plot?.index));
+  const birds=[seasideHorizon-.05,foreground+.24].map((yaw,i)=>({
+    ...actor(seagull(),loop(yaw,6,.20,11),{kind:'bird',ground:5.6+i*2.8,speed:4.45+i*.62,phase:.18+i*.41,corner:4.2}),
+    coastal:true,seagull:true,
+  }));
+  const swimmers=landmarks.filter(plot=>!plot.beach).map((plot,i)=>create(swimmer(i%2?'#a67457':'#dfa881',i%2?'#f1cc70':'#e58182'),
+    {kind:'swimmer',ground:.027,speed:.62+i*.05,phase:.19+i*.37,corner:.4},
+    plot.yaw+((i%2?1:-1)*.087),3.45,.026,1.07,plot.index));
+  const scooters=landmarks.map((plot,i)=>create(jetski(i%2?'#439eaf':'#dc7367'),
+    {kind:'jetski',ground:.026,speed:4.14+i*.19,phase:.2+i*.35,corner:1.15},
+    plot.yaw+(plot.beach?-.19:.026),10.8,.116,3.25,plot.index));
+  return [...swimmers,...scooters,...sails.slice(0,2),birds[0],...sails.slice(2),...birds.slice(1)].filter(Boolean);
 }
 
 function terrainWander(layout,plan,completed,discoveries,driver) {
@@ -1445,7 +1494,7 @@ function streetFleet(theme,layout,plan,completed,circuits,alternatives,elevation
 }
 
 export function regionActors(theme,layout,plan,completed,discoveries=[]) {
-  if (!completed.length&&!plan.circuits?.length) return [];
+  if (!completed.length&&!plan.circuits?.length&&theme!=='island') return [];
   const actors=[], moon=theme==='moon';
   const paths=plan.paths.filter(path=>path.length>=4);
   const circuits=(plan.circuits??[]).slice().sort((a,b)=>b.length-a.length);
@@ -1454,7 +1503,7 @@ export function regionActors(theme,layout,plan,completed,discoveries=[]) {
     [points,points.slice().reverse()].map(path=>route(streetLane(path),STREET_TURN_RADIUS)));
   const colors=['#deaa73','#8eb1c6','#d27d84','#e0bb83'];
   const walkers=moon?['astronaut','alien']:['human'];
-  if (theme==='island') actors.push(...islandWaterLife(layout,plan,completed));
+  if (theme==='island') actors.push(...islandWaterLife(layout,completed));
   if (completed.length) {
     const walker=terrainWander(layout,plan,completed,discoveries,false);
     if (walker) actors.push(walker);
@@ -1486,8 +1535,9 @@ export function regionActors(theme,layout,plan,completed,discoveries=[]) {
     }
   }
   for (const plot of completed.filter(plot=>['pier','quay','marina'].includes(plot.kind))) {
+    if (theme==='island') continue;
     const cargo=plot.kind==='quay';
-    actors.push(actor(sailboat(cargo),boatRoute(theme,layout,plot),{kind:'boat',ground:.06,speed:cargo?1.45:1.85,phase:.35,corner:2}));
+    actors.push(actor(sailboat(cargo),riverBoatRoute(layout,plot),{kind:'boat',ground:.06,speed:cargo?1.45:1.85,phase:.35,corner:2}));
   }
   const suspension=completed.find(plot=>plot.kind==='bridge');
   if (suspension) {
@@ -1509,7 +1559,7 @@ export function regionActors(theme,layout,plan,completed,discoveries=[]) {
       voice:moon?person:'people',
     }),characterSlot:896+i});
   }
-  if (completed.length>=2) {
+  if (completed.length>=2&&theme!=='island') {
     const {x,z}=completed.at(-1);
     actors.push(actor(regionBird(moon),[[x-11,z-5],[x+2,z-11],[x+11,z-2],[x+4,z+10],[x-8,z+8]],{
       kind:'bird',ground:moon?7.5:6.5,speed:4.25,phase:.2,corner:5,

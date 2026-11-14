@@ -1,4 +1,4 @@
-# Mattopia 1.43.0
+# Mattopia 1.47.3
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.43.0.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.47.3.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -56,6 +56,61 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 Åpne `locale-nb.js` i en teksteditor og endre teksten til høyre for nøkkelen. Filen inneholder sentrale tekster i veiviseren, profilredigeringen, oppgavene, hjelpen og kartvisningen. Behold nøklene, anførselstegnene og eventuelle plassholdere som `{count}`. Noen faglige alternativer, stedsnavn, historier og hjelpetekster i innstillingene ligger fortsatt i modulene der de brukes.
 
 Ta vare på filen eller legg ved den redigerte utgaven til neste versjon. Kopier den til kildemappen før du bygger samme versjon, slik at både beta og vanlig utgave får teksten. I senere versjoner fletter du inn de endrede verdiene i den nye språkfilen, så nye nøkler blir med. Last opp hele pakken med et nytt versjonsnummer for at installerte apper skal hente filen. Redigert oppgavetekst gjelder for nye øvingsrunder. Nye språk kan få egne katalogfiler med de samme nøklene og norsk som reserve.
+
+## Nytt i 1.47.3
+
+- Ikonet har den runde Eplo-formen og skyggen fra det opprinnelige hjemskjermikonet, med mørkegrønn bakgrunn og gyllent plusstegn.
+
+## Nytt i 1.47.2
+
+- Eplo med et gyllent plusstegn vises på hjemskjermen og i toppen av appen.
+
+## Nytt i 1.47.1
+
+- Strandpromenaden går på landsiden av Laguneresorten. Solsenger, parasoller og badeliv får plass foran hotellet.
+- Palmesuset og Tretorden har lengre spor med mykere svinger, tettere reisverk i tre og et rødt tog med tre vogner. Returbanen går under det høye sporet.
+
+## Nytt i 1.47.0
+
+- På Palmeøya er havet tydeligere fra start, med bølger, måker og båter. Svømmere og vannscootere holder til ved de ferdige fyrene, bryggene og resorten, også på store kart.
+- Strandpromenaden følger en lengre, sammenhengende del av kysten, med plass til å gå forbi resorten, fyrene og bryggene.
+- Palmesuset og Tretorden har omtrent dobbelt så stor grunnflate. Trebanen får et høyere stup, kryssavstivet reisverk, en større stasjon og tre vogner som følger bakkene.
+- På lagrede kart kan tomter og veier få en annen plassering når kartet tegnes på nytt. Byggetrinnene er fortsatt lagret.
+
+## Nytt i 1.46.1
+
+- Ved husene og de andre byggene med varierende antall besøkende kan det nå stå null til tre personer ved inngangen.
+
+## Nytt i 1.46.0
+
+- Elvebyen og Palmeøya har egne byggevalg for lange promenader og en klassisk berg-og-dal-bane i tre.
+- Det kan stå én, to eller tre personer foran byggene. Flere går på besøk eller tar buss, tog og trikk.
+- Vulkanen varierer i plassering fra kart til kart. Jernbanen prioriterer rette strekk og kurver langs kvartalene.
+- Residensens omtale av mattemesteren står én gang.
+
+## Nytt i 1.45.0
+
+- Tog og vogner blir gradvis synlige ved tunnelmunningen. Større jernbaner får flere holdeplasser og slakere kurver. Månesporet følger i større grad kvartalene og kan få fire togsett.
+- Figurer ved bygg kan besøke hverandre til fots eller ta tog, svevebane eller trikk til en annen holdeplass.
+- Residensen prioriterer en rolig tomt utenfor sentrum, gjerne nær vann. Fabrikker og lignende bygg holder avstand der veinettet gir rom for det.
+- Elvebyen har bredere elv, en lagune i elveløpet og en lengre rød hengebro.
+- Palmeøya er litt større på kart med 150 byggesteg. Der kan man oppdage et sovende vulkankrater, og trikken kan få tre vogner som kjører på en større rute inne på øyen.
+- Terreng, tomter og traseer beregnes når et lagret kart åpnes. Enkelte bygg og veier kan derfor ligge et annet sted etter oppdateringen.
+
+## Nytt i 1.44.2
+
+- Luna Grand Resort bygges vest for Månestøvsjøen, med fasaden vendt mot sjøen. Når du velger hotellet på kartet, kommer sjøen med i forgrunnen. Lagrede månekart får den nye plasseringen når de åpnes.
+
+## Nytt i 1.44.1
+
+- Månesporet har et buet tak over tre gjennomgående svevespor. Sporvekslene leder togene til ulike perronger, og to tog kan stå under taket samtidig. Oppgraderingen vises også på månekart der stasjonen allerede er bygd.
+
+## Nytt i 1.44.0
+
+- Nye kart har 150 byggesteg og plass til 50 bygg. Tidligere kart beholder størrelsen de ble startet med.
+- Elveby stasjon har et buet tak over tre gjennomgående spor med sporveksler. To tog kan stå inne samtidig. Tog og monorail får to vogner per lokomotiv når kartet har minst ti ferdige bygg.
+- Terrenget rundt Elveby lufthavn og Flyverkstedet er planert ved byggene, også når fjellene i horisonten vises.
+- Byggedemoen har en snarvei til residensen. Demoen bruker profilnavnet eller «Spiller 1». I vanlig spill tilbys residensen når profilen har et navn.
 
 ## Nytt i 1.43.0
 

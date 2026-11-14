@@ -461,7 +461,7 @@ test('Shorter rounds show their actual length and add exactly one building stage
     assert.equal(h.run("worldStatus(currentWorld(state,'city')).completed"), 1);
     assert.equal(h.run('restoreState(state).history.at(-1).length'), length);
     assert.match(h.root.innerHTML, new RegExp(`aria-label="${length} oppgaver fullført"`));
-    assert.match(h.root.innerHTML, /Nytt byggesteg · 1 av 120/);
+    assert.match(h.root.innerHTML, /Nytt byggesteg · 1 av 150/);
     assert.match(h.root.innerHTML, /data-reveal/);
     assert.match(h.root.innerHTML, /data-project-latest>Vis igjen/);
     h.run('startRound()');
@@ -561,7 +561,7 @@ test('Eplo greets a named player, describes progress and changes the pause encou
   h.run(`state=selectRewardMode(state,'city',()=>.38);
     state=replaceCurrentWorld(state,'city',{...currentWorld(state,'city'),order:[0,3],progress:4});
     showPause();`);
-  assert.match(h.run('pauseMarkup'),/1 av 40 bygg\. Neste steg er på Fotballbanen/);
+  assert.match(h.run('pauseMarkup'),/1 av 50 bygg\. Neste steg er på Fotballbanen/);
   assert.match(h.run('pauseMarkup'),/data-project-preview="city"/);
 });
 
@@ -855,4 +855,35 @@ test('A Beta map demo keeps the same step controls available across fullscreen c
   assert.equal(h.run('controls.parentElement===stage'),true);
   h.run('expand.click();');
   assert.equal(h.run('controls.parentElement===viewer'),true);
+});
+
+test('The Beta residence shortcut uses a chosen name or Spiller 1 without changing the saved map',()=>{
+  const h=harness({channel:'preview',roundFixture:false});
+  h.run(`
+    let demoScene,demoMarkup,cameraFocus;
+    const demoButton=()=>({addEventListener(name,fn){this[name]=fn;},focus(){}});
+    const first=demoButton(),last=demoButton(),finish=demoButton(),residence=demoButton();
+    const canvas={cloneNode:()=>({}),replaceWith(){}};
+    const widgets={'[data-demo-step="-1"]':first,'[data-demo-step="1"]':last,
+      '[data-demo-finish]':finish,'[data-demo-finale]':{},'[data-demo-residence]':residence,
+      '[data-demo-status]':{},'[data-demo-progress]':{},'#project-milestone':{},canvas};
+    const viewer={querySelector:key=>widgets[key]??null};
+    const modal={querySelector:key=>key==='.project-viewer'?viewer:widgets[key]??null,addEventListener(){},insertAdjacentHTML(){}};
+    showDialog=(html,_css,open)=>{demoMarkup=html;open(modal);};
+    mountProjectView=(_viewer,scene)=>{demoScene=scene;return Object.assign(()=>{}, {inspect(id){cameraFocus=id;}});};
+    profile={name:'Spiller 1',hasName:false};
+    showProject('city',true);
+    residence.click();
+  `);
+  assert.match(h.run('demoMarkup'),/data-demo-residence>Vis residensen/);
+  assert.equal(h.run('demoScene.residenceName'),'Spiller 1');
+  assert.equal(h.run('demoScene.sites[RESIDENCE_PLACE].built'),true);
+  assert.equal(h.run('cameraFocus'),worlds.RESIDENCE_PLACE);
+  assert.match(h.run("widgets['[data-demo-status]'].innerHTML"),/Steg 9 av 150/);
+  assert.equal(h.run("currentWorld(state,'city')"),null);
+  h.run("profile={name:'Ada',hasName:true};showProject('moon',true);residence.click();");
+  assert.equal(h.run('demoScene.residenceName'),'Ada');
+  assert.equal(h.run("currentWorld(state,'moon')"),null);
+  h.run("profile={name:'Spiller 1',hasName:false}; const ready={...freshWorld(()=>.5),order:[0,3],progress:6};");
+  assert.equal(h.run("worldBuildingOptions('city',ready,chosenProfileName(profile)).includes(RESIDENCE_PLACE)"),false);
 });

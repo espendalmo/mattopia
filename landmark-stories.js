@@ -124,12 +124,15 @@ function originalLandmarkStory(theme,index,kind) {
   if (districtStories[kind]) return districtStories[kind];
   if (theme==='moon'&&moonStories[kind]) return moonStories[kind];
   if (kind==='railwayStation') return 'Toget stopper på perrongen. Se om du får øye på toget igjen på den andre siden av tunnelen.';
-  if (kind==='monorailStation') return 'Månetoget trenger bare én skinne. Det glir over gatene, gjennom tunnelen og tilbake til stasjonen.';
+  if (kind==='monorailStation') return 'Månetogene møtes under det buede taket. På perrong tre må konduktøren minne romvesenene om at antenner også må innenfor dørene.';
   if (kind==='tramStation') return 'Du kan ta trikken hele veien rundt og ende på samme sted. Hvor mange stopp finner du?';
   if (kind==='needleTower') return 'Restauranten snurrer sakte, så alle bord får utsikt i alle retninger.';
-  if (kind==='residence') return theme==='moon'?'Et hus verdig en mattemester. I oppkjørselen står en rover og en svevebil. Selv bilen kan løfte seg et hakk.':
-    theme==='island'?'Et palass verdig en mattemester. Kabrioleten har taket nede, og endene i hagedammen krever bompenger i brødsmuler.':
-    'Et hus verdig en mattemester. Sportsbilen tar svingene, og endene tar seg av regningen. De er gode med desimalkvakk.';
+  if (kind==='residence') return theme==='moon'?'I oppkjørselen står en rover og en svevebil. Selv bilen kan løfte seg et hakk.':
+    theme==='island'?'Kabrioleten har taket nede, og endene i hagedammen krever bompenger i brødsmuler.':
+    'Sportsbilen tar svingene, og endene tar seg av regningen. De er gode med desimalkvakk.';
+  if (kind==='shoreWalk') return 'Noen teller bølgene fra benken. De mister alltid tellingen når iskremvognen kommer.';
+  if (kind==='riverWalk') return 'Fin til kveldsturer. Endene mener den beste benken er den nærmest vannet.';
+  if (kind==='woodCoaster') return 'Klatringen knirker godt. På toppen rekker du akkurat å se over trærne før det går nedover.';
   if (kind==='lighthouse') return 'På mørke kvelder viser lykten båtene vei forbi grunnen.';
   if (kind==='telescopeArray') return 'De små teleskopene hjelper det store med å finne riktig del av stjernehimmelen.';
   if (kind==='airport'&&theme==='city') return 'Se etter lysene langs rullebanen når flyet lander. Helikopteret har sin egen plass.';
@@ -212,7 +215,7 @@ const construction={
 };
 
 const openings={
-  residence:'Her kan en mattemester som deg parkere, telle ender eller ta en velfortjent pause i hagen.',
+  residence:'Her er det plass til å parkere, telle ender eller ta en pause i hagen.',
   lunarResort:'Bassengvakten har satt fram støvkoster. De to første gjestene har allerede badet seg grå.',
   moonBurger:'Første burger er klar. Kokken har festet ekstra måneost så den holder seg på plass.',
   spaceField:'Laget Månespark er klart. Hjelmene er på og ballen har lovet å oppføre seg.',

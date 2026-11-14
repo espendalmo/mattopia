@@ -107,7 +107,7 @@ const buildingKinds={
   rail:['railwayStation','tramStation','monorailStation'],
   motor:['roverGarage','hoverDealer','busStation','fireStation','policeStation'],
   clock:['school','church','hall','bank','prison','bookHall','library','courthouse'],
-  fair:['wheel','coaster','cinema','nightCinema','cultureHouse','bandstand','dance','casino','riverSlides','mangoSlides','dustSlides'],
+  fair:['wheel','coaster','woodCoaster','cinema','nightCinema','cultureHouse','bandstand','dance','casino','riverSlides','mangoSlides','dustSlides'],
   arcade:['arcade','lunarArcade','islandArcade'],
   crowd:['field','spaceField','fitness','square','market','tropicalMarket'],
   work:['mill','factory','sawmill','moonWorkshop','moonCargo','oxygen','generator','refinery','supplyDepot','cargoDepot'],

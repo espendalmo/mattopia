@@ -135,6 +135,34 @@ function distancesFrom(start) {
   return {distances,previous};
 }
 
+export function streetPathBetween(network,from,to) {
+  if (from.path===to.path) {
+    const direction=Math.sign(to.i-from.i)||Math.sign((to.x-from.x)*from.u+(to.z-from.z)*from.v);
+    const middle=direction>0?from.path.slice(from.i+1,to.i+1):from.path.slice(to.i+1,from.i+1).reverse();
+    return [from,...middle,to];
+  }
+  const terminals=point=>[[point,...point.path.slice(point.i+1)],[point,...point.path.slice(0,point.i+1).reverse()]];
+  const length=path=>path.slice(1).reduce((sum,point,i)=>sum+gap(point,path[i]),0);
+  let best=null,cost=Infinity;
+  for (const a of terminals(from)) {
+    const start=network.nodes.get(key(a.at(-1)));
+    if (!start) continue;
+    const {distances,previous}=distancesFrom(start);
+    for (const b of terminals(to)) {
+      const end=network.nodes.get(key(b.at(-1)));
+      const total=length(a)+(distances.get(end)??Infinity)+length(b);
+      if (total>=cost) continue;
+      const legs=[];
+      for (let node=end;node!==start;) {
+        const link=previous.get(node);
+        legs.unshift(link.path);node=link.point;
+      }
+      best=[...a,...legs.flatMap(path=>path.slice(1)),...b.slice(0,-1).reverse()];cost=total;
+    }
+  }
+  return best;
+}
+
 // Keep the access road in the actual street network. The return lane follows
 // the same continuous streets, including any junctions added later.
 export function destinationRoutes(network,entries) {

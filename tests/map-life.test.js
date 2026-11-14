@@ -6,6 +6,7 @@ import {projectCameras,projectFaces} from '../project-view.js';
 import {entityAt} from '../project-picking.js';
 import {residentPoint,walkingClock,lunarSkyCamera,lunarCurvature,lunarSurfaceY} from '../scene-motion.js';
 import {mapCharacterInfo,footballMoment,footballActors} from '../map-life.js';
+import {landmarkVisitors} from '../map-art.js';
 import {actor,actorPose,createTraffic,MAX_ACTORS,RESIDENCE_DRIVER,vehicle,visitor} from '../scenery.js';
 
 test('Touch cameras allow a closer look while overview and desktop framing stay unchanged',()=>{
@@ -19,12 +20,30 @@ test('Touch cameras allow a closer look while overview and desktop framing stay 
   }
 });
 
-test('Residents on every completed plot keep moving independently of the vehicle budget',()=>{
+test('Building fronts can stand empty or host up to three residents',()=>{
+  for (const [theme,kind] of [['city','house'],['island','hotel'],['moon','habitat']]) {
+    const plot={kind,index:5,x:0,y:1,z:0,yaw:0,entries:[{x:0,z:7}]};
+    const counts=new Set();
+    for (let seed=0;seed<32;seed++) {
+      const mobile=[];
+      const parts=landmarkVisitors(theme,plot,mobile,seed);
+      const residents=new Set(parts.map(part=>part.entity));
+      assert.equal(mobile.length,residents.size);
+      counts.add(residents.size);
+    }
+    assert.deepEqual([...counts].sort(),[0,1,2,3]);
+  }
+});
+
+test('Placed residents keep moving independently of the vehicle budget',()=>{
   for (const theme of ['city','moon','island']) {
     const scene=projectScene(theme,{...freshWorld(()=>.45),order:[0,1,4,7,18,19,24,25,26,27,28,29],progress:36});
     assert.ok(scene.ambient.length<=MAX_ACTORS);
     const residents=scene.parts.filter(part=>part.entity?.startsWith('resident:'));
-    assert.ok(new Set(residents.map(part=>part.entity.split(':')[1])).size>=7);
+    const placed=new Set(residents.map(part=>part.entity));
+    const traveling=scene.ambient.flatMap(actor=>actor.resident?[actor.resident]:[]);
+    assert.ok(traveling.every(key=>!placed.has(key)));
+    assert.ok(new Set([...placed,...traveling].map(key=>key.split(':')[1])).size>=7);
     assert.ok(residents.every(part=>part.life?.every(Number.isFinite)));
     const person=residents[0];
     assert.notDeepEqual(residentPoint([person.x,person.y,person.z],person.life,0,0),residentPoint([person.x,person.y,person.z],person.life,0,2));
@@ -153,7 +172,7 @@ test('Finds have reproducible locations and stories on each map and more appear 
     const keys=Object.keys(later.discoveries);
     assert.ok(Object.keys(early.discoveries).length>=2);
     assert.ok(keys.some(key=>!early.discoveries[key]));
-    for (const key of keys.filter(key=>early.discoveries[key])) {
+    for (const key of keys.filter(key=>key.startsWith('discovery:')&&early.discoveries[key])) {
       assert.deepEqual(later.discoveries[key],early.discoveries[key]);
       assert.deepEqual(later.parts.filter(part=>part.entity===key),early.parts.filter(part=>part.entity===key));
     }
@@ -168,6 +187,25 @@ test('Finds have reproducible locations and stories on each map and more appear 
       assert.ok(later.parts.some(part=>part.entity?.startsWith('discovery:')&&part.life?.[3]< -1));
     }
   }
+});
+
+test('Building residents keep their names, visit each other and ride to another tram stop',()=>{
+  const map=freshWorld(()=>6163/2**32);
+  const early=projectScene('island',{...map,order:[0],progress:3});
+  const scene=projectScene('island',{...map,order:[0,3,36],progress:9});
+  const traveler=scene.ambient.find(actor=>actor.railJourney);
+  const other=scene.ambient.find(actor=>actor.resident?.startsWith('resident:'+traveler?.visits+':'));
+  assert.ok(traveler&&other);
+  assert.ok(traveler.parts.every(part=>part.entity===traveler.resident));
+  assert.ok(!scene.parts.some(part=>part.entity===traveler.resident));
+  assert.equal(mapCharacterInfo(scene,traveler.resident).name,mapCharacterInfo(early,traveler.resident).name);
+  const poses=Array.from({length:1300},(_,i)=>actorPose(traveler,i*.16));
+  const board=poses.findIndex(p=>p.y< -500);
+  assert.ok(board>0);
+  const off=poses.findIndex((p,i)=>i>board&&p.y>0);
+  assert.ok(off>board&&Math.hypot(poses[off].x-poses[board].x,poses[off].z-poses[board].z)>8);
+  const home=actorPose(other,0);
+  assert.ok(poses.some(p=>p.y>0&&Math.hypot(p.x-home.x,p.z-home.z)<.1));
 });
 
 test('Three crossing routes clear their queue and a waiting hovercar stops its flame',()=>{

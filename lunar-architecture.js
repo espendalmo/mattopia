@@ -173,8 +173,6 @@ export function lunarArchitecture(style,stages,index) {
     extra.push(...antenna(-3.20,-2.3,3.9,pink),...ring(-3.20,-2.3,1.12,5.0,cyan,.11,.37));
   } else if (style==='rocketPort'||style==='orbitalPort'||style==='cometPort') {
     extra.push(...pair.map(side=>cone(side*3.70,-2.39,.46,1.67,cyan,.35)));
-  } else if (style==='monorailStation') {
-    extra.push(...ring(-2.82,-1.16,1.59,4.41,gold,.13,.47),...antenna(-2.82,-1.16,4.19));
   }
   if (index===23) extra.push(...ring(-.63,-.29,3.2,.55,pink,.15),...antenna(-3.82,-2.53,2.2,cyan));
   if (index===40) extra.push(...pair.map(side=>cone(side*2.8,2.4,1.07,2.25,side<0?pink:cyan,.36)));

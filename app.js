@@ -12,7 +12,7 @@ import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, PROFILE_KEY, chosenProfileN
 import { rewardIllustration } from './illustrations.js';
 import { curriculumTopic, levelForGrade, levelsForGrade } from './curriculum.js';
 import { PROJECTS, projectById, projectScene, worldBuilding, worldBuildingOptions, worldBuildingPreview } from './projects.js';
-import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES } from './worlds.js';
+import { isWorld, isRegion, currentWorld, worldStatus, worldCompletedPlaces, worldSelect, worldAdvance, freshWorld, replaceCurrentWorld, startNewWorld, WORLD_IDS, REGION_PLACES, RESIDENCE_PLACE, WORLD_BUILD_STEPS } from './worlds.js';
 import { mountProjectView } from './project-view.js';
 import { seasonForDate, seasonMark } from './seasons.js';
 
@@ -94,7 +94,6 @@ function icon(name, css = '') {
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 2-2.5 2-2.5 4M12 17h.01"/>',
     settings: '<path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/>',
     sprout: '<path d="M12 20v-9M12 14C5 14 4 9 4 6c6 0 8 3 8 8ZM12 11c0-6 4-8 8-8 0 5-2 8-8 8Z"/>',
-    'brand-friend': '<path d="M11.5 7.6c0-3.6 2.5-5.5 5.5-5.1-.3 2.9-2.1 4.5-5.5 5.1Z" fill="#81c77f" stroke="none"/><path d="M11.3 8c6.1-2.1 8.5 1.4 8.5 6.2 0 4.5-3 7.2-8 7.2s-8-2.5-8-7 2.4-7.6 7.5-6.4Z" fill="#d4edb7" stroke="none"/><ellipse cx="8.8" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><ellipse cx="14.6" cy="13.4" rx="1" ry="1.35" fill="#203c34" stroke="none"/><path d="M10.4 16.3q1.3 1.7 2.6 0" stroke="#203c34" stroke-width="1.05"/><path d="M20.1 3.7l.7 1.9 1.8.7-1.8.6-.7 1.9-.7-1.9-1.8-.6 1.8-.7Z" fill="#f6cd6e" stroke="none"/>',
     again: '<path d="M20 11a8 8 0 1 1-3-6.2L20 8M20 3v5h-5"/><path d="m12 8 .7 2.3L15 11l-2.3.7L12 14l-.7-2.3L9 11l2.3-.7L12 8Z"/>',
     star: '<path d="m12 2.8 2.8 5.7 6.3.9-4.6 4.4 1.1 6.3-5.6-3-5.6 3 1.1-6.3L2.9 9.4l6.3-.9Z"/>',
     sound: '<path d="m11 5-5 4H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/>',
@@ -122,7 +121,7 @@ function projectCongratulations(id) {
   };
   return eploNote(messages[id]??'Du fullførte superhelten! Se alle delene du fikk på plass, én runde om gangen.',true);
 }
-function brand() { return `<div class="brand"><span class="brand-mark">${icon('brand-friend', 'brand-friend')}<span class="brand-season">${seasonMark(seasonForDate())}</span></span><span>Mattopia</span></div>`; }
+function brand() { return `<div class="brand"><span class="brand-mark"><img src="./assets/icon.svg" alt="" width="34" height="34"><span class="brand-season">${seasonMark(seasonForDate())}</span></span><span>Mattopia</span></div>`; }
 function betaMark() { return CHANNEL === 'preview' ? '<span class="beta-mark"><strong>BETA</strong><span class="sr-only"> Testversjon</span></span>' : ''; }
 function soundButton() { return `<button class="icon-button sound-toggle" data-action="sound" aria-label="${state.sound ? 'Lyd på. Slå av lyd' : 'Lyd av. Slå på lyd'}" aria-pressed="${state.sound}">${icon(state.sound ? 'sound' : 'muted')}</button>`; }
 function header(showAdult = true, showSound = true) { return `<header class="site-header"><div class="brand-wrap">${brand()}${betaMark()}</div><div class="header-controls">${showSound ? soundButton() : ''}${showAdult ? `<button class="adult-link" data-action="adult">${icon('settings')}${msg('adult.title')}</button>` : ''}</div></header>`; }
@@ -504,6 +503,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
   const project = projectById(id);
   if (!project || (demo && CHANNEL !== 'preview')) return;
   let trail = demo && isWorld(id) ? [freshWorld()] : null;
+  const demoOwner=trail&&(chosenProfileName(profile)||'Spiller 1');
   let completed = demo ? 0 : state.projects[id] || 0;
   let map = trail ? trail[0] : archivedMap || currentWorld(state,id);
   const progress = () => ({mode:id,...(map ? worldStatus(map) : {completed,total:project.total,full:completed===project.total})});
@@ -525,7 +525,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         <p data-demo-status aria-live="polite">${latest()}</p>
         <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
       </div>` : ''}
-      ${demo ? `<div class="demo-shortcuts"><button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
+      ${demo ? `<div class="demo-shortcuts">${trail?'<button class="secondary" data-demo-residence>Vis residensen</button>':''}<button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${escapeHtml(scene.world ? 'Kart: '+title : title+' i 3D')}" aria-describedby="project-instructions project-milestone"></canvas>
         ${scene.world?`<section class="map-info-card" data-map-info hidden aria-live="polite">
@@ -712,8 +712,9 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
         if (trail) {
           while (!trail[target]) {
             const latest=trail.at(-1);
-            const [choice]=worldBuildingOptions(id,latest);
-            trail.push(worldAdvance(worldSelect(latest,choice,id),id));
+            const choices=worldBuildingOptions(id,latest,demoOwner);
+            const choice=choices.includes(RESIDENCE_PLACE)?RESIDENCE_PLACE:choices[0];
+            trail.push(worldAdvance(worldSelect(latest,choice,id,demoOwner),id));
           }
           map = trail[target];
         }
@@ -728,6 +729,13 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       previous.addEventListener('click', () => step(-1));
       next.addEventListener('click', () => step(1));
       finish.addEventListener('click',()=>goTo(progress().total,1));
+      viewer.querySelector('[data-demo-residence]')?.addEventListener('click',()=>{
+        const index=map.order.indexOf(RESIDENCE_PLACE);
+        const residenceStep=(index<0?3:index+1)*WORLD_BUILD_STEPS;
+        if (completed<residenceStep) goTo(residenceStep,1);
+        if (card) inspect(RESIDENCE_PLACE,{focus:true});
+        else dispose.inspect?.(RESIDENCE_PLACE,{focus:true});
+      });
       dialog.querySelector('[data-demo-new]')?.addEventListener('click', () => {
         map = freshWorld(Math.random, map);
         trail = [map];

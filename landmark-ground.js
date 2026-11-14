@@ -88,7 +88,8 @@ export function plotAccess(layout,plot,foundation,elevation=(x,z)=>roadElevation
   const dx=entry.x-plot.x,dz=entry.z-plot.z;
   const front=dx*s+dz*c,across=dx*c-dz*s;
   const drive=paved.has(plot.kind);
-  const endX=foundation.x+(plot.kind==='residence'?0:drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
+  const endX=plot.spaceResort||plot.coasterPark?across
+    :foundation.x+(plot.kind==='residence'?0:drive?.18:plot.index%2===0?-.21:.21)*foundation.w;
   const rim=foundation.outline;
   let endZ=foundation.z+foundation.d*.5;
   if (rim) {
@@ -106,7 +107,7 @@ export function plotAccess(layout,plot,foundation,elevation=(x,z)=>roadElevation
   const path=Array.from({length:7},(_,i)=>{
     const t=i/6,ease=t*t*(3-2*t);
     const [x,,z]=pointOnSite([startX+(endX-startX)*ease,0,startZ+(endZ-startZ+direction*.06)*t],plot);
-    return {x,z,y:elevation(x,z)*(1-ease)+(plot.y+.155)*ease};
+    return {x,z,y:elevation(x,z)*(1-ease)+(plot.y+(plot.coasterPark?.375:.155))*ease};
   });
   return {path,drive};
 }

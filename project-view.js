@@ -1,7 +1,7 @@
 import {createTraffic,EMERGENCY_LIGHT,MAX_ACTORS} from './scenery.js';
 import {createFireworks,FIREWORKS_START,FIREWORKS_END,FINALE_FIREWORKS_END} from './project-fireworks.js';
 import {entityAt,landmarkSilhouette} from './project-picking.js';
-import {residentPoint,residentNormal,lunarSkyCamera,lightPulse,lunarCurvature,lunarSurfaceY} from './scene-motion.js';
+import {residentPoint,residentNormal,lunarSkyCamera,lightPulse,lunarCurvature,lunarSurfaceY,clipAtRailPortal} from './scene-motion.js';
 
 const clamp = (value,min,max) => Math.max(min,Math.min(value,max));
 const cross = ([ax,ay,az],[bx,by,bz]) => [ay*bz-az*by,az*bx-ax*bz,ax*by-ay*bx];
@@ -270,7 +270,7 @@ function canvasPainter(canvas, faces, background, stars) {
         if (facingLight<=0) continue;
         let depth=0;
         let modelY=0;
-        const points=face.points.map(point=>{
+        const transformed=face.points.map(point=>{
           let [x,y,z]=residentPoint(point,face.life,face.stride,effects.age);
           if (face.group===1) {
             modelY+=y;
@@ -289,6 +289,11 @@ function canvasPainter(canvas, faces, background, stars) {
             x=actor.x+x*actor.cos+strideZ*actor.sin;
             y+=actor.y+Math.max(0,step)*.58;
           }
+          return [x,y,z];
+        });
+        const clipped=actor?.railClipOffset===undefined?transformed:clipAtRailPortal(transformed,actor);
+        if (clipped.length<3) continue;
+        const points=clipped.map(([x,y,z])=>{
           if (face.lunar) y=lunarSurfaceY(x,y,z,effects.curvature);
           const forward=x*sin+z*cos;
           const heightFromCenter=y-center;
@@ -389,8 +394,10 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
     varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
+    varying mediump float railDepth;
     void main() {
       vec3 pos = position;
+      railDepth = 1.0;
       if (life.w > 0.0) {
         float t = age*1.7+life.w;
         float angle = sin(t)*.032;
@@ -416,7 +423,8 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
           vec4 pose = actorPose[i];
           vec4 motion = actorMotion[i];
           vec2 heading = vec2(cos(pose.w),sin(pose.w));
-          vec2 roll = vec2(cos(motion.y),sin(motion.y));
+          bool railClip = motion.w >= 6.0;
+          vec2 roll = railClip ? vec2(1.0,0.0) : vec2(cos(motion.y),sin(motion.y));
           vec2 slope = vec2(cos(motion.z),sin(motion.z));
           vec2 pivot = hinge.z > .5 ? hinge.xy : pos.xy;
           pos.xy += vec2(pivot.x*roll.x-pivot.y*roll.y,pivot.x*roll.y+pivot.y*roll.x)-pivot;
@@ -430,6 +438,7 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
           float z = pos.z+step;
           pos = vec3(pose.x+pos.x*heading.x+z*heading.y,pos.y+pose.y+max(0.0,step)*.58,
             pose.z+z*heading.x-pos.x*heading.y);
+          if (railClip) railDepth = dot(pos.xz-pose.xz,vec2(cos(motion.y),sin(motion.y))) + motion.w-10.0;
           break;
         }
       }
@@ -448,8 +457,10 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
     varying mediump vec4 shade;
     varying mediump float modelHeight;
     varying mediump float latest;
+    varying mediump float railDepth;
     uniform vec2 shine;
     void main() {
+      if (railDepth < 0.0) discard;
       float sweep = max(0.0,1.0-abs(modelHeight-shine.y)/.7)*.36;
       vec3 color = mix(shade.rgb,vec3(1.0,.86,.46),latest*min(.58,shine.x+sweep));
       ${illustrated?'color += (fract(52.9829 * fract(dot(gl_FragCoord.xy,vec2(.06711,.00583))))-.5)*.022*shade.a;':''}
@@ -505,9 +516,13 @@ function webGLPainter(canvas, faces, background, illustrated, stars, actorCount)
       gl.uniform1f(uniforms.curvature,effects.curvature??0);
       gl.uniform4f(uniforms.reveal,effects.lift,effects.growth,effects.ground,effects.road);
       gl.uniform2f(uniforms.shine,effects.highlight,effects.sweep);
-      effects.actors.forEach(({x,y,z,cos=1,sin=0,stride=0,rollCos=1,rollSin=0,pitch=0,thrust=0},i)=>{
+      effects.actors.forEach(({x,y,z,cos=1,sin=0,stride=0,rollCos=1,rollSin=0,pitch=0,thrust=0,
+        railClipX:nx,railClipZ:nz,railClipOffset:offset},i)=>{
         actorPositions.set([x,y,z,Math.atan2(sin,cos)],i*4);
-        actorMovement.set([stride,Math.atan2(rollSin,rollCos),pitch,thrust],i*4);
+        // Rail vehicles use neither roll nor thrust. Reuse their slots for the portal plane.
+        const railClip=offset!==undefined;
+        actorMovement.set([stride,railClip?Math.atan2(nz,nx):Math.atan2(rollSin,rollCos),pitch,
+          railClip?10+nx*x+nz*z+offset:thrust],i*4);
       });
       gl.uniform4fv(uniforms['actorPose[0]'],actorPositions);
       gl.uniform4fv(uniforms['actorMotion[0]'],actorMovement);
@@ -553,10 +568,16 @@ export function projectCameras(scene,target=null,focusLatest=false,{compact=fals
   const average=key=>latest.reduce((sum,part)=>sum+part[key],0)/latest.length;
   const point=target??scene.latestTarget??{x:average('x'),y:Math.max(0,average('y')-.6),z:average('z'),height:4.2};
   const height=point.height??6;
-  const station=point.kind==='railwayStation'||point.kind==='monorailStation'||point.kind==='tramStation';
-  const framing=point.beach?44:point.airfield?39:point.spaceResort?31:point.kind==='residence'?(point.residence?22.5:18.5)
-    :(station?23:height*1.13+3.2)*(compact?.91:1);
-  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX:point.x+(point.beach?Math.sin(point.yaw)*5:0),anchorZ:point.z+(point.beach?Math.cos(point.yaw)*5:0),
+  const largeStation=point.kind==='railwayStation'||point.kind==='monorailStation';
+  const lake=point.spaceResort?scene.discoveries?.['moon-lake']:null;
+  const promenade=point.kind==='riverWalk'||point.kind==='shoreWalk';
+  const harbor=scene.id==='island'&&point.waterfront&&!promenade;
+  const framing=promenade?(point.kind==='shoreWalk'?72:51):point.coasterPark?34:point.beach?44:harbor?26:point.airfield?39:lake?38:point.kind==='residence'?(point.residence?22.5:18.5)
+    :(largeStation?28:point.kind==='tramStation'?23:height*1.13+3.2)*(compact?.91:1);
+  const seaward=point.beach?5:harbor?3.2:0;
+  const anchorX=point.x+(lake?(lake.x-point.x)*.26:seaward*Math.sin(point.yaw??0));
+  const anchorZ=point.z+(lake?(lake.z-point.z)*.26:seaward*Math.cos(point.yaw??0));
+  const close={...initial,zoom:Math.min(maxZoom,scene.size/framing),anchorX,anchorZ,
     center:point.y+height*(point.beach?.24:height>10?.46:.37)};
   const neighbor=Object.values(scene.landmarks??{}).filter(other=>Math.hypot(other.x-point.x,other.z-point.z)>.7)
     .reduce((nearest,other)=>!nearest||Math.hypot(other.x-point.x,other.z-point.z)<Math.hypot(nearest.x-point.x,nearest.z-point.z)?other:nearest,null);

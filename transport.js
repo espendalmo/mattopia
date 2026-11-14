@@ -7,18 +7,26 @@ const sides=[-1,1];
 const clamp=value=>Math.max(0,Math.min(1,value));
 const smooth=value=>{ const t=clamp(value); return t*t*(3-2*t); };
 const railZ=-2.45;
+const stationLanes=[-2.08,0,2.08];
+const stationTrackLength=5.58;
+const stationApproach=7.65;
+const stationSwitchLength=4.85;
+const stationSwitchEnd=stationTrackLength+stationSwitchLength;
+const canopyEdge=3.27;
 const deckHeight=moon=>moon?3.38:2.95;
 const stationStairX=2.83;
+const trainHalfLength=carriage=>carriage?1.31:1.49;
 const stationSteps=moon=>Array.from({length:12},(_,i)=>({
-  z:3.82-i*.224,y:.47+i*(deckHeight(moon)-.43)/11,
+  z:3.82-i*(moon?.224:.194),y:.47+i*(deckHeight(moon)-.43)/11,
 }));
 const pose=(x,y,z,yaw,sound=false,pitch=0)=>({
   x,y,z,cos:Math.cos(yaw),sin:Math.sin(yaw),stride:0,rollCos:1,rollSin:0,pitch,sound:Number(sound),
 });
 
-function trainModel(moon,carriage=false) {
-  const paint=moon?'#70b9c1':'#b96761', stripe=moon?'#f0b979':'#efd2a2';
-  const end=carriage?1.31:1.49;
+function trainModel(moon,carriage=false,train=0) {
+  const paint=moon?(train?'#9988b7':'#70b9c1'):(train?'#507d8a':'#b96761');
+  const stripe=moon?'#f0b979':'#efd2a2';
+  const end=trainHalfLength(carriage);
   const drive=moon
     ? [rounded(0,0,.56,2.43,.29,'#638791',-.09)]
     : sides.flatMap(side=>[-.83,.83].map(z=>tube(side*.52,z,.12,.37,.37,dark,.02,'x')));
@@ -36,38 +44,110 @@ function trainModel(moon,carriage=false) {
 }
 
 export function transitStation(moon) {
+  return moon?lunarStation():riverStation();
+}
+
+function stationCanopy(level,{frame,tile,skylight,end=frame,rise=1.97}) {
+  const arch=Array.from({length:13},(_,i)=>{
+    const t=i/12;
+    return [level+2.12+Math.sin(t*Math.PI)*rise,railZ+(t*2-1)*canopyEdge];
+  });
+  const bays=[-stationTrackLength,-3.8,-1.9,0,1.9,3.8,stationTrackLength];
+  const roofPanels=bays.slice(1).flatMap((x,i)=>arch.slice(1).flatMap(([y,z],j)=>{
+    const [ay,az]=arch[j],a=bays[i];
+    const panel=[[a,ay,az],[a,y,z],[x,y,z],[x,ay,az]];
+    return [plate(panel,(j>=3&&j<=8&&i%3!==0)?skylight:tile),
+      plate([...panel].reverse().map(([x,y,z])=>[x,y-.075,z]),frame)];
+  }));
+  const ribs=bays.flatMap((x,i)=>arch.slice(1).map(([y,z],j)=>{
+    const [ay,az]=arch[j];
+    const outer=i===0||i===bays.length-1;
+    return beam([x,ay-.034,az],[x,y-.034,z],outer?.14:.091,outer?end:frame);
+  }));
+  return [...roofPanels,...ribs,...sides.map(side=>beam(
+    [-stationTrackLength,level+2.1,railZ+side*canopyEdge],[stationTrackLength,level+2.1,railZ+side*canopyEdge],.15,frame))];
+}
+
+function stationPreview(moon) {
   const level=deckHeight(moon);
-  const wall=moon?'#9cabc7':'#c19079', trim=moon?'#d0b2ce':'#e9c89c';
-  const canopy=moon?'#638998':'#547d77', platform='#c5c6b7';
-  const stairs=stationSteps(moon).map(({z,y})=>box(stationStairX,z,1.38,.46,y-.3,trim,.3));
-  const columns=[-4.34,4.34].flatMap(x=>[
-    rounded(x,-1.08,1.21,1.14,level,wall,.3),box(x,-1.08,1.52,1.35,.23,trim,level-.14),
-  ]);
+  return stationLanes.flatMap((lane,i)=>[
+    ...railTrack([[-stationTrackLength,level,railZ+lane],[stationTrackLength,level,railZ+lane]],moon,undefined,moon?.57:.82),
+    ...(i===1?[]:placeParts(trainModel(moon,false,i===2?1:0),{x:i===0?1.8:-.62,y:level,z:railZ+lane,yaw:Math.PI/2})
+      .map(part=>({...part,vehiclePreview:true}))),
+  ]).map(part=>({...part,transitPreview:true}));
+}
+
+function lunarStation() {
+  const level=deckHeight(true),pearl='#d5d5e6',indigo='#53678c',gold='#e7bc84',cyan='#a5e1df',violet='#8585a9';
+  const concourse=[
+    rounded(-1.67,2.88,5.38,3.51,2.27,pearl,.32),
+    rounded(-1.67,2.88,5.59,3.61,.42,indigo,2.45),
+    dome(-1.67,2.86,5.22,3.45,.82,'#7596b0',2.76),
+    rounded(-1.67,2.75,5.41,3.48,.096,gold,2.84),
+    rounded(-1.63,4.65,1.72,.21,1.8,indigo,.34),
+    ...[-3.45,.15].flatMap(x=>[rounded(x,4.62,.96,.20,1.13,'#7197b3',.97),box(x,4.74,.69,.045,.12,cyan,1.39)]),
+    tube(-2.98,2.67,.123,.123,1.26,indigo,3.33),
+    dome(-2.98,2.67,.44,.44,.28,cyan,4.53),
+    ...[-.47,.47].map(x=>rounded(x-1.67,4.64,.22,.19,.2,gold,2.56)),
+  ];
+  const platforms=[
+    ...sides.flatMap(side=>[
+      rounded(0,railZ+side*1.04,10.4,.77,.28,pearl,level-.24),
+      box(0,railZ+side*.72,9.65,.075,.044,gold,level+.04),
+      box(0,railZ+side*1.37,9.65,.075,.044,gold,level+.04),
+    ]),
+    rounded(.55,1.13,9.41,1.01,.28,pearl,level-.24),
+    box(stationStairX,1.4,1.47,.73,.26,pearl,level-.22),
+    box(.43,.66,9.1,.09,.046,gold,level+.04),
+  ];
   return [
-    [{...box(0,0,10.32,9.44,1.32,wall,-1.25),support:true},
-      rounded(0,0,10.55,9.67,.27,'#d2c9b2',.04)],
-    [...columns, ...stairs,box(2.83,.57,1.4,1.98,.21,platform,level-.17),
-      rounded(-.87,1.32,4.93,3.11,2.42,wall,.3),
-      roof(-.87,1.32,5.16,3.32,.67,canopy,2.64),
-      box(-.86,2.894,2.65,.08,1.46,dark,.38),
-      ...sides.map(side=>box(-.86+side*.61,2.95,1.03,.055,1.1,glass,.57)),
-      rounded(0,-1.11,9.88,1.54,.24,platform,level-.2),
-      box(0,-1.8,9.56,.12,.047,cream,level+.043),
-      ...[-3.75,0,3.75].flatMap(x=>[
-        tube(x,-.8,.15,.15,1.34,steel,level+.025),
-        roof(x,-1.2,3.08,1.68,.43,canopy,level+1.46),
-      ]),
-    ],
-    [box(-.86,2.986,2.01,.075,.43,canopy,2.17),
-      ...[-.51,0,.51].map(x=>rounded(x-.86,3.037,.3,.06,.15,moon?'#b3f0e6':cream,2.32)),
-      ...[-3.02,-1.58,1.4].flatMap(x=>[
-        box(x,-1.18,.92,.34,.09,trim,level+.24),
-        box(x,-1.18,.72,.25,.21,dark,level+.04),
-      ]),
-      // The chooser has a short piece of track and a train. On the map the line is generated from the lot.
-      ...railTrack([[-5,level,railZ],[5,level,railZ]],moon).map(part=>({...part,transitPreview:true})),
-      ...placeParts(trainModel(moon),{x:1.25,y:level,z:railZ,yaw:Math.PI/2}).map(part=>({...part,transitPreview:true})),
-    ],
+    [{...box(0,0,10.84,10.97,1.32,violet,-1.25),support:true},rounded(0,0,11.07,11.2,.27,pearl,.04)],
+    [...concourse,...platforms,
+      ...stationSteps(true).map(({y,z})=>box(stationStairX,z,1.38,.46,y-.3,pearl,.3)),
+      ...[-4.62,0,4.62].flatMap(x=>sides.map(side=>rounded(x,railZ+side*1.04,.54,.61,level-.56,violet,.32))),
+      ...[-5.21,-2.73,0,2.73,5.21].flatMap(x=>sides.flatMap(side=>{
+        const z=railZ+side*canopyEdge;
+        return [tube(x,z,.42,.42,level+1.81,indigo,.32),tube(x,z,.71,.71,.29,pearl,.32),
+          tube(x,z,.52,.52,.19,cyan,level+1.61)];
+      }))],
+    [...stationCanopy(level,{frame:indigo,tile:'#789cbb',skylight:'#a6cbd9',end:gold,rise:2.18}),
+      ...[-4.03,0,4.03].flatMap(x=>[tube(x,1.5,.12,.12,1.24,indigo,level+.04),
+        dome(x,1.5,.45,.4,.27,cyan,level+1.24)]),
+      ...stationPreview(true)],
+  ];
+}
+
+function riverStation() {
+  const level=deckHeight(false),stone='#c79d7e',base='#b9a88d',iron='#476865',tile='#668d88',glass='#a2c7bf';
+  const forecourt=[
+    rounded(-1.91,2.74,5.63,3.92,2.81,stone,.32),
+    rounded(-1.92,2.75,5.78,4.06,.17,cream,2.91),
+    roof(-1.92,2.78,5.86,4.17,1.25,iron,3.04),
+    rounded(-1.74,4.69,2.13,.19,1.77,dark,.33),
+    ...[-3.82,.48].flatMap(x=>[box(x,4.74,1.13,.15,1.3,cream,1.05),box(x,4.84,.90,.13,1.07,glass,1.16)]),
+    tube(-1.74,4.93,.87,.10,.87,cream,2.27,'z'),
+    beam([-1.74,2.70,5.02],[-1.74,2.98,5.02],.055,iron),
+    beam([-1.74,2.70,5.02],[-1.51,2.76,5.02],.055,iron),
+  ];
+  const platforms=[
+    box(0,railZ-1.04,10.4,.65,.23,base,level-.19),
+    box(0,railZ+1.04,10.4,.65,.23,base,level-.19),
+    box(.55,1.14,9.41,.91,.23,base,level-.19),
+    box(stationStairX,1.35,1.47,.69,.23,base,level-.19),
+    ...[railZ-1.35,railZ-.73,railZ+.73,railZ+1.35,.73].map(z=>box(0,z,9.25,.065,.023,'#edd58b',level+.042)),
+  ];
+  return [
+    [{...box(0,0,10.84,10.97,1.32,base,-1.25),support:true},rounded(0,0,11.07,11.2,.27,cream,.04)],
+    [...forecourt,...platforms,
+      ...stationSteps(false).map(({y,z})=>box(stationStairX,z,1.38,.402,y-.3,stone,.3)),
+      ...[-5.21,-2.73,0,2.73,5.21].flatMap(x=>sides.flatMap(side=>[
+        box(x,railZ+side*canopyEdge,.24,.25,level+1.78,iron,.32),
+        box(x,railZ+side*canopyEdge,.49,.46,.46,stone,.32),
+      ]))],
+    [...stationCanopy(level,{frame:iron,tile,skylight:glass}),
+      ...[-3.62,0,3.62].flatMap(x=>[tube(x,1.47,.084,.084,1.31,iron,level+.04),
+        box(x,1.47,.29,.25,.15,'#f4d899',level+1.27)]),
+      ...stationPreview(false)],
   ];
 }
 
@@ -173,7 +253,7 @@ function gradedRail(points,station=false) {
     const distance=distances[i];
     const levels=[-4.5,-2.25,0,2.25,4.5].map(offset=>sample(distance+offset)[1]);
     const average=(levels[0]+2*levels[1]+2*levels[2]+2*levels[3]+levels[4])/8;
-    const blend=station?smooth((Math.min(distance,length-distance)-5.2)/7):1;
+    const blend=station?smooth((Math.min(distance,length-distance)-stationTrackLength)/7):1;
     return [x,y+Math.max(-1.18,Math.min(1.18,average-y))*blend,z];
   });
 }
@@ -319,27 +399,31 @@ function blockPerimeter(paths) {
   return loops;
 }
 
-function railDetour(lots,margin) {
+function railDetour(lots,margin,orthogonal=false) {
+  const cost=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1])+1.15*Math.min(Math.abs(a[0]-b[0]),Math.abs(a[1]-b[1]));
   const clear=(a,b)=>clearRail(lots,a,b,margin);
   const corners=lots.flatMap(lot=>{
     const {left,right,back,front}=lot,padding=railMargin(lot,margin)+.46;
     return [left-padding,right+padding].flatMap(x=>[back-padding,front+padding].map(z=>[x,z]));
   })
     .filter(point=>clear(point,point));
-  const distance=([x,z],[a,b])=>Math.hypot(x-a,z-b);
   const edges=corners.map(()=>[]);
   for (let i=0;i<corners.length;i++) {
     for (let j=i+1;j<corners.length;j++) {
       if (!clear(corners[i],corners[j])) continue;
-      const cost=distance(corners[i],corners[j]);
-      edges[i].push([j,cost]);
-      edges[j].push([i,cost]);
+      const length=cost(corners[i],corners[j]);
+      edges[i].push([j,length]);
+      edges[j].push([i,length]);
     }
   }
   return (from,to)=>{
+    for (const bend of orthogonal?[[to[0],from[1]],[from[0],to[1]]]:[]) {
+      if (Math.min(Math.abs(bend[0]-from[0])+Math.abs(bend[1]-from[1]),Math.abs(bend[0]-to[0])+Math.abs(bend[1]-to[1]))<.1) continue;
+      if (clear(from,bend)&&clear(bend,to)) return [bend,to];
+    }
     if (clear(from,to)) return [to];
-    const costs=corners.map(point=>clear(from,point)?distance(from,point):Infinity);
-    const last=corners.map(point=>clear(point,to)?distance(point,to):Infinity);
+    const costs=corners.map(point=>clear(from,point)?cost(from,point):Infinity);
+    const last=corners.map(point=>clear(point,to)?cost(point,to):Infinity);
     const previous=corners.map(()=>-1),seen=new Set();
     let end=-1,best=Infinity;
     while (seen.size<corners.length) {
@@ -363,11 +447,25 @@ function railDetour(lots,margin) {
   };
 }
 
-function regionalRailPaths(layout,plot,obstacles,plan,limit) {
+const railLength=points=>points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p[0]-points[i][0],p[1]-points[i][1]),0);
+
+function clearStationTracks(points,plot) {
+  const c=Math.cos(plot.yaw),s=Math.sin(plot.yaw);
+  const local=points.map(([x,z])=>[(x-plot.x)*c-(z-plot.z)*s,(x-plot.x)*s+(z-plot.z)*c]);
+  let first=1,last=local.length-2;
+  while (first<last&&local[first][0]>0&&Math.abs(local[first][1]-railZ)<.07) first++;
+  while (last>first&&local[last][0]<0&&Math.abs(local[last][1]-railZ)<.07) last--;
+  const station={left:-5.2,right:5.2,back:railZ-2.9,front:railZ+2.9};
+  return !local.slice(first,last+1).some((point,i)=>i&&crossesLot(local[first+i-1],point,station,.12));
+}
+
+function regionalRailPaths(layout,plot,obstacles,plan,limit,straight=stationApproach) {
   const span=plot.streetSpan??13.4;
   const level=deckHeight(plot.kind==='monorailStation');
   const candidates=[];
   const lots=plan.plots.filter(site=>!site.airfield&&!site.waterfront);
+  const moon=layout.theme==='moon';
+  const preferred=moon?Math.min(405,178+lots.length*7.2):0;
   const growth=Math.min(13,Math.max(0,lots.length-3)*.66);
   const acrossRiver=layout.theme==='city'&&lots.length>=5
     &&new Set(lots.map(site=>Math.sign(site.x-riverAt(layout,site.z)))).size>1;
@@ -382,7 +480,13 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
       if (acrossRiver&&!tile.water) banks.add(Math.sign(x-riverAt(layout,z)));
     }
     const coverage=lots.reduce((sum,site)=>sum+Math.max(0,Math.min(...samples.map(([x,z])=>Math.hypot(x-site.x,z-site.z)))-7),0);
-    return penalty/samples.length+coverage/Math.max(1,lots.length)*.38+(acrossRiver&&banks.size<2?28:0);
+    const length=railLength(points);
+    const diagonal=points.slice(1).reduce((sum,[x,z],i)=>{
+      const dx=Math.abs(x-points[i][0]),dz=Math.abs(z-points[i][1]);
+      return sum+Math.min(dx,dz);
+    },0);
+    return penalty/samples.length+coverage/Math.max(1,lots.length)*.38+(acrossRiver&&banks.size<2?28:0)
+      +Math.max(0,preferred-length)*.105+diagonal*.52;
   };
   const worldPoint=([a,b])=>{
     const [x,,z]=pointOnSite([a,0,b],plot);
@@ -394,11 +498,26 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
   });
   function addLoop(left,right,rear,returnOffset=0) {
     const curve=Math.sign(rear)*3.55,turn=Math.min(span*1.6,left-3,right-3);
-    const waypoints=[[0,railZ],[6.2,railZ],[Math.min(span*.91,turn-1),railZ-curve],[turn,railZ-curve],
+    const waypoints=[[0,railZ],[straight,railZ],[Math.min(span*.91,turn-1),railZ-curve],[turn,railZ-curve],
       [right,railZ],[right,rear],[right*.48,rear],[0,rear+Math.sign(rear)*4+returnOffset],
-      [-left*.52,rear],[-left,rear],[-left,railZ],[-turn,railZ-curve],[-Math.min(span*.91,turn-1),railZ-curve],[-6.2,railZ],[0,railZ]];
+      [-left*.52,rear],[-left,rear],[-left,railZ],[-turn,railZ-curve],[-Math.min(span*.91,turn-1),railZ-curve],[-straight,railZ],[0,railZ]];
     const points=roundedRailPath(waypoints,5.2,true).map(worldPoint);
     candidates.push({waypoints:waypoints.map(worldPoint),points,penalty:score(points)});
+  }
+  function addGridLoop(left,right,back,front) {
+    // A right-angled route along block boundaries, with broad curves and a straight station approach.
+    const waypoints=[[0,railZ],[straight,railZ],[right,railZ],[right,front],[left,front],
+      [left,back],[-straight-7,back],[-straight-7,railZ],[-straight,railZ],[0,railZ]];
+    const points=roundedRailPath(waypoints,7.2,true).map(worldPoint);
+    candidates.push({waypoints:waypoints.map(worldPoint),points,penalty:score(points)});
+  }
+  if (lots.length>=7) {
+    const along=plot.x*Math.cos(plot.yaw)-plot.z*Math.sin(plot.yaw);
+    const east=Math.max(25,Math.min(74,70-along));
+    const west=Math.max(25,Math.min(74,70+along));
+    for (const reach of [36,49,61,73,85]) for (const front of [19,32,45,58]) {
+      for (const back of [-24,-38,-54]) addGridLoop(-Math.min(west,reach),Math.min(east,reach),back,front);
+    }
   }
   for (const side of sides) {
     for (const [width,depth] of [[36,27],[43,34],[13,26],[16,31],[32,37],[30,24],[49,35],[42,43],[29,33],[33,47]]) {
@@ -416,6 +535,7 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
   const margin=plot.kind==='monorailStation'?.79:1.01;
   const aboveGround=[],pathsWithTunnel=[];
   for (const {points} of candidates) {
+    if (!clearStationTracks(points,plot)) continue;
     if (pathClear(points,obstacles,margin)) aboveGround.push(points);
     else if (limit>1) pathsWithTunnel.push(points);
   }
@@ -423,9 +543,9 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
   if (!paths.length) {
     // Protect the straight station track while finding the largest usable
     // bend radius through the rest of the loop.
-    const detour=railDetour(obstacles,margin);
+    const detours=[railDetour(obstacles,margin,true),railDetour(obstacles,margin)];
     const possibilities=[];
-    for (const {waypoints} of candidates) {
+    for (const detour of detours) for (const {waypoints} of candidates.slice(0,36)) {
       const stationExit=waypoints[1],stationEntry=waypoints.at(-2),center=waypoints[0];
       if (!pathClear([stationEntry,center,stationExit],obstacles,margin)) continue;
       const outer=waypoints.slice(2,-2).filter(point=>clearRail(obstacles,point,point,margin));
@@ -433,10 +553,10 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
       const legs=links.slice(1).map((point,i)=>detour(links[i],point));
       if (legs.some(leg=>!leg)) continue;
       const loop=[center,stationExit,...legs.flat(),center];
-      for (const radius of [5,3.8,2.8,1.7]) {
+      for (const radius of [7.2,5,3.8,2.8,1.7]) {
         const rounded=roundedRailPath(loop,radius,true);
-        if (!pathClear(rounded,obstacles,margin)||!simpleRailLoop(rounded)) continue;
-        possibilities.push({path:rounded,score:score(rounded)+(5-radius)*1.1});
+        if (!clearStationTracks(rounded,plot)||!pathClear(rounded,obstacles,margin)||!simpleRailLoop(rounded)) continue;
+        possibilities.push({path:rounded,score:score(rounded)+(7.2-radius)*1.1});
         break;
       }
       if (possibilities.length>=4) break;
@@ -444,7 +564,7 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
     paths=possibilities.sort((a,b)=>a.score-b.score).slice(0,limit).map(({path})=>path);
   }
   if (!paths.length) {
-    const center=worldPoint([0,railZ]),entry=worldPoint([-6.2,railZ]),exit=worldPoint([6.2,railZ]);
+    const center=worldPoint([0,railZ]),entry=worldPoint([-straight,railZ]),exit=worldPoint([straight,railZ]);
     const possibilities=[];
     const near=(point,circuit)=>circuit.reduce((best,p,i)=>
       Math.hypot(p.x-point[0],p.z-point[1])<Math.hypot(circuit[best].x-point[0],circuit[best].z-point[1])?i:best,0);
@@ -455,8 +575,12 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
         const count=((last-first)*direction+size)%size+1;
         if (count<6) continue;
         const loop=Array.from({length:count},(_,i)=>circuit[(first+direction*i+size)%size]).map(({x,z})=>[x,z]);
-        const path=roundedRailPath([center,exit,...loop,entry,center],2.8,true);
-        if (pathClear(path,obstacles,margin)&&simpleRailLoop(path)) possibilities.push({path,score:score(path)});
+        for (const radius of [4.2,2.8]) {
+          const path=roundedRailPath([center,exit,...loop,entry,center],radius,true);
+          if (!clearStationTracks(path,plot)||!pathClear(path,obstacles,margin)||!simpleRailLoop(path)) continue;
+          possibilities.push({path,score:score(path)+(4.2-radius)*1.1});
+          break;
+        }
       }
     }
     paths=possibilities.sort((a,b)=>a.score-b.score).slice(0,limit).map(({path})=>path);
@@ -464,7 +588,7 @@ function regionalRailPaths(layout,plot,obstacles,plan,limit) {
   const [startX,startZ]=worldPoint([0,railZ]);
   return paths.concat(pathsWithTunnel.slice(0,limit)).map(path=>gradedRail(path.map(([x,z])=>{
     const terrain=regionSurface(layout,x,z);
-    const blend=smooth((Math.hypot(x-startX,z-startZ)-5.2)/9);
+    const blend=smooth((Math.hypot(x-startX,z-startZ)-stationTrackLength)/9);
     // A short ridge can be cut to track level. Follow the broader relief
     // while giving the train a more gradual climb.
     const cut=roadClearance(plan.paths,x,z,3.1)?Math.min(2.35,Math.max(0,terrain.relief-.4)*.55):0;
@@ -553,7 +677,8 @@ function transitWalker(layout,points,{slot,service,offset=0,waitYaw}) {
     length+=Math.hypot(x-a,y-b,z-c);
     return {a,b,c,x,y,z,start,end:length};
   }).filter(section=>section.end-section.start>.0001);
-  const speed=.93,walk=length/speed,wait=subway?0:3.4+slot%3*.65;
+  const speed=service==='tram'?.98:.93;
+  const walk=length/speed,wait=subway?0:3.4+slot%3*.65;
   const journey=walk*(subway?1:2)+wait;
   const [startX,,startZ]=points[0], [endX,endY,endZ]=points.at(-1);
   const colors=moon?['#a18fc5','#749fb2','#c78876']:['#b58b66','#548886','#9279ab'];
@@ -582,21 +707,24 @@ function subwayWalker(layout,site,i) {
   return transitWalker(layout,[...street,...stairs],{service:'subway',slot:914+i,offset:1.4+i*7});
 }
 
-function stationWalker(layout,plot,moon) {
+function stationAccess(plot,moon) {
   const steps=stationSteps(moon).map(({y,z})=>[stationStairX,y,z]);
   const level=deckHeight(moon)+.04;
-  const path=[[stationStairX,.31,4.53],...steps,[stationStairX,level,.42],[stationStairX,level,-.95]];
-  return transitWalker(layout,path.map(point=>pointOnSite(point,plot)),{
-    service:moon?'monorail':'train',slot:916,offset:.48,waitYaw:plot.yaw+Math.PI,
-  });
+  const landing=moon?1.4:1.24;
+  const path=[[stationStairX,.31,4.53],...steps,[stationStairX,level,landing],[1.76,level,landing]];
+  return path.map(point=>pointOnSite(point,plot));
+}
+
+function platformAccess(layout,{walk,ascent}) {
+  if (!ascent) return null;
+  const approach=walk?.slice(1).reverse().map(({x,z})=>[x,regionSurface(layout,x,z).y+.066,z])??[];
+  return [...approach,...ascent];
 }
 
 function platformWalker(layout,platform,service,i) {
-  const {walk,ascent,yaw}=platform;
-  if (!ascent) return null;
-  const approach=walk?.slice(1).reverse().map(({x,z})=>[x,regionSurface(layout,x,z).y+.066,z])??[];
-  return transitWalker(layout,[...approach,...ascent],{
-    service,slot:917+i,offset:1.2+i*1.37,waitYaw:yaw-Math.PI/2,
+  const access=platformAccess(layout,platform);
+  return access&&transitWalker(layout,access,{
+    service,slot:917+i,offset:1.2+i*1.37,waitYaw:platform.yaw-Math.PI/2,
   });
 }
 
@@ -787,12 +915,7 @@ function railwayBridges(layout,route,waterCovers) {
   return parts.map(part=>({...part,railBridge:true}));
 }
 
-export function districtRail(layout,plot,plan,developments=[],built=plan.plots.length) {
-  const moon=plot.kind==='monorailStation';
-  const lots=railLots(plan,developments);
-  const otherLots=lots.filter(lot=>lot.plot!==plot);
-  const candidates=regionalRailPaths(layout,plot,otherLots,plan,built>=6?8:1);
-  if (!candidates.length) return null;
+function selectRailRoute(layout,plan,lots,otherLots,candidates,built,moon) {
   let selected;
   for (const raised of candidates) {
     const route=railLoop(raised);
@@ -810,6 +933,22 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
     if (!selected||subway&&(covered||!selected.subway)) selected={route,tunnel,subway};
     if (subway&&covered) break;
   }
+  return selected;
+}
+
+export function districtRail(layout,plot,plan,developments=[],built=plan.plots.length) {
+  const moon=plot.kind==='monorailStation';
+  const halfTrack=moon?.57:.83;
+  const lots=railLots(plan,developments);
+  const otherLots=lots.filter(lot=>lot.plot!==plot);
+  const limit=built>=6?8:1;
+  let selected;
+  // Keep a shorter approach available when nearby lots already constrain the line.
+  for (const straight of [stationApproach,6.85,6.2]) {
+    const candidates=regionalRailPaths(layout,plot,otherLots,plan,limit,straight);
+    selected=selectRailRoute(layout,plan,lots,otherLots,candidates,built,moon);
+    if (selected) break;
+  }
   if (!selected) return null;
   const {route,tunnel,subway}=selected;
   const {distances,length,wrap}=route;
@@ -821,6 +960,12 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
     const drop=smooth(Math.min(at-subway.start,subway.end-at)/subway.ramp);
     const ground=regionSurface(layout,pos[0],pos[2]).y;
     return [pos[0],pos[1]+(ground-2.65-pos[1])*drop,pos[2]];
+  };
+  const stationSample=(distance,lane=0)=>{
+    const [x,y,z]=sample(distance);
+    const at=wrap(distance),fromStation=Math.min(at,length-at);
+    const shift=lane*(1-smooth((fromStation-stationTrackLength)/stationSwitchLength));
+    return pointOnSite([0,0,shift],{x,y,z,yaw:plot.yaw});
   };
   const points=distances.map(sample);
   const ground=railEarthworks(layout,plan,lots,points,i=>
@@ -837,25 +982,41 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
   const parts=railTrack(points,moon,i=>{
     const distance=(distances[i-1]+distances[i])*.5;
     return inside(distance,1.15)||between(subway,distance)&&subwayDepth(distance)<.095;
-  });
+  },halfTrack);
+  for (const lane of [stationLanes[0],stationLanes[2]]) {
+    const branch=Array.from({length:43},(_,i)=>stationSample((i/21-1)*stationSwitchEnd,lane));
+    parts.push(...railTrack(branch,moon,undefined,halfTrack).map(part=>({...part,stationTrack:lane})));
+  }
   const waterCovers=[];
   parts.push(...railwayBridges(layout,{sample,length},waterCovers));
+  const coveredTrack=[];
+  const portalPlane=(distance,outward)=>{
+    const [x,,z]=sample(distance),[a,,b]=sample(distance+outward*.2);
+    const span=Math.hypot(a-x,b-z)||1,nx=(a-x)/span,nz=(b-z)/span;
+    return [nx,nz,-x*nx-z*nz];
+  };
+  const cover=(start,end)=>coveredTrack.push({start,end,entry:portalPlane(start,-1),exit:portalPlane(end,1)});
   if (tunnel) {
     const path=Array.from({length:16},(_,i)=>sample(tunnel.start+(tunnel.end-tunnel.start)*i/15));
-    parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.85}).map(part=>({...part,tunnel:true})));
+    parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.85,rail:true}).map(part=>({...part,tunnel:true})));
+    cover(tunnel.start,tunnel.end);
   }
   const entries={},walkways=[],walkers=[];
   if (subway) {
+    const mouths=[];
     for (const direction of sides) {
       const rim=direction>0?subway.start:subway.end;
       let offset=4.4;
       while (offset<subway.ramp&&subwayDepth(rim+direction*offset)>.63) offset+=.3;
       const distance=rim+direction*offset;
-      const path=Array.from({length:8},(_,i)=>sample(distance+direction*(-.38+i*.44)));
-      parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.91}).map(part=>({...part,tunnel:true})));
+      const mouth=distance-direction*.38;
+      mouths.push(mouth);
+      const path=Array.from({length:8},(_,i)=>sample(mouth+direction*i*.44));
+      parts.push(...tunnelLandform(path,layout,{width:1.08,height:1.91,rail:true}).map(part=>({...part,tunnel:true})));
       const [x,y,z]=sample(distance),[a,,b]=sample(distance-direction*.8);
       portals.push({x,y,z,yaw:Math.atan2(a-x,b-z)});
     }
+    cover(...mouths.slice().reverse());
     subway.stations.forEach((site,i)=>{
       const {x,z,parts:entrance,walk}=site;
       const key=`subway:${i}`;
@@ -887,7 +1048,7 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
   }
 
   const surfaceStops=[];
-  for (const fraction of [.28,.67]) {
+  for (const fraction of length>=285?[.21,.44,.64,.82]:[.28,.67]) {
     const stop=placeRailPlatform({sample,length},length*fraction,layout,plan,lots,distance=>
       !inside(distance,-5)&&!between(subway,distance,-4)&&distance>=12&&distance<=length-12
       &&surfaceStops.every(stop=>Math.abs(distance-stop.distance)>=12),moon);
@@ -898,39 +1059,71 @@ export function districtRail(layout,plot,plan,developments=[],built=plan.plots.l
     if (stop.walk) walkways.push(stop.walk);
     surfaceStops.push(stop);
   }
-  walkers.push(stationWalker(layout,plot,moon),...surfaceStops.flatMap((stop,i)=>
-    platformWalker(layout,stop,moon?'monorail':'train',i)??[]));
+  const service=moon?'monorail':'train';
+  const mainAccess=stationAccess(plot,moon);
+  walkers.push(transitWalker(layout,mainAccess,{service,slot:916,offset:.48,waitYaw:plot.yaw+Math.PI}),
+    ...surfaceStops.flatMap((stop,i)=>platformWalker(layout,stop,service,i)??[]));
   const undergroundStops=subway?.stations.map(station=>station.distance)??[];
   const stops=[0,...surfaceStops.map(stop=>stop.distance).concat(undergroundStops).sort((a,b)=>a-b),length];
   const speed=moon?7.7:7.15;
   let period=0;
   const timetable=stops.slice(0,-1).map((start,i)=>{
-    const end=stops[i+1],dwell=i===0?2.7:undergroundStops.includes(start)?2.1:1.65;
+    const end=stops[i+1],dwell=i===0?4.5:undergroundStops.includes(start)?2.1:3.1;
     const travel=(end-start)/speed;
     const entry={start,end,depart:period+dwell,arrive:period+dwell+travel,travel};
     period=entry.arrive;
     return entry;
   });
-  const departures=plan.plots.length>=10&&length>=230?[0,period*.5]:[0];
-  const actors=departures.flatMap(offset=>[false,true].map(carriage=>({
-    kind:carriage?'train-car':moon?'monorail':'train',
-    parts:trainModel(moon,carriage),
+  const longTrain=built>=10;
+  const twoTrains=longTrain&&length>=(moon?230:150);
+  const fleet=moon&&built>=26&&length>=380?4:moon&&built>=16&&length>=285?3:twoTrains?2:1;
+  const slot=period+4.25;
+  const staggered=fleet>2;
+  const repeat=staggered?period:slot*fleet;
+  const interval=staggered?period/fleet:slot;
+  const departures=Array.from({length:fleet},(_,i)=>i);
+  const actors=departures.flatMap(train=>Array.from({length:longTrain?3:2},(_,carriage)=>({
+    kind:carriage?'train-car':moon?'monorail':'train',train,carriage,
+    parts:trainModel(moon,Boolean(carriage),train),
     pose(seconds) {
-      const t=(seconds+offset)%period;
+      // The shorter lines alternate at the station. Long loops stagger the fleet around the full route.
+      const clock=seconds+train*interval;
+      const cycle=Math.floor(clock/repeat);
+      const time=clock%repeat;
+      const t=Math.min(time,period);
       const leg=timetable.find(entry=>t<entry.arrive)??timetable.at(-1);
       const progress=clamp((t-leg.depart)/leg.travel);
       const ease=progress-.12*Math.sin(2*Math.PI*progress);
-      const distance=wrap(leg.start+(leg.end-leg.start)*ease-(carriage?3.15:0));
-      const [x,y,z]=sample(distance);
-      const [a,ay,b]=sample(distance-.38),[c,cy,d]=sample(distance+.38);
-      const visible=!inside(distance,1.7)&&!(between(subway,distance)&&subwayDepth(distance)<-.55);
-      const model=pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&progress>0,
+      const lead=leg.start+(leg.end-leg.start)*ease;
+      const position=lead+2.35-carriage*3.15;
+      const distance=wrap(position);
+      const lap=cycle+Number(lead>length*.5);
+      const lane=train===0?stationLanes[2]:fleet>2?stationLanes[(lap+train)%3]:stationLanes[((lap%2)+2)%2];
+      const onTrack=distance=>stationSample(distance,lane);
+      const [x,y,z]=onTrack(distance);
+      const [a,ay,b]=onTrack(distance-.38),[c,cy,d]=onTrack(distance+.38);
+      const clearance=trainHalfLength(Boolean(carriage))+.18;
+      const cover=coveredTrack.find(section=>between(section,distance,-clearance));
+      const visible=!cover||!between(cover,distance,clearance);
+      const moving=time>=leg.depart&&time<period;
+      const model=pose(x,visible?y:-540,z,Math.atan2(c-a,d-b),!carriage&&visible&&moving,
         Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
-      return !carriage&&visible&&t>=leg.depart&&t<leg.depart+.72
+      if (cover&&visible) {
+        const [nx,nz,offset]=distance-cover.start<cover.end-distance?cover.entry:cover.exit;
+        model.railClipX=nx;model.railClipZ=nz;model.railClipOffset=offset;
+      }
+      return !carriage&&visible&&moving&&t<leg.depart+.72
         ? {...model,cue:moon?'monorail-start':'train-start',sound:.9}:model;
     },
   })));
-  return {parts,portals,waterCovers,points:points.map(([x,y,z])=>({x,y,z})),actors,entries,walkways,walkers,undergroundStops,surfaceStops,ground};
+  const passengerStops=[{distance:0,access:mainAccess,entry:plot.entries?.[0]},...surfaceStops.flatMap(stop=>{
+    const access=platformAccess(layout,stop);
+    return access?[{distance:stop.distance,access}]:[];
+  })];
+  const schedule=timetable.map(({start,depart},i)=>({distance:start,arrive:i?timetable[i-1].arrive:0,depart}));
+  // The first carriage stops alongside the platform and returns to the front track at the main station.
+  const passengerService={stops:passengerStops,schedule,period:repeat,returnAt:period,vehicle:actors[1]};
+  return {parts,portals,waterCovers,points:points.map(([x,y,z])=>({x,y,z})),actors,entries,walkways,walkers,undergroundStops,surfaceStops,ground,passengerService};
 }
 
 function railPlatform(moon) {
@@ -965,19 +1158,20 @@ function cableCar() {
 }
 
 export function transitVehiclePreview(kind) {
-  if (!['tramStation','railwayStation','monorailStation'].includes(kind)) return null;
-  const moon=kind==='monorailStation',tram=kind==='tramStation';
-  const x=tram?1.05:1.7,y=.85,z=tram?4.24:5.2;
-  const model=tram?cableCar():trainModel(moon);
+  if (kind!=='tramStation') return null;
+  const x=1.05,y=.85,z=4.24;
   return [
-    ...railTrack([[-2.25,y,z],[4.15,y,z]],moon),
-    ...placeParts(model,{x,y,z,yaw:Math.PI/2}).map(part=>({...part,vehiclePreview:true})),
+    ...railTrack([[-2.25,y,z],[4.15,y,z]],false),
+    ...placeParts(cableCar(),{x,y,z,yaw:Math.PI/2}).map(part=>({...part,vehiclePreview:true})),
   ];
 }
 
 export function districtTram(layout,plot,plan,developments=[]) {
   const hub=plan.starter??plan.origin;
-  const inland=(x,z)=>insideIslandBelt(layout,hub,x,z)&&!regionSurface(layout,x,z).water;
+  const inland=(x,z)=>{
+    const tile=regionSurface(layout,x,z);
+    return insideIslandBelt(layout,hub,x,z)&&!tile.water&&!(tile.volcanic<.83);
+  };
   const circuits=plan.circuits??[];
   const lots=developments.flatMap(({plot,steps})=>{
     const elevated=steps.flat().filter(part=>part.y+part.h>1.97&&part.y<5.2
@@ -997,7 +1191,8 @@ export function districtTram(layout,plot,plan,developments=[]) {
     const span=path.reduce((length,p,i)=>length+Math.hypot(p.x-path.at(i-1).x,p.z-path.at(i-1).z),0);
     const coverage=districts.reduce((sum,site)=>sum+Math.max(0,1-center(site,path)/24),0);
     const reach=Math.min(...path.map(p=>Math.hypot(p.x-access.x,p.z-access.z)));
-    return span*.32+coverage*9-reach*4.7;
+    const preferred=Math.min(245,65+districts.length*5.1);
+    return span*.32+coverage*9-reach*4.7-Math.max(0,preferred-span)*.24;
   };
   const interiorBlocks=circuits.filter(path=>path.length===4&&inlandPath(path));
   const loops=circuits.concat(blockPerimeter(circuits));
@@ -1009,8 +1204,8 @@ export function districtTram(layout,plot,plan,developments=[]) {
   const [depotX,depotZ]=local(access);
   if (districts.length>=7) for (const sign of sides) {
     const nearby=districts.map(local).filter(([x,z])=>Math.abs(x-depotX)<52&&Math.abs(z-depotZ)<55);
-    const width=Math.max(14,Math.min(42,span*.5+nearby.reduce((max,[x])=>Math.max(max,Math.abs(x)),0)*.63));
-    const reach=Math.max(span*1.45,Math.min(49,nearby.reduce((max,[,z])=>Math.max(max,sign*(z-depotZ)),0)+span*.52));
+    const width=Math.max(14,Math.min(49,span*.5+nearby.reduce((max,[x])=>Math.max(max,Math.abs(x)),0)*.78));
+    const reach=Math.max(span*1.45,Math.min(54,nearby.reduce((max,[,z])=>Math.max(max,sign*(z-depotZ)),0)+span*.63));
     for (const factor of [1,.84,.69,.55]) {
       const a=width*factor,b=reach*factor;
       const corners=[[depotX,depotZ],[-a,depotZ],[-a,depotZ+sign*b],[a,depotZ+sign*b],[a,depotZ]];
@@ -1154,8 +1349,9 @@ export function districtTram(layout,plot,plan,developments=[]) {
     parts.push(tube(a,b,.47,.47,Math.max(.1,y-base-.22),'#b5a389',base),beam([a,y-.26,b],[x,y-.26,z],.22,'#b5a389'));
   }
   const speed=4.2,dwell=2,period=length/speed+stops.length*dwell;
-  const departures=length>=126?[0,period*.5]:[0];
-  return {parts,walkways,walkers,ground,points:points.map(([x,y,z])=>({x,y,z})),actors:departures.map(offset=>({
+  const fleet=districts.length>=19&&length>=178?3:length>=126?2:1;
+  const departures=Array.from({length:fleet},(_,i)=>i*period/fleet);
+  const actors=departures.map(offset=>({
     kind:'tram',parts:cableCar(),
     pose(seconds) {
       const t=(seconds+offset)%period;
@@ -1171,7 +1367,13 @@ export function districtTram(layout,plot,plan,developments=[]) {
       const model=pose(x,y,z,Math.atan2(c-a,d-b),departing,Math.atan2(cy-ay,Math.hypot(c-a,d-b)));
       return departing?{...model,cue:'tram-bell'}:model;
     },
-  }))};
+  }));
+  const schedule=departuresAt.map((distance,i)=>({distance:(distance+start)%length,arrive:distance/speed+i*dwell,depart:distance/speed+(i+1)*dwell}));
+  const passengerService={stops:platforms.flatMap(stop=>{
+    const access=platformAccess(layout,stop);
+    return access?[{distance:stop.distance,access}]:[];
+  }),schedule,period,vehicle:actors[0]};
+  return {parts,walkways,walkers,ground,points:points.map(([x,y,z])=>({x,y,z})),actors,passengerService};
 }
 
 export const AIRPORT_HELIPAD={x:3.63,y:.48,z:-.48};
