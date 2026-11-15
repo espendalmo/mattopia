@@ -4,7 +4,7 @@ export {randomGenerator};
 import {restoreRewards} from './rewards.js';
 import {restoreScratchpad} from './scratchpad.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, GRADE_LEVELS, curriculumTopic, createCurriculumTask, validCurriculumTask, levelForGrade, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.49.2';
+export const VERSION='1.49.3';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;

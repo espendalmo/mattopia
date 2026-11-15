@@ -81,6 +81,36 @@ test('Starting another round clears previous answer states and moves focus to th
   assert.equal(h.document.activeElement,h.heading);
 });
 
+test('Restoring the page, resizing and scroll events clear sideways drift and preserve vertical positions',()=>{
+  const h=harness();
+  h.run(`
+    const page={scrollTop:140,scrollLeft:0};
+    const task={scrollTop:82,scrollLeft:0,matches:selector=>selector==='.task-scroll, dialog'};
+    const modal={scrollTop:35,scrollLeft:0,matches:selector=>selector==='.task-scroll, dialog'};
+    const unrelated={scrollTop:4,scrollLeft:9,matches:()=>false};
+    const find=root.querySelector, lookup=document.querySelector;
+    root.querySelector=selector=>selector==='.task-scroll'?task:find(selector);
+    document.querySelector=selector=>selector==='dialog[open]'?modal:lookup(selector);
+    document.scrollingElement=page;
+  `);
+  for (const event of ['pageshow','resize']) {
+    h.run('page.scrollLeft=16; task.scrollLeft=12; modal.scrollLeft=7;');
+    h.events[event]();
+    assert.equal(h.run('page.scrollLeft + task.scrollLeft + modal.scrollLeft'),0);
+    assert.equal(h.run('page.scrollTop'),140);
+    assert.equal(h.run('task.scrollTop'),82);
+    assert.equal(h.run('modal.scrollTop'),35);
+  }
+  for (const target of ['document','task','modal','unrelated']) {
+    h.run('page.scrollLeft=16; task.scrollLeft=12; modal.scrollLeft=7;');
+    h.events.scroll({target:h.run(target)});
+    assert.equal(h.run(target==='document'?'page.scrollLeft':`${target}.scrollLeft`),target==='unrelated'?9:0);
+  }
+  h.run('page.scrollLeft=11; render();');
+  assert.equal(h.run('page.scrollLeft'),0);
+  assert.equal(h.run('task.scrollTop'),82);
+});
+
 test('The scratchpad shows the current question and restores the same drawing after closing it',()=>{
   const mounted=[];
   const h=harness({mountScratchpad:(dialog,draft,onChange)=>{

@@ -131,7 +131,17 @@ function header(showAdult = true, showSound = true) { return `<header class="sit
 function updateBanner() { return updateStatus.ready ? `<aside class="update-banner"><span>${updateStatus.applying ? 'Oppdaterer appen …' : 'Ny versjon klar.'}</span><button data-action="apply-update" ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater'}</button></aside>` : ''; }
 function say(text) { announcer.textContent = ''; requestAnimationFrame(() => { announcer.textContent = text; }); }
 function focusHeading() { root.querySelector('h1')?.focus({ preventScroll: true }); }
-function goTop() { window.scrollTo({ top: 0, behavior: 'instant' }); }
+function goTop() { window.scrollTo({ left: 0, top: 0, behavior: 'instant' }); }
+
+function resetHorizontalScroll(element) {
+  if (element?.scrollLeft) element.scrollLeft = 0;
+}
+
+function resetViewHorizontalScroll() {
+  resetHorizontalScroll(document.scrollingElement);
+  resetHorizontalScroll(root.querySelector('.task-scroll'));
+  resetHorizontalScroll(document.querySelector('dialog[open]'));
+}
 
 function escapeHtml(value) {
   const escaped = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
@@ -1581,6 +1591,7 @@ function renderComplete() {
 
 let renderedScreen;
 function render() {
+  resetHorizontalScroll(document.scrollingElement);
   const taskScroll = root.querySelector('.task-scroll')?.scrollTop ?? 0;
   document.documentElement?.setAttribute('data-season', seasonForDate());
   if (renderedScreen==='complete'&&view!=='complete') {
@@ -2390,6 +2401,12 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && ui.entry && !e.target.closest('[data-action="help"], [data-action="sound"], [data-action="pause"]')) { e.preventDefault(); submitAnswer(Number(ui.entry)); }
   }
 });
+document.addEventListener('scroll', ({target}) => {
+  const page = document.scrollingElement;
+  const scroller = target === document ? page : target;
+  if (scroller?.scrollLeft && (scroller === page || scroller.matches?.('.task-scroll, dialog'))) resetHorizontalScroll(scroller);
+}, {capture:true,passive:true});
+window.addEventListener('resize', resetViewHorizontalScroll);
 window.addEventListener('pagehide', () => { markAway(); sounds.stop(); });
 window.addEventListener('storage', event=>{
   if (event.key!==PROFILE_KEY||!profile) return;
@@ -2399,6 +2416,7 @@ window.addEventListener('storage', event=>{
   } catch {}
 });
 window.addEventListener('pageshow', () => {
+  resetViewHorizontalScroll();
   if (!document.hidden&&state.sound) sounds.resume();
   welcomeBack();
 });

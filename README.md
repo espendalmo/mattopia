@@ -1,4 +1,4 @@
-# Mattopia 1.49.2
+# Mattopia 1.49.3
 
 En liten norsk matteapp for mobil og iPad. Korte runder, tydelige mengder og en stjerne for innsatsen. Ingen konto eller eksterne avhengigheter.
 
@@ -8,7 +8,7 @@ ZIP-filen har to mapper. **`mattopia-beta/`** er den ferdige prøvepakken. **`ma
 
 1. Publiser innholdet i `mattopia-beta/` på `/mattopia-beta/`.
 2. Åpne testadressen på din iPad. Legg den gjerne til på Hjem-skjermen. Den heter **Mattopia Beta**, viser et **BETA · Testversjon**-merke og bruker egen øvingshistorikk.
-3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.49.2.
+3. Når du har godkjent testen, publiserer du innholdet i `mattopia/` på `/mattopia/`. Først da kan vanlige installasjoner oppdage versjon 1.49.3.
 
 Bruk HTTPS for å teste installasjon, offline og oppdateringer. Versjonssjekken i beta leser `/mattopia/core.js` på samme domene.
 
@@ -56,6 +56,10 @@ Appen trenger ingen npm-installasjon eller bygging. Stiene til appfilene er rela
 Åpne `locale-nb.js` i en teksteditor og endre teksten til høyre for nøkkelen. Filen inneholder sentrale tekster i veiviseren, profilredigeringen, oppgavene, hjelpen og kartvisningen. Behold nøklene, anførselstegnene og eventuelle plassholdere som `{count}`. Noen faglige alternativer, stedsnavn, historier og hjelpetekster i innstillingene ligger fortsatt i modulene der de brukes.
 
 Ta vare på filen eller legg ved den redigerte utgaven til neste versjon. Kopier den til kildemappen før du bygger samme versjon, slik at både beta og vanlig utgave får teksten. I senere versjoner fletter du inn de endrede verdiene i den nye språkfilen, så nye nøkler blir med. Last opp hele pakken med et nytt versjonsnummer for at installerte apper skal hente filen. Redigert oppgavetekst gjelder for nye øvingsrunder. Nye språk kan få egne katalogfiler med de samme nøklene og norsk som reserve.
+
+## Nytt i 1.49.3
+
+- Sidene, oppgaveområdet og dialogene er låst mot sideveis rulling. Ved retur fra nettleserhistorikken eller endring av vindusstørrelsen nullstiller appen eventuell sideforskyvning og beholder den vertikale posisjonen.
 
 ## Nytt i 1.49.2
 
