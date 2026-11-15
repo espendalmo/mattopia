@@ -20,7 +20,7 @@ import {seasonForDate,seasonMark} from '../seasons.js';
 import {PRODUCTION_PATH} from '../update.js';
 
 const source=(await fs.readFile(new URL('../app.js',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'');
-function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=new Map(),roundFixture=!hash,navigator={}}={}){
+function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=new Map(),roundFixture=!hash,navigator={},mountScratchpad=()=>()=>{}}={}){
   const events={},plays=[],builds=[],buildingSounds=[],characterSounds=[],animations=[],timers=[];
   const document={activeElement:null,querySelectorAll:()=>[],addEventListener:(name,fn)=>{events[name]=fn;},
     removeEventListener:(name,fn)=>{if(events[name]===fn) delete events[name];}};
@@ -34,7 +34,7 @@ function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=n
   document.querySelector=s=>s==='#app'?root:s==='#announcer'?{textContent:''}:s==='#input-value'?output:s==='[data-action="submit-number"]'?submit:s==='[data-action="erase"]'?erase:s.match(/^\[data-digit="([0-9])"\]$/)?digits[s.match(/[0-9]/)[0]]:null;
   const location={pathname:'/mattopia-beta/',search:'',hash};
   const window={location,history:{replaceState(){location.hash='';}},addEventListener:(name,fn)=>{events[name]=fn;},scrollTo(){}};
-  const context=vm.createContext({msg,AbortController,...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mapCharacterInfo,constructionStory,taskSuccessStep,mountProjectView:()=>()=>{},hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
+  const context=vm.createContext({msg,AbortController,...core,CHANNEL:channel,...rewards,...plants,...breaks,...profiles,...curriculum,...projects,...worlds,mapCharacterInfo,constructionStory,taskSuccessStep,mountProjectView:()=>()=>{},mountScratchpad,hintFor,rewardIllustration,seasonForDate,seasonMark,PRODUCTION_PATH,document,navigator,window,
     localStorage:{getItem:k=>stored.get(k),setItem:(k,v)=>stored.set(k,v),removeItem:k=>stored.delete(k)},
     requestAnimationFrame:fn=>fn(),setTimeout:(fn, delay)=>timers.push({fn,delay}),clearTimeout:id=>{if(timers[id-1]) timers[id-1].cancelled=true;},matchMedia:()=>({matches:reduced}),
     createUpdater:()=>({}),createSoundPlayer:()=>({
@@ -79,6 +79,122 @@ test('Starting another round clears previous answer states and moves focus to th
   const buttons=[...h.root.innerHTML.matchAll(/<button class="answer ([^"]*)"[^>]*>/g)];
   assert.equal(buttons.length,3);assert.ok(buttons.every(b=>!b[0].includes('correct')&&!b[0].includes('tried')&&!b[0].includes('disabled')));
   assert.equal(h.document.activeElement,h.heading);
+});
+
+test('The scratchpad shows the current question and restores the same drawing after closing it',()=>{
+  const mounted=[];
+  const h=harness({mountScratchpad:(dialog,draft,onChange)=>{
+    mounted.push({draft,onChange});
+    return ()=>{};
+  }});
+  assert.match(h.root.innerHTML,/data-action="help"[\s\S]*data-action="scratchpad" aria-haspopup="dialog"/);
+  h.run(`
+    let paper, onClose;
+    showDialog=(content,css,afterOpen)=>{
+      paper={content,css};
+      afterOpen({addEventListener(name,listener){if(name==='close')onClose=listener;}});
+    };
+    showScratchpad();
+  `);
+  assert.equal(h.run('paper.css'),'scratchpad-dialog');
+  assert.match(h.run('paper.content'),/17 minus 7 er hvor mye/);
+  assert.match(h.run('paper.content'),/data-action="close-dialog">Til svaret/);
+  assert.doesNotMatch(h.run('paper.content'),/data-action="next"|data-answer=/);
+  const drawing={width:320,height:380,strokes:[[20,30,40,60]]};
+  mounted[0].onChange(drawing);
+  h.run('onClose(); showScratchpad();');
+  assert.deepEqual(mounted[1].draft,drawing);
+  assert.equal(h.run('state.active.index'),0);
+  assert.equal(h.run('state.active.attempts[0]'),0);
+  assert.equal(h.run('JSON.parse(storage.getItem(STORAGE_KEY)).active.scratchpad.strokes.length'),1);
+});
+
+test('A zoomed visual viewport keeps the scratchpad within the screen and releases its listeners on close',()=>{
+  const h=harness();
+  h.run(`
+    const properties=new Map(), classes=new Set(), handlers=new Map();
+    window.visualViewport={scale:3,width:130,height:240,offsetLeft:108,offsetTop:200,
+      addEventListener(name,listener,options){handlers.set(name,{listener,signal:options.signal});}};
+    let onClose;
+    showDialog=(html,css,afterOpen)=>afterOpen({
+      style:{setProperty:(key,value)=>properties.set(key,value)},
+      classList:{toggle:(name,enabled)=>enabled?classes.add(name):classes.delete(name)},
+      addEventListener:(name,listener)=>{if(name==='close')onClose=listener;}
+    });
+    showScratchpad();
+  `);
+  assert.equal(h.run("classes.has('scratchpad-in-viewport')"),true);
+  assert.equal(h.run("properties.get('--scratchpad-viewport-left')"),'108px');
+  assert.equal(h.run("properties.get('--scratchpad-viewport-top')"),'200px');
+  assert.equal(h.run("parseFloat(properties.get('--scratchpad-viewport-width')) * Number(properties.get('--scratchpad-viewport-scale'))"),130);
+  assert.equal(h.run("parseFloat(properties.get('--scratchpad-viewport-height')) * Number(properties.get('--scratchpad-viewport-scale'))"),240);
+  h.run("window.visualViewport.offsetTop=155; handlers.get('scroll').listener();");
+  assert.equal(h.run("properties.get('--scratchpad-viewport-top')"),'155px');
+  h.run("window.visualViewport.scale=1; handlers.get('resize').listener();");
+  assert.equal(h.run("classes.has('scratchpad-in-viewport')"),false);
+  h.run('onClose();');
+  assert.equal(h.run("handlers.get('scroll').signal.aborted && handlers.get('resize').signal.aborted"),true);
+});
+
+test('The adults panel can turn the scratchpad off and back on for the current player',()=>{
+  const h=harness();
+  h.run(`
+    let settingMarkup, changeSetting;
+    showDialog=(content,css,afterOpen)=>{
+      settingMarkup=content;
+      afterOpen({querySelector:()=>({}),addEventListener(name,listener){if(name==='change')changeSetting=listener;}});
+    };
+    adultView();
+  `);
+  assert.match(h.run('settingMarkup'),/id="scratchpad-setting"[^>]*checked/);
+  h.run("changeSetting({target:{id:'scratchpad-setting',checked:false}}); render();");
+  assert.doesNotMatch(h.root.innerHTML,/data-action="scratchpad"/);
+  assert.equal(h.run('JSON.parse(storage.getItem(STORAGE_KEY)).scratchpadEnabled'),false);
+  h.run("changeSetting({target:{id:'scratchpad-setting',checked:true}}); render();");
+  assert.match(h.root.innerHTML,/data-action="scratchpad"/);
+});
+
+test('Both settings close buttons keep the changed setting and retry a failed save',()=>{
+  for (const [buttonIndex,failFirstWrite] of [[0,false],[1,true]]) {
+    const h=harness({roundFixture:false});
+    h.run(`
+      submitProfile('first',{name:'Ada',grade:3});
+      const listeners=new Map(), saveStatus={textContent:''};
+      const modal={
+        isConnected:false, open:false, setAttribute(){},
+        querySelector:selector=>selector==='[data-adult-save-status]'?saveStatus:selector==='#sound-setting'?{}:null,
+        addEventListener(name,handler){listeners.set(name,[...(listeners.get(name)??[]),handler]);},
+        showModal(){this.open=true;},
+        close(){this.open=false; for(const close of listeners.get('close'))close();},
+        remove(){this.isConnected=false;}
+      };
+      const lookup=document.querySelector;
+      document.querySelector=selector=>selector==='dialog'&&modal.isConnected?modal:lookup(selector);
+      document.createElement=()=>modal;
+      document.body={append(){modal.isConnected=true;}};
+      adultView();
+      let writes=0;
+      const write=storage.setItem;
+      storage.setItem=(...args)=>{
+        writes++;
+        if(${failFirstWrite}&&writes===1)throw new Error('Storage unavailable');
+        return write(...args);
+      };
+      listeners.get('change')[0]({target:{id:'scratchpad-setting',checked:false}});
+    `);
+    const markup=h.run('modal.innerHTML');
+    assert.match(markup,/role="status">Endringer lagres automatisk/);
+    const buttons=[...markup.matchAll(/<button[^>]*data-action="(close-dialog)"[^>]*>[\s\S]*?<\/button>/g)];
+    assert.equal(buttons.length,2);
+    assert.match(buttons[0][0],/aria-label="Lukk voksenvisningen"/);
+    assert.match(buttons[1][0],/>Ferdig<\/button>/);
+    assert.match(h.run('saveStatus.textContent'),failFirstWrite?/kunne ikke lagre/:/Endringene er lagret/);
+    const button={dataset:{action:buttons[buttonIndex][1]},closest:s=>s==='[data-action]'?button:null};
+    h.events.click({target:button});
+    assert.equal(h.run('modal.isConnected'),false);
+    assert.equal(h.run('readProfiles(storage).profiles[0].practice.scratchpadEnabled'),false);
+    assert.equal(h.run('writes'),failFirstWrite?2:1);
+  }
 });
 
 test('Fast taps after a wrong choice are ignored and a retry requires entering the number', () => {
@@ -406,7 +522,7 @@ test('The wizard offers per-grade exclusions, and free mixing cannot stay active
     let changePractice;
     const practicePanel={innerHTML:'',querySelector:()=>null},summary={};
     showDialog=(_markup,_css,activate)=>activate({
-      addEventListener:(_event,listener)=>{ changePractice=listener; },
+      addEventListener:(event,listener)=>{ if(event==='change')changePractice=listener; },
       querySelector:selector=>selector==='#practice-options'?practicePanel:summary
     });
     adultView();`);

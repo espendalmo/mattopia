@@ -52,6 +52,10 @@ test('All offline assets exist and load from cache at root and GitHub project pa
       assert.ok((await h.request(name)).bytes.length > 0, name);
     }
     assert.ok((await h.request('?from=home', 'navigate')).bytes.length > 0, 'navigation query falls back to cached entry');
+    for (const key of ['__tallvenn_update','mattopia_update']) {
+      const next = await h.request(`?${key}=${VERSION}`, 'navigate');
+      assert.equal(next,await h.request('index.html'),key);
+    }
   }
 });
 

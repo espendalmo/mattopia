@@ -87,12 +87,43 @@ test('An older worker cannot offer a downgrade to an already newer page',async()
 test('The new navigation has a release-specific URL and preserves the GitHub project path',async()=>{
   const previous=globalThis.location;let destination;
   try{
-    globalThis.location={href:'https://example.github.io/mattopia/?demo=1#home',replace:url=>{destination=url;}};
+    globalThis.location={href:'https://example.github.io/mattopia/?demo=1&__tallvenn_update=1.2.1#home',replace:url=>{destination=url;}};
     const h=harness({defaultReload:true});await h.updater.init();await h.takeControl();await h.updater.apply();
     const url=new URL(destination);
-    assert.equal(url.pathname,'/mattopia/');assert.equal(url.searchParams.get('__tallvenn_update'),'1.2.2');
+    assert.equal(url.pathname,'/mattopia/');assert.equal(url.searchParams.get('mattopia_update'),'1.2.2');
+    assert.equal(url.searchParams.has('__tallvenn_update'),false);
     assert.equal(url.searchParams.get('demo'),'1');assert.equal(url.hash,'#home');
   }finally{if(previous===undefined)delete globalThis.location;else globalThis.location=previous;}
+});
+
+test('An address loaded by an earlier app version switches to the Mattopia parameter without navigating again',()=>{
+  const previousLocation=globalThis.location, previousHistory=globalThis.history;
+  const state={view:'home'}, replaced=[];
+  try{
+    globalThis.history={state,replaceState:(historyState,title,href)=>{
+      assert.equal(historyState,state);
+      replaced.push(new URL(href));
+    }};
+    for (const [query,expected] of [
+      ['__tallvenn_update=1.49.1','1.49.1'],
+      ['__tallvenn_update=1.49.1&mattopia_update=1.49.2','1.49.2'],
+    ]) {
+      globalThis.location={href:`https://example.github.io/mattopia-beta/?demo=1&${query}#kart`,replace:()=>assert.fail('Unexpected navigation')};
+      harness();
+      const url=replaced.at(-1);
+      assert.equal(url.pathname,'/mattopia-beta/');
+      assert.equal(url.hash,'#kart');
+      assert.equal(url.searchParams.get('demo'),'1');
+      assert.equal(url.searchParams.get('mattopia_update'),expected);
+      assert.equal(url.searchParams.has('__tallvenn_update'),false);
+    }
+    globalThis.location.href=replaced.at(-1).href;
+    harness();
+    assert.equal(replaced.length,2);
+  }finally{
+    if(previousLocation===undefined)delete globalThis.location;else globalThis.location=previousLocation;
+    if(previousHistory===undefined)delete globalThis.history;else globalThis.history=previousHistory;
+  }
 });
 
 test('Without service workers, a manual check leaves the button enabled and explains the limitation',async()=>{

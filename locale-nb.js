@@ -1,5 +1,8 @@
 // Endre teksten til høyre. Behold nøklene og plassholderne, som {current} og {total}.
 export default Object.freeze({
+  "adult.saveAutomatic": "Endringer lagres automatisk.",
+  "adult.saveFailed": "Nettleseren kunne ikke lagre endringene.",
+  "adult.saved": "Endringene er lagret.",
   "adult.title": "For voksne",
   "exercise.angleRemainder.hint": "En rett vinkel er 90°.",
   "exercise.angleRemainder.method": "Trekk {a}° fra 90°.",
@@ -490,6 +493,13 @@ export default Object.freeze({
   "round.start": "Start runden",
   "round.takeTime": "Ta den tiden du trenger.",
   "round.unsolved": "Vi finner det ut.",
+  "scratchpad.area": "Ruteark til å skrive og tegne på",
+  "scratchpad.back": "Til svaret",
+  "scratchpad.clear": "Tøm arket",
+  "scratchpad.setting": "Kladdeark i oppgavene",
+  "scratchpad.settingNote": "Viser «Kladdeark» ved siden av «Forklar meg». Barnet kan åpne arket når det vil skrive en mellomregning eller tegne.",
+  "scratchpad.title": "Kladdeark",
+  "scratchpad.undo": "Angre",
   "setup.edit": "Rediger profilen",
   "setup.gradeRequired": "Krever klassetrinn",
   "setup.greeting": "Hei fra Mattopia!",

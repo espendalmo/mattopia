@@ -5,6 +5,27 @@ function newerThan(a,b){
 }
 
 export const PRODUCTION_PATH='/mattopia/';
+const UPDATE_PARAMETER='mattopia_update';
+const LEGACY_UPDATE_PARAMETER='__tallvenn_update';
+
+function updateAddress(version) {
+  const url = new URL(location.href);
+  url.searchParams.delete(LEGACY_UPDATE_PARAMETER);
+  url.searchParams.set(UPDATE_PARAMETER, version);
+  location.replace(url.href);
+}
+
+function migrateUpdateAddress() {
+  const href = globalThis.location?.href;
+  const history = globalThis.history;
+  if (!href || !history?.replaceState) return;
+  const url = new URL(href);
+  const version = url.searchParams.get(LEGACY_UPDATE_PARAMETER);
+  if (version === null) return;
+  url.searchParams.delete(LEGACY_UPDATE_PARAMETER);
+  if (!url.searchParams.has(UPDATE_PARAMETER)) url.searchParams.set(UPDATE_PARAMETER, version);
+  try { history.replaceState(history.state, '', url.href); } catch {}
+}
 
 export async function readPublishedVersion(origin, {signal, request=globalThis.fetch}={}) {
   const url = new URL(PRODUCTION_PATH+'core.js', origin);
@@ -18,9 +39,9 @@ export async function readPublishedVersion(origin, {signal, request=globalThis.f
   return version && (!channel || channel === 'stable') ? version : null;
 }
 
-export function createUpdater({currentVersion,onStatus,beforeReload,serviceWorker=globalThis.navigator?.serviceWorker,reload=version=>{
-  const url=new URL(location.href);url.searchParams.set('__tallvenn_update',version);location.replace(url.href);
-},activationTimeout=10000,messageTimeout=1800,pollInterval=250}){
+export function createUpdater({currentVersion,onStatus,beforeReload,serviceWorker=globalThis.navigator?.serviceWorker,reload=updateAddress,
+  activationTimeout=10000,messageTimeout=1800,pollInterval=250}){
+  migrateUpdateAddress();
   let registration,ready=false,checking=false,applying=false,starting,candidate;
   const watched=new WeakSet();
   function emit(status,message){onStatus({ready,checking,applying,status,message});}

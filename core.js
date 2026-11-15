@@ -2,8 +2,9 @@ import {text as msg} from './i18n.js';
 import {randomGenerator} from './worlds.js';
 export {randomGenerator};
 import {restoreRewards} from './rewards.js';
+import {restoreScratchpad} from './scratchpad.js';
 import {CURRICULUM_LEVELS, CURRICULUM_TOPICS, GRADE_LEVELS, curriculumTopic, createCurriculumTask, validCurriculumTask, levelForGrade, nextLevelForGrade, levelsForGrade} from './curriculum.js';
-export const VERSION='1.48.1';
+export const VERSION='1.49.2';
 export const CHANNEL = 'stable';
 export const ROUND_LENGTH=8;
 const DEFAULT_ROUND_LENGTH=5;
@@ -215,7 +216,9 @@ export function continueRetry(round) {
   else if(plan.kind==='input')tasks[index]={...tasks[index],mode:'input'};
   hintStages[index]=plan.stage??1;
   helped[index]=true;
-  return {...round,tasks,hintStages,helped,retry:null};
+  const next={...round,tasks,hintStages,helped,retry:null};
+  if(plan.task)delete next.scratchpad;
+  return next;
 }
 
 export function advanceRound(round){
@@ -226,7 +229,10 @@ export function advanceRound(round){
   if(!round.mix&&target<tasks.length&&tasks[target].role!=='preview'&&(!result.firstTry||result.helped)){
     const repeated=relatedTask(round,target);
     if(repeated)tasks[target]={...repeated,role:'review',reviewOf:round.index};
-  }return{...round,tasks,index:round.index+1,solved:false};
+  }
+  const next={...round,tasks,index:round.index+1,solved:false};
+  delete next.scratchpad;
+  return next;
 }
 export function roundSummary(r){if(!r||r.index!==r.tasks.length||!r.results.every(Boolean))return null;return{id:r.id,level:r.level,...(r.mix&&{mix:r.mix}),length:r.tasks.length,date:new Date().toISOString(),focus:r.focus||null,firstTry:r.results.filter(x=>x.firstTry).length,helped:r.results.filter(x=>x.helped).length,results:r.results};}
 export function growthState(total){total=Math.max(0,Math.floor(Number(total)||0));const stage=total===0?0:((total-1)%5)+1;return{stage,flowers:Math.floor(total/5),label:['Et lite frø','En ny spire!','To fine blader!','Planten vokser!','Snart en blomst!','Nå blomstrer det!'][stage]};}
@@ -249,7 +255,7 @@ export function advancePractice(state, grade, finishedLevel) {
   return progressRounds >= PROGRESSION_ROUNDS ? {...state, level:next.level, progressRounds:0} : {...state, progressRounds};
 }
 
-export function freshState(){return{version:1,level:1,roundLength:DEFAULT_ROUND_LENGTH,mix:null,autoProgress:false,progressionExcluded:{},progressRounds:0,sound:true,haptics:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
+export function freshState(){return{version:1,level:1,roundLength:DEFAULT_ROUND_LENGTH,mix:null,autoProgress:false,progressionExcluded:{},progressRounds:0,sound:true,haptics:true,scratchpadEnabled:true,alwaysShowVisuals:false,focusBreaks:false,focusBreakPending:false,roundsCompleted:0,history:[],active:null,...restoreRewards(null,0)};}
 export function restoreState(raw){
   const fallback=freshState();if(!raw||raw.version!==1)return fallback;
   const history=Array.isArray(raw.history)?raw.history.filter(r=>{
@@ -269,6 +275,11 @@ export function restoreState(raw){
     && (t.type!=='divide'||t.b>=2&&t.b<=4&&t.answer>=2&&t.answer<=6&&t.n===t.b*t.answer);
   const valid=r&&typeof r.id==='string'&&validLevel(r.level)&&Array.isArray(r.tasks)&&validRoundLength(length)&&r.tasks.every(validTask)&&Number.isInteger(r.index)&&r.index>=0&&r.index<length&&['attempts','helped','results'].every(k=>Array.isArray(r[k])&&r[k].length===length)&&r.attempts.every(x=>Number.isInteger(x)&&x>=0)&&r.helped.every(x=>typeof x==='boolean')&&r.results.every((x,i)=>i<r.index||(i===r.index&&r.solved)?x&&typeof x.firstTry==='boolean'&&typeof x.helped==='boolean':x===null)&&typeof r.solved==='boolean';
   const active=valid?{...r,tasks:r.tasks.map(t=>({...t,support:t.support==='optional'&&!curriculumTopic(t.type)?'optional':'visible',mode:t.mode==='input'&&!curriculumTopic(t.type)?'input':'choice'})),hintStages:Array.isArray(r.hintStages)&&r.hintStages.length===length?r.hintStages.map(x=>Number.isInteger(x)?Math.max(0,Math.min(3,x)):0):r.helped.map(v=>v?3:0),retry:null}:null;
+  if(active) {
+    const scratchpad=restoreScratchpad(r.scratchpad);
+    if(scratchpad)active.scratchpad=scratchpad;
+    else delete active.scratchpad;
+  }
   if(active?.results[active.index]?.reviewed) {
     active.results=active.results.slice();
     active.results[active.index]=null;
@@ -291,5 +302,5 @@ export function restoreState(raw){
     const excluded=levels.filter(level=>values.includes(level)).slice(0,levels.length-1);
     return excluded.length?[[grade,excluded]]:[];
   }));
-  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:fallback.roundLength,autoProgress,progressionExcluded,progressRounds,mix,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
+  return{...fallback,level:validLevel(raw.level)?Number(raw.level):1,roundLength:validRoundLength(raw.roundLength)?raw.roundLength:fallback.roundLength,autoProgress,progressionExcluded,progressRounds,mix,sound:typeof raw.sound==='boolean'?raw.sound:fallback.sound,haptics:raw.haptics!==false,scratchpadEnabled:raw.scratchpadEnabled!==false,alwaysShowVisuals:raw.alwaysShowVisuals===true,focusBreaks:raw.focusBreaks===true,focusBreakPending:raw.focusBreaks===true&&raw.focusBreakPending===true&&!active,roundsCompleted:total,history,active,...restoreRewards(raw,total)};
 }
