@@ -220,10 +220,14 @@ const tasks = {
       msg('exercise.equivalentFraction.method', {k}),`${n}/${d} = ${n*k}/${d*k}.`);
   }],
   chanceCompare:['probability', int => {
-    const red=int(2,4),blue=red+int(1,3);
-    return exercise(msg('exercise.chanceCompare.title'),msg('exercise.chanceCompare.prompt', {red, blue}),'Å få blå',
-      ['Å få rød','Like stor sjanse'],msg('exercise.chanceCompare.hint'),msg('exercise.chanceCompare.method', {red, blue}),
-      msg('exercise.chanceCompare.solution'));
+    const red=int(2,6),blue=int(2,6);
+    const outcomes=['red','equal','blue'];
+    const outcome=outcomes[Math.sign(blue-red)+1];
+    const answer=key=>msg(`exercise.chanceCompare.answer.${key}`);
+    const solution=outcome==='blue'?'exercise.chanceCompare.solution':`exercise.chanceCompare.solution.${outcome}`;
+    return exercise(msg('exercise.chanceCompare.title'),msg('exercise.chanceCompare.prompt', {red, blue}),answer(outcome),
+      outcomes.filter(key=>key!==outcome).map(answer),msg('exercise.chanceCompare.hint'),msg('exercise.chanceCompare.method', {red, blue}),
+      msg(solution));
   }],
   decimalDifference:['decimals', int => {
     const cents=int(3,8),paid=int(4,9),price=paid-cents/10;

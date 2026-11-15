@@ -360,11 +360,11 @@ dialog button:focus-visible, dialog a:focus-visible, dialog summary:focus-visibl
   backdrop-filter: none;
   animation: backdrop-in .29s ease-out both;
 }
-.retry-sheet h2 { color: #813e3a; font-size: 1.75rem; margin-bottom: 6px; }
+.retry-sheet h2 { color: var(--ink); font-size: 1.75rem; margin-bottom: 6px; }
 .retry-sheet p { line-height: 1.45; }
 .retry-hint { margin: 12px 0 16px; padding: 10px 14px; border-radius: 14px; background: var(--mint); }
+.retry-hint p + p { margin-top: 8px; font-weight: 750; }
 .retry-sheet .primary { width: 100%; }
-.retry-sheet .primary:disabled { opacity: .55; }
 @keyframes sheet-in { from { transform: translateY(100%); } }
 @keyframes backdrop-in { from { opacity: 0; } }
 

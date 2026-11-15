@@ -63,6 +63,15 @@ test('Representative curriculum answers are mathematically correct, including no
   }
 });
 
+test('Comparing the chances of drawing two colors can give all three outcomes', () => {
+  for (const [red,blue,answer] of [[2,6,'Å få blå'],[6,2,'Å få rød'],[4,4,'Like stor sjanse']]) {
+    const draws = [(red-2)/5,(blue-2)/5];
+    const task = createCurriculumTask('chanceCompare',()=>draws.shift()??0,0);
+    assert.equal(task.labels[task.answer],answer);
+    assert.ok(validCurriculumTask(task));
+  }
+});
+
 test('Optional progression introduces one then two tasks, moves after 24 answers and stays within the grade', () => {
   const manual = {...freshState(),level:51};
   assert.equal(advancePractice(manual,5,51),manual);

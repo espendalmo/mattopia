@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRound,answerRound,advanceRound,noteHelp,roundSummary,restoreState,freshState,growthState,factKey} from '../core.js';
+import {createRound,answerRound,advanceRound,continueRetry,retryPlan,noteHelp,roundSummary,restoreState,freshState,growthState,factKey} from '../core.js';
 import {hintFor} from '../learning.js';
 
 function complete(seed,level=1){let r=createRound(level,seed);for(let i=0;i<8;i++)r=advanceRound(answerRound(r,r.tasks[r.index].answer));return roundSummary(r);}
@@ -29,7 +29,34 @@ test('Support fades conservatively; number entry needs independent practice and 
 });
 test('Typed answers are checked beyond multiple-choice alternatives and duplicate submissions are ignored',()=>{
   let r=createRound(1,6);r.tasks[0].mode='input';const wrong=999;r=answerRound(r,wrong);assert.equal(r.attempts[0],1);assert.equal(r.solved,false);
+  assert.equal(retryPlan(r).kind,'retry');
+  r=continueRetry(r);
   r=answerRound(r,r.tasks[0].answer);assert.equal(r.solved,true);assert.equal(answerRound(r,r.tasks[0].answer),r);
+});
+test('A labelled task is followed by a distinct example at the same level',()=>{
+  const round = createRound(51,42), original = round.tasks[0];
+  const pending = answerRound(round,original.choices.find(c=>c!==original.answer));
+  const plan = retryPlan(pending);
+  assert.equal(plan.kind,'similar');
+  const ready = continueRetry(pending), next = ready.tasks[0];
+  assert.equal(ready.level,round.level);
+  assert.equal(ready.index,round.index);
+  assert.equal(ready.attempts[0],1);
+  assert.equal(next.type,original.type);
+  assert.equal(next.role,original.role);
+  assert.equal(next.mode,'choice');
+  assert.notEqual(factKey(next),factKey(original));
+  assert.notEqual(next.labels[next.answer],original.labels[original.answer]);
+  assert.equal(ready.hintStages[0],1);
+  assert.deepEqual(restoreState({...freshState(),active:ready}).active,ready);
+  const missed = answerRound(ready,next.choices.find(c=>c!==next.answer));
+  const retry = continueRetry(missed);
+  assert.equal(retry.tasks[0],next);
+  assert.equal(advanceRound(retry),retry);
+  const done = answerRound(retry,next.answer);
+  assert.ok(done.solved);
+  assert.equal(done.results[0].firstTry,false);
+  assert.equal(done.results[0].helped,true);
 });
 test('Hint stages and old 1.0 stars, sound preference and unfinished rounds survive migration',()=>{
   let r=createRound(1,5);r=noteHelp(noteHelp(r));const stored={...freshState(),sound:false,roundsCompleted:17,active:r};

@@ -1,7 +1,7 @@
 import {text as msg} from './i18n.js';
 import {constructionStory} from './landmark-stories.js';
 import {mapCharacterInfo} from './map-life.js';
-import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, advanceRound, noteHelp, roundSummary, freshState, restoreState, practiceLevelForGrade, progressionPreview, advancePractice } from './core.js';
+import { VERSION, CHANNEL, ROUND_LENGTH, ROUND_LENGTHS, PROGRESSION_ROUNDS, STORAGE_KEY, LEVELS, TOPICS, topicOf, topicStats, growthState, countStep, createRound, answerRound, retryPlan, continueRetry, advanceRound, noteHelp, roundSummary, freshState, restoreState, practiceLevelForGrade, progressionPreview, advancePractice } from './core.js';
 import { hintFor } from './learning.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
@@ -63,7 +63,7 @@ const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { c
   if (changed && view !== 'round' && view !== 'onboarding' && !document.querySelector('dialog')) render();
 } });
 
-function makeUI() { return { wrong: [], removed: new Set(), added: new Set(), entry: '', retry: false, retryUntil: 0, retryStage: 0 }; }
+function makeUI() { return { removed: new Set(), added: new Set(), entry: '' }; }
 function save({ select=false, edit=false } = {}) {
   if (profile) {
     const result = saveProfile(storage, profileStore, { ...profile, practice:state }, { select, edit, recover:!storageWorks });
@@ -1066,6 +1066,7 @@ function startRound() {
   }
   sounds.play('open',state.sound);
   view = 'round'; ui = makeUI(); announcer.textContent = ''; render(); goTop(); focusHeading();
+  if (state.active?.retry) showRetry();
 }
 
 function openFocusBreak() {
@@ -1089,7 +1090,7 @@ function syncTestBreak() {
     testBreakReturn = null;
   }
   render(); goTop(); focusHeading();
-  if (view === 'round' && ui.retry) showRetry(state.active.tasks[state.active.index]);
+  if (view === 'round' && state.active?.retry) showRetry();
 }
 
 function exitTestBreak() {
@@ -1470,7 +1471,7 @@ function curriculumVisual(model,solved) {
 }
 
 function renderVisual(t, solved) {
-  const stage = ui.retry ? ui.retryStage : hintStage();
+  const stage = hintStage();
   if (curriculumTopic(t.type)) return t.visual ? `<div class="visual-card curriculum-visual${t.visual.kind==='numberLine'?' line-visual':''}">${curriculumVisual(t.visual,solved)}</div>` : '';
   if (t.support === 'optional' && !stage && !solved && !state.alwaysShowVisuals) return '<p class="mental-note">Prøv gjerne i hodet.<br>Brikkene er her hvis du trenger dem.</p>';
   let html = '', caption = '';
@@ -1516,7 +1517,8 @@ function renderRound() {
   if (!r || r.index >= r.tasks.length) { view = 'home'; renderHome(); return; }
   const t = r.tasks[r.index];
   const done = r.index + (r.solved ? 1 : 0);
-  const stage = ui.retry ? ui.retryStage : hintStage();
+  const stage = hintStage();
+  const helpLabel = ['round.help','round.moreHelp','round.viewSolution','round.showHelp'][stage];
   const length = r.tasks.length;
   const progress = Array.from({ length }, (_, i) => `<span class="step ${i < done ? 'done' : i === done ? 'current' : ''}"></span>`).join('');
   let feedback;
@@ -1526,22 +1528,22 @@ function renderRound() {
     feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? msg('round.complete') : msg('round.next')}${icon('arrow')}</button>`;
   } else feedback = `<p class="idle-note">${msg('round.takeTime')}</p>`;
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>${msg('round.position', {current:r.index + 1,total:length})}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
-    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, ui.retry)}</div>
+    <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, Boolean(r.retry))}</div>
     <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
-    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 ? 'disabled' : ''}>${icon('help')}${stage === 3 ? msg('round.showHelp') : stage ? msg('round.moreHelp') : msg('round.help')}</button>` : ''}
+    ${!r.solved ? `<button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${msg(helpLabel)}</button>` : ''}
     ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
-    ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad() : renderAnswers(t, r.solved)}
+    ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad(Boolean(r.retry)) : renderAnswers(t, r.solved, r.retry)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
 }
 
-function renderAnswers(t, solved) {
+function renderAnswers(t, solved, retry) {
   const labels = curriculumTopic(t.type) ? t.labels : null;
   const wide = labels?.some(label => label.length > 4);
   const buttons = t.choices.map(c => {
     const label = escapeHtml(String(labels?.[c] ?? c));
-    const tried = ui.wrong.includes(c), correct = solved && c === t.answer;
-    return `<button class="answer ${correct ? 'correct' : ''} ${tried ? 'tried' : ''}" data-answer="${c}" ${solved || ui.retry || tried ? 'disabled' : ''} aria-label="Svar ${label}${tried ? ', prøvd' : correct ? ', riktig' : ''}">${label}${tried ? '<span class="answer-cross" aria-hidden="true">×</span>' : ''}</button>`;
+    const tried = retry?.value === c, correct = solved && c === t.answer;
+    return `<button class="answer ${correct ? 'correct' : ''} ${tried ? 'tried' : ''}" data-answer="${c}" ${solved || retry ? 'disabled' : ''} aria-label="Svar ${label}${tried ? ', prøvd' : correct ? ', riktig' : ''}">${label}${tried ? '<span class="answer-cross" aria-hidden="true">×</span>' : ''}</button>`;
   }).join('');
   return `<div class="answers ${wide ? 'wide-answers' : ''}" role="group" aria-label="Velg svar">${buttons}</div>`;
 }
@@ -1612,7 +1614,7 @@ function feedback(kind, pulse) {
   sounds.play(kind, state.sound);
 }
 function playSuccess() { sounds.play('success', state.sound); }
-function keypad() { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${ui.retry ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${ui.retry || !ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${ui.retry ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${ui.retry || !ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
+function keypad(locked) { return `<div class="number-entry"><p>Svaret ditt</p><output id="input-value" aria-label="Svaret ditt" aria-live="polite">${ui.entry || '?'}</output><div class="keypad" role="group" aria-label="Skriv svaret">${[1,2,3,4,5,6,7,8,9].map(n => `<button data-digit="${n}" aria-label="Skriv ${n}" ${locked ? 'disabled' : ''}>${n}</button>`).join('')}<button data-action="erase" aria-label="Slett siste siffer" ${locked || !ui.entry ? 'disabled' : ''}>${icon('backspace')}</button><button data-digit="0" aria-label="Skriv 0" ${locked ? 'disabled' : ''}>0</button><button class="submit-number" data-action="submit-number" ${locked || !ui.entry ? 'disabled' : ''}>Svar</button></div></div>`; }
 function keyFeedback(key) {
   sounds.play('key', state.sound);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -1620,7 +1622,7 @@ function keyFeedback(key) {
   button?.animate?.([{ transform: 'translateY(2px)', boxShadow: '0 1px 0 #dce5db' }, { transform: 'translateY(0)', boxShadow: '0 3px 0 #dce5db' }], { duration: 120, easing: 'ease-out' });
   document.querySelector('#input-value')?.animate?.([{ transform: 'scale(.97)' }, { transform: 'scale(1)' }], { duration: 120, easing: 'ease-out' });
 }
-function canEnter() { return view === 'round' && !ui.retry && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input'; }
+function canEnter() { return view === 'round' && !state.active?.retry && !state.active?.solved && state.active?.tasks[state.active.index].mode === 'input'; }
 function enterDigit(digit) {
   if (!canEnter() || !/^[0-9]$/.test(digit) || ui.entry.length >= 3) return;
   ui.entry = ui.entry === '0' ? digit : ui.entry + digit;
@@ -1761,7 +1763,7 @@ function welcomeBack() {
     if (away) storage.removeItem(key);
   } catch { return; }
   if (!away || Date.now() - away < WELCOME_AFTER) return;
-  if (document.querySelector('dialog[open]') || ui.retry || view === 'focus-break') return;
+  if (document.querySelector('dialog[open]') || (view === 'round' && state.active?.retry) || view === 'focus-break') return;
   const next = nextBuildReward();
   const g = rewardDetails(next);
   const note = state.active
@@ -1861,7 +1863,7 @@ function checkPublishedRelease(dialog) {
 function adultView() {
   const recent = state.history.slice(-5).reverse();
   const days = new Set(state.history.map(r => new Date(r.date).toLocaleDateString('nb-NO'))).size;
-  const history = recent.length ? recent.map(r => `<div class="history-item"><div>${new Date(r.date).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}<small>${LEVELS[r.level].label}</small></div><div class="history-numbers">${r.firstTry}/${r.length ?? ROUND_LENGTH} på første forsøk<small>Hjelp åpnet i ${r.helped} ${r.helped === 1 ? 'oppgave' : 'oppgaver'}</small></div></div>`).join('') : '<p class="history-empty">Her vises de siste rundene når barnet har øvd.</p>';
+  const history = recent.length ? recent.map(r => `<div class="history-item"><div>${new Date(r.date).toLocaleDateString('nb-NO', { day: 'numeric', month: 'short' })}<small>${LEVELS[r.level].label}</small></div><div class="history-numbers">${r.firstTry}/${r.length ?? ROUND_LENGTH} på første forsøk<small>Hjelp i ${r.helped} ${r.helped === 1 ? 'oppgave' : 'oppgaver'}</small></div></div>`).join('') : '<p class="history-empty">Her vises de siste rundene når barnet har øvd.</p>';
   const testLinks = CHANNEL === 'preview' ? `<nav class="beta-test-links" aria-labelledby="test-links-title">
     <h3 id="test-links-title">Test pauseleker</h3><p>Prøv en lek direkte, uten å endre øvingsframgangen.</p>
     <div>${Object.entries(TEST_BREAK_LINKS).map(([kind, href]) => `<a class="secondary" href="${href}">${BREAK_TITLES[kind]}</a>`).join('')}</div></nav>` : '';
@@ -1987,9 +1989,7 @@ function adultView() {
 }
 
 function submitAnswer(value) {
-  if (view !== 'round' || ui.retry) return;
-  const currentTask = state.active?.tasks[state.active.index];
-  if (currentTask?.mode === 'choice' && ui.wrong.includes(value)) return;
+  if (view !== 'round') return;
   const answered = answerRound(state.active, value);
   if (answered === state.active) return;
   state.active = answered;
@@ -2032,28 +2032,25 @@ function submitAnswer(value) {
     root.querySelector('.feedback-area')?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
     return;
   }
-  ui.wrong.push(value);
-  ui.retryStage = hintStage();
-  ui.retry = true;
-  ui.retryUntil = Date.now() + 1100;
-  state.active = noteHelp(answered);
   save(); render(); feedback('retry', 11);
   flashAnswer(task, value, false);
-  const attempt = ui;
+  const pending = answered.retry;
   setTimeout(() => {
-    if (ui === attempt && ui.retry && view === 'round') showRetry(task);
-  }, 320);
+    if (view === 'round' && state.active?.retry === pending && !document.querySelector('.retry-sheet[open]')) showRetry();
+  }, matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 320);
 }
 
-function showRetry(task) {
-  const attempt = ui;
-  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>Nesten!</h2>
-    <p>Se på hintet og tenk en gang til.</p><p class="retry-hint">${escapeHtml(hintText(task))}</p>
-    <button class="primary" data-action="retry" disabled>Prøv igjen ${icon('arrow')}</button>`, 'retry-sheet', dialog => {
+function showRetry() {
+  const round = state.active, plan = retryPlan(round);
+  if (!plan) return;
+  const task = round.tasks[round.index], showsSolution = plan.kind === 'similar' || plan.stage === 3;
+  const hints = showsSolution ? [...new Set([hintFor(task, 2), hintFor(task, 3)])] : [hintFor(task, plan.stage)];
+  const label = msg({input:'round.retryInput',retry:'round.retryAgain',similar:'round.retrySimilar'}[plan.kind]);
+  showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>${msg(showsSolution ? 'round.retrySolution' : 'round.retryHint')}</h2>
+    <div class="retry-hint" id="retry-explanation">${hints.map(hint => `<p>${escapeHtml(hint)}</p>`).join('')}</div>
+    <button class="primary" data-action="retry">${label} ${icon('arrow')}</button>`, 'retry-sheet', dialog => {
+    dialog.setAttribute('aria-describedby','retry-explanation');
     dialog.addEventListener('cancel', event => { event.preventDefault(); retryAnswer(); });
-    const button = dialog.querySelector('[data-action="retry"]');
-    const remaining = Math.max(0, attempt.retryUntil - Date.now());
-    setTimeout(() => { if (dialog.open && ui === attempt) button.disabled = false; }, remaining);
   });
 }
 
@@ -2078,13 +2075,42 @@ function flashAnswer(task, value, correct) {
 }
 
 function retryAnswer() {
-  if (view !== 'round' || !ui.retry || Date.now() < ui.retryUntil) return;
-  ui.retry = false;
-  ui.entry = '';
-  document.querySelector('.retry-sheet')?.close();
-  render();
-  const first = root.querySelector('.answer:not(:disabled), [data-digit]:not(:disabled)');
-  (first || root.querySelector('h1'))?.focus({ preventScroll: true });
+  if (view !== 'round' || !state.active?.retry) return;
+  const task = state.active.tasks[state.active.index];
+  state.active = continueRetry(state.active);
+  closeDialog();
+  const nextTask = state.active.tasks[state.active.index];
+  const replaced = nextTask.mode === 'choice' && nextTask !== task;
+  if (replaced) ui = makeUI();
+  else ui.entry = '';
+  save(); render();
+  if (replaced) root.querySelector('.task-scroll')?.scrollTo({top:0});
+  focusHeading();
+}
+
+function goToNextTask() {
+  if (view !== 'round' || !state.active?.solved) return;
+  const next = advanceRound(state.active);
+  if (next === state.active) return;
+  state.active = next;
+  if (state.active.index === state.active.tasks.length) {
+    completedReward = null;
+    const summary = roundSummary(state.active);
+    if (summary && !state.history.some(r => r.id === summary.id)) {
+      state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
+      const awarded = awardPractice(state, summary.id, Math.random, summary.firstTry===summary.length);
+      state = summary.mix ? awarded.state : advancePractice(awarded.state, profile?.grade, summary.level);
+      completedReward = awarded.reward;
+      state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
+    }
+    const stage = completedProjectScene(completedReward);
+    state.active = null; view = 'complete'; celebrateOnRender = true;
+    if (stage) {
+      if (state.haptics) navigator.vibrate?.([18,55,25]);
+      sounds.playBuild(stage,state.sound,{finale:rewardDetails(completedReward).full});
+    } else feedback('finish',[18,55,25]);
+  } else sounds.play('next', state.sound);
+  ui = makeUI(); save(); render(); goTop(); focusHeading();
 }
 
 const ownClickSound=new Set([
@@ -2096,11 +2122,13 @@ const ownClickSound=new Set([
 document.addEventListener('click', e => {
   if (e.detail && ignoredBrickClick?.contains(e.target)) { ignoredBrickClick = null; return; }
   const answer = e.target.closest('[data-answer]');
-  if (answer && view === 'round' && !answer.disabled) { submitAnswer(Number(answer.dataset.answer)); return; }
+  if (answer && view === 'round' && !answer.disabled && state.active?.tasks[state.active.index].mode === 'choice') {
+    submitAnswer(Number(answer.dataset.answer)); return;
+  }
   const digit = e.target.closest('[data-digit]');
   if (digit && view === 'round' && !state.active.solved) { enterDigit(digit.dataset.digit); return; }
   const unit = e.target.closest('[data-unit]');
-  if (unit && view === 'round' && !ui.retry && !state.active.solved) {
+  if (unit && view === 'round' && !state.active.retry && !state.active.solved) {
     sounds.play('tap',state.sound);
     const n = Number(unit.dataset.unit);
     ui.removed.has(n) ? ui.removed.delete(n) : ui.removed.add(n);
@@ -2109,7 +2137,7 @@ document.addEventListener('click', e => {
     document.querySelector('#visual-caption').textContent = text; say(text); return;
   }
   const cell = e.target.closest('[data-cell]');
-  if (cell && view === 'round' && !ui.retry && !state.active.solved) {
+  if (cell && view === 'round' && !state.active.retry && !state.active.solved) {
     sounds.play('tap',state.sound);
     const n = Number(cell.dataset.cell);
     ui.added.has(n) ? ui.added.delete(n) : ui.added.add(n);
@@ -2178,35 +2206,16 @@ document.addEventListener('click', e => {
     else { focusGame = null; startRound(); }
   }
   if (action === 'test-break-exit' && testBreakReturn) exitTestBreak();
-  if (action === 'help' && state.active && !ui.retry) {
+  if (action === 'help' && state.active && !state.active.retry) {
     sounds.play('hint',state.sound);
     state.active = noteHelp(state.active); save(); render(); say(hintText(state.active.tasks[state.active.index]));
   }
   if (action === 'sound') { state.sound = !state.sound; save(); state.sound ? playSuccess() : sounds.stop(); render(); document.querySelector('[data-action="sound"]')?.focus({ preventScroll: true }); }
   if (action === 'erase') eraseDigit();
-  if (action === 'submit-number' && ui.entry) submitAnswer(Number(ui.entry));
+  if (action === 'submit-number' && canEnter() && ui.entry) submitAnswer(Number(ui.entry));
   if (action === 'check-update') updates.check();
   if (action === 'apply-update') updates.apply();
-  if (action === 'next' && state.active?.solved) {
-    state.active = advanceRound(state.active);
-    if (state.active.index === state.active.tasks.length) {
-      completedReward = null;
-      const summary = roundSummary(state.active);
-      if (summary && !state.history.some(r => r.id === summary.id)) {
-        state.history.push(summary); state.history = state.history.slice(-40); state.roundsCompleted++;
-        const awarded = awardPractice(state, summary.id, Math.random, summary.firstTry===summary.length);
-        state = summary.mix ? awarded.state : advancePractice(awarded.state, profile?.grade, summary.level); completedReward = awarded.reward;
-        state.focusBreakPending = state.focusBreaks && state.roundsCompleted % BREAK_INTERVAL === 0;
-      }
-      const stage = completedProjectScene(completedReward);
-      state.active = null; view = 'complete'; celebrateOnRender = true;
-      if (stage) {
-        if (state.haptics) navigator.vibrate?.([18,55,25]);
-        sounds.playBuild(stage,state.sound,{finale:rewardDetails(completedReward).full});
-      } else feedback('finish',[18,55,25]);
-    } else sounds.play('next', state.sound);
-    ui = makeUI(); save(); render(); goTop(); focusHeading();
-  }
+  if (action === 'next') goToNextTask();
   if (action === 'home') { view = 'home'; render(); goTop(); focusHeading(); }
   if (action === 'project-open' || (action === 'project-demo' && CHANNEL === 'preview')) {
     sounds.play('open', state.sound);
@@ -2266,7 +2275,7 @@ document.addEventListener('click', e => {
   if (action === 'edit-profile' && profile) showProfileForm('edit');
   if (action === 'select-profile' && profile) selectProfile(e.target.closest('[data-profile-id]').dataset.profileId);
   if (action === 'close-dialog') closeDialog();
-  if (action === 'pause' && !ui.retry) showPause();
+  if (action === 'pause' && !state.active?.retry) showPause();
   if (action === 'pause-home') { closeDialog(); view = 'home'; save(); render(); goTop(); focusHeading(); }
   if (action === 'beta-abort-round') confirmBetaAbort();
   if (action === 'beta-reset-project') confirmBetaResetProject();
@@ -2304,7 +2313,7 @@ document.addEventListener('change', event => {
 
 document.addEventListener('keydown', e => {
   if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); return; }
-  if (e.key === 'Escape' && view === 'round' && !ui.retry && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
+  if (e.key === 'Escape' && view === 'round' && !state.active?.retry && !document.querySelector('dialog')) { e.preventDefault(); showPause(); }
   if (canEnter() && !document.querySelector('dialog')) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (/^[0-9]$/.test(e.key)) { e.preventDefault(); enterDigit(e.key); }

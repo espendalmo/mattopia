@@ -74,31 +74,102 @@ test('Solved tasks, other task modes and browser shortcuts cannot accidentally t
 
 test('Starting another round clears previous answer states and moves focus to the new question',()=>{
   const h=harness();
-  h.run("ui.wrong=[10];ui.entry='99';state.active=null;view='complete';startRound();");
-  assert.equal(h.run('ui.entry'),'');assert.equal(h.run('ui.wrong.length'),0);
+  h.run("ui.entry='99';state.active=null;view='complete';startRound();");
+  assert.equal(h.run('ui.entry'),'');assert.equal(h.run('state.active.retry'),null);
   const buttons=[...h.root.innerHTML.matchAll(/<button class="answer ([^"]*)"[^>]*>/g)];
   assert.equal(buttons.length,3);assert.ok(buttons.every(b=>!b[0].includes('correct')&&!b[0].includes('tried')&&!b[0].includes('disabled')));
   assert.equal(h.document.activeElement,h.heading);
 });
 
-test('Fast taps after a wrong answer require a fresh retry before accepting another answer', () => {
+test('Fast taps after a wrong choice are ignored and a retry requires entering the number', () => {
   const h = harness();
   h.run("state.active.tasks[0].mode='choice'; submitAnswer(state.active.tasks[0].choices.find(value => value !== 10)); submitAnswer(10);");
   assert.equal(h.run('state.active.attempts[0]'), 1);
   assert.equal(h.run('state.active.solved'), false);
   assert.match(h.root.innerHTML, /buddy surprised/);
   assert.doesNotMatch(h.root.innerHTML, /data-action="retry"/);
+  const buttons = [...h.root.innerHTML.matchAll(/<button class="answer [^>]*>/g)];
+  assert.equal(buttons.length,3);
+  assert.ok(buttons.every(([tag])=>tag.includes('disabled')));
   h.run("let retryModal; showDialog=(content, css) => { retryModal = {content,css}; };");
   assert.equal(h.timers[0].delay, 320);
   h.timers[0].fn();
   assert.equal(h.run('retryModal.css'), 'retry-sheet');
-  assert.match(h.run('retryModal.content'), /data-action="retry" disabled/);
-  h.run('retryAnswer(); submitAnswer(10);');
+  assert.match(h.run('retryModal.content'), /Et hint fra Eplo/);
+  assert.match(h.run('retryModal.content'), /data-action="retry">Skriv svaret/);
+  h.run('retryAnswer();');
+  assert.doesNotMatch(h.root.innerHTML, /data-answer=/);
+  assert.match(h.root.innerHTML, /data-action="submit-number" disabled/);
+  const staleAnswer = {disabled:false,dataset:{answer:'10'},closest:selector=>selector==='[data-answer]'?staleAnswer:null};
+  h.events.click({target:staleAnswer});
   assert.equal(h.run('state.active.attempts[0]'), 1);
-  h.run('ui.retryUntil = 0; retryAnswer(); submitAnswer(10);');
+  h.key('1'); h.key('0'); h.key('Enter');
   assert.equal(h.run('state.active.attempts[0]'), 2);
   assert.equal(h.run('state.active.solved'), true);
-  assert.deepEqual(h.plays.map(([kind])=>kind), ['retry','task-success-0']);
+  assert.deepEqual(h.plays.map(([kind])=>kind), ['retry','key','key','task-success-0']);
+});
+
+test('A second wrong answer offers more help and keeps the question open until the answer is correct',()=>{
+  const h = harness({reduced:true});
+  h.run("let retryModal; showDialog=(content) => { retryModal=content; }; submitAnswer(12);");
+  assert.equal(h.timers.at(-1).delay,0);
+  h.timers.at(-1).fn();
+  assert.match(h.run('retryModal'),/Prøv igjen/);
+  h.run('retryAnswer(); submitAnswer(11); submitAnswer(10);');
+  assert.equal(h.run('state.active.attempts[0]'),2);
+  h.timers.at(-1).fn();
+  assert.match(h.run('retryModal'),/data-action="retry">Prøv igjen/);
+  assert.doesNotMatch(h.run('retryModal'),/17 − 7 = 10/);
+  h.run('retryAnswer(); goToNextTask();');
+  assert.equal(h.run('state.active.index'),0);
+  assert.equal(h.run('state.active.results[0]'),null);
+  assert.match(h.root.innerHTML,/aria-valuenow="0"/);
+  assert.doesNotMatch(h.root.innerHTML,/data-action="next"/);
+  assert.match(h.root.innerHTML,/Vis løsningen/);
+  const help={dataset:{action:'help'},closest:selector=>selector==='[data-action]'?help:null};
+  h.events.click({target:help});
+  assert.match(h.root.innerHTML,/17 − 7 = 10/);
+  assert.doesNotMatch(h.root.innerHTML,/data-action="next"/);
+  h.key('1'); h.key('0'); h.key('Enter');
+  assert.match(h.root.innerHTML,/data-action="next"/);
+  h.run('goToNextTask();');
+  assert.equal(h.run('state.active.index'),1);
+  assert.equal(h.run('state.active.results[0].helped'),true);
+  assert.deepEqual(h.plays.map(([kind])=>kind),['retry','retry','hint','key','key','task-success-0','next']);
+});
+
+test('Even on the last task a wrong answer cannot finish the round or earn a star',()=>{
+  const h = harness({reduced:true});
+  h.run(`
+    state.roundsCompleted=2;
+    state.perfectRounds=2;
+    while (state.active.index < state.active.tasks.length-1) {
+      state.active=advanceRound(answerRound(state.active,state.active.tasks[state.active.index].answer));
+    }
+    const task=state.active.tasks[state.active.index];
+    const wrong=task.choices.find(value=>value!==task.answer);
+    let retryModal;
+    showDialog=(content)=>{retryModal=content;};
+    submitAnswer(wrong);
+  `);
+  h.timers.at(-1).fn();
+  h.run('retryAnswer(); submitAnswer(wrong);');
+  h.timers.at(-1).fn();
+  assert.match(h.run('retryModal'),/data-action="retry">Prøv igjen/);
+  h.run('retryAnswer(); goToNextTask();');
+  assert.equal(h.run('view'),'round');
+  assert.equal(h.run('state.active.index'),h.run('state.active.tasks.length-1'));
+  assert.equal(h.run('state.roundsCompleted'),2);
+  assert.doesNotMatch(h.root.innerHTML,/data-action="next"/);
+  h.run('submitAnswer(task.answer);');
+  assert.match(h.root.innerHTML,/data-action="next">Fullfør runden/);
+  h.run('goToNextTask(); goToNextTask();');
+  assert.equal(h.run('view'),'complete');
+  assert.equal(h.run('state.roundsCompleted'),3);
+  assert.equal(h.run('state.perfectRounds'),2);
+  assert.equal(h.run('state.history.at(-1).results.at(-1).attempts'),3);
+  assert.equal(h.run('state.history.at(-1).results.at(-1).helped'),true);
+  assert.match(h.root.innerHTML,/Stjerne nummer 3 er din\./);
 });
 
 test('A pending memory game can be retried and completed without awarding another star', () => {
@@ -723,7 +794,7 @@ test('Eplo celebrates a perfect round on the last task, before opening the rewar
     h.run(`
       for (let i=0;i<state.active.tasks.length-1;i++) {
         const correct=state.active.tasks[i].answer;
-        if (${wrong}&&i===0) state.active=answerRound(state.active,correct+1);
+        if (${wrong}&&i===0) state.active=continueRetry(answerRound(state.active,correct+1));
         state.active=answerRound(state.active,correct);
         state.active=advanceRound(state.active);
       }
