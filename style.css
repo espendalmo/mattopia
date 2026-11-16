@@ -1478,8 +1478,27 @@ canvas.lunar-starfield,
 .adult-dialog .adult-save-note { margin: 4px 0 0; }
 .adult-dialog .adult-save-note:empty { display: none; }
 .adult-dialog .admin-section { padding: 7px 0; }
-.adult-dialog .admin-section-body { padding: 8px 0 12px; }
+.adult-dialog .admin-section > summary { padding-inline: 7px; font-weight: 750; }
+.adult-dialog .admin-section[open] > summary { background: #edf4ea; color: #245c43; }
+.adult-dialog .admin-section-body {
+  margin: 3px 0 2px 5px;
+  padding: 8px 0 12px 11px;
+  border-inline-start: 2px solid #dbe8d9;
+}
+.adult-dialog .admin-section-body details {
+  margin-block: 8px;
+  padding: 0 10px 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f2f6ef;
+}
+.adult-dialog .admin-section-body details > summary { min-height: 44px; font-size: .87rem; }
+.adult-dialog .admin-section-body details > summary::after { width: 21px; height: 21px; background-size: 14px; }
+.adult-dialog .admin-section-body details > :last-child:not(summary) { margin-bottom: 5px; }
+.adult-dialog .progression-setting .progression-tracks { margin-inline-start: 8px; }
 .adult-dialog .admin-section-body .adult-group { margin-bottom: 0; }
+.about-mattopia a { color: var(--green); text-underline-offset: 2px; }
+.reward-options .project-option-progress { color: #315e45; font-weight: 650; }
 .adult-dialog > .primary { margin-top: 12px; }
 :is(.map-info-card,.map-eplo-overlay:not(.map-eplo-standalone)) .eplo-bubble { flex: 1; min-width: 0; }
 
@@ -1755,4 +1774,38 @@ body:has(> .project-dialog.project-fullscreen[open]) {
   border-radius: 0;
   transform: scale(var(--scratchpad-viewport-scale));
   transform-origin: top left;
+}
+
+.plant-chooser { width: min(640px, calc(100% - 24px)); padding: clamp(14px, 4vw, 24px); }
+.plant-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(90px, 100%), 1fr)); gap: 8px; }
+.plant-option {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px 4px 9px;
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+  text-align: center;
+  font-size: .82rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.plant-option:hover, .plant-option:focus-visible { background: #edf5e9; border-color: #9db797; }
+.plant-option .growing-plant { position: static; width: 72px; max-width: 100%; height: auto; }
+.small-demo-art {
+  display: grid;
+  place-items: center;
+  min-height: 152px;
+  margin-block: 14px 7px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #edf5eb;
+}
+.small-demo-art :is(.growing-plant, .brick-figure) {
+  position: static;
+  width: auto;
+  max-width: 100%;
+  height: clamp(135px, 31svh, 212px);
 }

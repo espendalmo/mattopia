@@ -74,7 +74,7 @@ test('Solved tasks, other task modes and browser shortcuts cannot accidentally t
 
 test('Starting another round clears previous answer states and moves focus to the new question',()=>{
   const h=harness();
-  h.run("ui.entry='99';state.active=null;view='complete';startRound();");
+  h.run("ui.entry='99';state.active=null;state=selectPlant(state,'sunflower');view='complete';startRound();");
   assert.equal(h.run('ui.entry'),'');assert.equal(h.run('state.active.retry'),null);
   const buttons=[...h.root.innerHTML.matchAll(/<button class="answer ([^"]*)"[^>]*>/g)];
   assert.equal(buttons.length,3);assert.ok(buttons.every(b=>!b[0].includes('correct')&&!b[0].includes('tried')&&!b[0].includes('disabled')));
@@ -109,6 +109,113 @@ test('Restoring the page, resizing and scroll events clear sideways drift and pr
   h.run('page.scrollLeft=11; render();');
   assert.equal(h.run('page.scrollLeft'),0);
   assert.equal(h.run('task.scrollTop'),82);
+});
+
+test('Opening a new plant round lets the player choose, saves the choice and keeps it during growth',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`
+    submitProfile('first',{name:'Ada',grade:3});
+    let picker;
+    showDialog=(content,css)=>{picker={content,css};};
+    startRound();
+  `);
+  assert.equal(h.run('state.active'),null);
+  assert.equal(h.run('picker.css'),'plant-chooser');
+  assert.equal((h.run('picker.content').match(/data-action="plant-choose"/g)||[]).length,plants.PLANTS.length);
+  assert.match(h.run('picker.content'),/Hvilken plante vil du dyrke/);
+  const pick = id => {
+    const button={dataset:{action:'plant-choose',plant:id},closest:selector=>selector==='[data-action]'?button:null};
+    h.events.click({target:button});
+  };
+  pick('monstera');
+  assert.equal(h.run('view'),'round');
+  assert.equal(h.run('state.garden.plant'),'monstera');
+  assert.equal(h.run('readProfiles(storage).profiles[0].practice.garden.plant'),'monstera');
+  pick('rose');
+  assert.equal(h.run('state.garden.plant'),'monstera');
+  h.run(`state.active=null;
+    for(let i=0;i<PLANT_STEPS;i++){
+      state.roundsCompleted++;
+      const awarded=awardPractice(state,'plant-'+i);
+      state=awarded.state; completedReward=awarded.reward;
+    }
+    view='complete'; render();
+  `);
+  assert.match(h.root.innerHTML,/Monstera er ferdig/);
+  assert.match(h.root.innerHTML,/Velg neste plante/);
+  h.run("view='focus-break';focusGame={phase:'done'};");
+  const resume={dataset:{action:'focus-continue'},closest:s=>s==='[data-action]'?resume:null};
+  h.events.click({target:resume});
+  h.events.click({target:resume});
+  assert.equal(h.run('focusGame.phase'),'done');
+  pick('rose');
+  assert.equal(h.run('state.garden.plant'),'rose');
+  assert.equal(h.run('state.garden.stage'),0);
+  assert.ok(h.run('state.garden.collection.includes("monstera")'));
+});
+
+test('Numbers and units stay together in existing questions, choices and hints',()=>{
+  const h=harness();
+  h.run(`state.active=createRound(53,42);
+    let task=state.active.tasks[0];
+    task.prompt='Koster det 54 kr eller 1 250 kr? Et tau er 2,5 m.';
+    task.labels=['54 kr','1 250 kr','2 m²'];
+    task.hints=['Se på 54 kr og 5 minutter.','Vent','Det blir 54 kr.'];
+    state.active=noteHelp(state.active); render();
+  `);
+  assert.match(h.root.innerHTML,/Koster det 54\u00a0kr eller 1\u00a0250\u00a0kr\?/);
+  assert.match(h.root.innerHTML,/2,5\u00a0m\./);
+  assert.match(h.root.innerHTML,/54\u00a0kr og 5\u00a0minutter/);
+  assert.match(h.root.innerHTML,/>2\u00a0m²<\/button>/);
+  h.run('submitAnswer(task.answer);');
+  assert.match(h.root.innerHTML,/Det blir 54\u00a0kr\./);
+});
+
+test('The adults panel includes the curriculum source and current building totals',()=>{
+  const h=harness();
+  h.run('let admin; showDialog=html=>{admin=html;}; adultView();');
+  const markup=h.run('admin');
+  assert.match(markup,/<summary>App og lagring<\/summary>[\s\S]*?<summary>Om Mattopia<\/summary>/);
+  assert.match(markup,/https:\/\/www\.udir\.no\/lk20\/mat01-05\?lang=nob/);
+  assert.equal((markup.match(/0 av 50 bygg ferdige · 150 byggesteg/g)||[]).length,3);
+  h.run(`const previous={...freshWorld(()=>.5),catalog:2,order:[1],progress:3};
+    state=replaceCurrentWorld(state,'moon',previous); adultView();`);
+  assert.match(h.run('admin'),/<strong>Månebasen<\/strong>[\s\S]*?1 av 24 bygg ferdige · 72 byggesteg/);
+});
+
+test('Beta demos let the player choose a plant or brick figure and step through it',()=>{
+  const h=harness({channel:'preview',roundFixture:false});
+  h.run(`let menu; showDialog=html=>{menu=html;}; adultView();`);
+  assert.match(h.run('menu'),/data-action="project-demo" data-project="plant">Planter/);
+  assert.match(h.run('menu'),/data-action="project-demo" data-project="bricks">Klossebygging/);
+  h.run(`
+    const widget=()=>({addEventListener(name,fn){this[name]=fn;}});
+    const select=widget(),previous=widget(),next=widget(),stage={},status={};
+    const widgets={'[data-demo-variant]':select,'[data-demo-art]':stage,
+      '[data-demo-step="-1"]':previous,'[data-demo-step="1"]':next,'[data-demo-status]':status};
+    let demo;
+    showDialog=(content,css,activate)=>{
+      demo={content,css};
+      activate({querySelector:selector=>widgets[selector],addEventListener(){}});
+    };
+    const before=JSON.stringify(state);
+    showProject('plant',true);
+    select.value='hydrangea';select.change();
+  `);
+  assert.equal(h.run('demo.css'),'small-reward-demo');
+  assert.match(h.run('demo.content'),/Byggedemo · Planter/);
+  assert.equal(h.run('status.textContent'),'Steg 0 av 5');
+  h.run('for(let i=0;i<6;i++)next.click();');
+  assert.match(h.run('stage.innerHTML'),/Hortensia, vekst 5 av 5/);
+  assert.equal(h.run('next.disabled'),true);
+  h.run("showProject('bricks',true); select.value='rocket';select.change();next.click();next.click();previous.click();");
+  assert.match(h.run('demo.content'),/Byggedemo · Klossebygging/);
+  assert.match(h.run('stage.innerHTML'),/class="brick-figure mini-build"/);
+  assert.equal(h.run('status.textContent'),'Steg 1 av 5');
+  assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
+  const stable=harness({channel:'stable',roundFixture:false});
+  stable.run(`let shown=0; showDialog=()=>shown++; showProject('plant',true); showProject('bricks',true);`);
+  assert.equal(stable.run('shown'),0);
 });
 
 test('The scratchpad shows the current question and restores the same drawing after closing it',()=>{
@@ -529,6 +636,7 @@ test('Wizard preferences apply to the new profile and the next round', () => {
     {level:3,autoProgress:true,roundLength:5,rewardMode:'moon'});
     const original=profile.id;
     submitProfile('new',{name:'Sam',grade:8},{level:82,autoProgress:false,roundLength:6,rewardMode:'plant'});
+    state=selectPlant(state,'tulip');
     startRound();`);
   assert.equal(h.run('state.active.tasks.length'),6);
   assert.equal(h.run('state.active.level'),82);

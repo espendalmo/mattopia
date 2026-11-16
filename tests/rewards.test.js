@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {freshState,restoreState,createRound} from '../core.js';
-import {BUILD_MODELS,modelById,selectRewardMode,prepareReward,awardPractice,restoreBuild,upcomingBuild,renderBuildSvg} from '../rewards.js';
+import {BUILD_MODELS,modelById,selectRewardMode,selectPlant,needsPlantChoice,prepareReward,awardPractice,restoreBuild,upcomingBuild,renderBuildSvg} from '../rewards.js';
+import {PLANTS,PLANT_STEPS,renderPlant} from '../plants.js';
 const rng=()=>.41;
 function earn(state,id){state={...state,roundsCompleted:state.roundsCompleted+1};return awardPractice(state,id,rng);}
 
@@ -172,5 +173,35 @@ test('Legacy garden progress becomes a sunflower and later plants grow once per 
     assert.equal(next.garden.stage, round + 1);
     assert.equal(awardPractice(next, id).state, next);
     if (round === 4) assert.ok(next.garden.collection.includes(next.garden.plant));
+  }
+});
+
+test('Selected plants are restored before sprouting and cannot be replaced midway', () => {
+  const fresh=freshState();
+  assert.equal(needsPlantChoice(fresh.garden),true);
+  assert.equal(selectPlant(fresh,'missing'),fresh);
+  const picked=selectPlant(fresh,'lemon');
+  let state=restoreState(JSON.parse(JSON.stringify(picked)));
+  assert.deepEqual(state.garden,picked.garden);
+  assert.equal(needsPlantChoice(state.garden),false);
+  for (let i=0;i<PLANT_STEPS;i++) {
+    state=earn(state,'lemon-'+i).state;
+    assert.equal(state.garden.plant,'lemon');
+    assert.equal(state.garden.stage,i+1);
+    if (state.garden.stage<PLANT_STEPS) assert.equal(selectPlant(state,'rose'),state);
+  }
+  assert.equal(needsPlantChoice(state.garden),true);
+  const next=selectPlant(state,'rose');
+  assert.equal(next.garden.plant,'rose');
+  assert.equal(next.garden.stage,0);
+  assert.deepEqual(next.garden.collection,['lemon']);
+});
+
+test('Every plant has distinct art and the pot rim is drawn in front of the growth', () => {
+  assert.equal(new Set(PLANTS.map(plant=>plant.id)).size,PLANTS.length);
+  for (const plant of PLANTS) {
+    const art=renderPlant(plant.id,PLANT_STEPS);
+    assert.ok(art.includes(plant.name));
+    assert.match(art,/class="plant-growth"[\s\S]+class="plant-pot-rim"/,plant.id);
   }
 });

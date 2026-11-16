@@ -1,4 +1,4 @@
-import { PLANTS, plantById } from './plants.js';
+import { PLANTS, PLANT_STEPS, plantById } from './plants.js';
 import { projectById, restoreProjects } from './projects.js';
 import { isWorld, currentWorld, ensureWorld, replaceCurrentWorld, restoreWorlds, worldAdvance, worldStatus, WORLD_BUILD_STEPS } from './worlds.js';
 
@@ -187,9 +187,9 @@ export function upcomingBuild(build) {
   return {model:build.bag[0],pieces:0};
 }
 function restoreGarden(raw, rounds) {
-  const stage = rounds === 0 ? 0 : (rounds - 1) % 5 + 1;
-  if (!plantById(raw?.plant) || !count(raw.stage) || raw.stage > 5) {
-    return { plant:'sunflower', stage, bag:[], collection:rounds >= 5 ? ['sunflower'] : [] };
+  const stage = rounds === 0 ? 0 : (rounds - 1) % PLANT_STEPS + 1;
+  if (!plantById(raw?.plant) || !count(raw.stage) || raw.stage > PLANT_STEPS) {
+    return { plant:'sunflower', stage, bag:[], collection:rounds >= PLANT_STEPS ? ['sunflower'] : [] };
   }
   const validPlants = items => Array.isArray(items) ? [...new Set(items.filter(id => plantById(id)))] : [];
   return {
@@ -197,7 +197,18 @@ function restoreGarden(raw, rounds) {
     stage:raw.stage,
     bag:validPlants(raw.bag).filter(id => id !== raw.plant),
     collection:validPlants(raw.collection),
+    ...(raw.stage===0 && raw.selected===true && {selected:true}),
   };
+}
+
+export function needsPlantChoice(garden) {
+  return garden.stage === PLANT_STEPS || (garden.stage === 0 && !garden.selected);
+}
+
+export function selectPlant(state, id) {
+  const {garden} = state;
+  if (state.rewardMode !== 'plant' || state.active || !plantById(id) || !needsPlantChoice(garden)) return state;
+  return {...state,garden:{...garden,plant:id,stage:0,bag:garden.bag.filter(item=>item!==id),selected:true}};
 }
 
 function nextPlant(garden, rng) {
@@ -235,7 +246,7 @@ export function prepareReward(state,rng=Math.random) {
   if (projectById(state.rewardMode)) return state;
   if (state.rewardMode !== 'bricks') {
     const garden = restoreGarden(state.garden, state.plantRounds);
-    return garden.stage === 5 ? { ...state, garden:nextPlant(garden, rng) } : state;
+    return garden.stage === PLANT_STEPS ? { ...state, garden:nextPlant(garden, rng) } : state;
   }
   let build=ensureBuild(state.brickBuild,rng);
   if(build.pieces===modelById(build.model).pieces.length)build=nextBuild(build,rng);
@@ -273,10 +284,11 @@ export function awardPractice(state,roundId,rng=Math.random,perfect=false) {
   if(state.rewardMode!=='bricks') {
     const plantRounds=(state.plantRounds||0)+1;
     let garden = restoreGarden(state.garden, state.plantRounds || 0);
-    if (garden.stage === 5) garden = nextPlant(garden, rng);
-    const extra=Number(available&&garden.stage<4);
+    if (garden.stage === PLANT_STEPS) garden = nextPlant(garden, rng);
+    const extra=Number(available&&garden.stage<PLANT_STEPS-1);
     garden = { ...garden, stage:garden.stage + 1 + extra };
-    if (garden.stage === 5 && !garden.collection.includes(garden.plant)) {
+    delete garden.selected;
+    if (garden.stage === PLANT_STEPS && !garden.collection.includes(garden.plant)) {
       garden.collection = [...garden.collection, garden.plant];
     }
     return {state:{...state,plantRounds,garden,lastRewardRoundId:roundId,...spend(extra)},

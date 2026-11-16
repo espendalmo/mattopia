@@ -6,8 +6,8 @@ import { hintFor } from './learning.js';
 import { mountScratchpad } from './scratchpad.js';
 import { createSoundPlayer, taskSuccessStep } from './sound.js';
 import { createUpdater, readPublishedVersion, PRODUCTION_PATH } from './update.js';
-import { modelById, selectRewardMode, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick, PERFECT_ROUNDS_PER_BONUS } from './rewards.js';
-import { plantById, renderPlant } from './plants.js';
+import { BUILD_MODELS, modelById, selectRewardMode, selectPlant, needsPlantChoice, prepareReward, awardPractice, upcomingBuild, renderBuildSvg, puzzleBrickLayout, renderPuzzleBrick, PERFECT_ROUNDS_PER_BONUS } from './rewards.js';
+import { PLANTS, PLANT_STEPS, plantById, renderPlant } from './plants.js';
 import { BREAK_ATTEMPTS, BREAK_INTERVAL, BREAK_TITLES, BRICK_COLORS, breakKind, createBreakGame, placeBreakBrick, retryBreak, scoreBreak } from './breaks.js';
 import { AVATARS, AVATAR_GROUPS, GRADES, NAME_LIMIT, PROFILE_KEY, chosenProfileName, profileDetails, readProfiles, saveProfile, deleteProfile } from './profiles.js';
 import { rewardIllustration } from './illustrations.js';
@@ -146,6 +146,11 @@ function resetViewHorizontalScroll() {
 function escapeHtml(value) {
   const escaped = { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' };
   return value.replace(/[&<>"']/g, character => escaped[character]);
+}
+
+function taskCopy(value) {
+  const measure = /(\d+(?:[ \u00a0\u202f]\d{3})*(?:[,.]\d+)?(?:\/\d+)?)[ \u00a0\u202f]+(kr(?:oner?)?|øre|km\/[th]|m\/s|[kcdm]?m[²³]?|kg|mg|g|[dcm]?l|t|timer?|min|minutt(?:er)?|sek|sekund(?:er)?|s|%|°[CF]?)(?![\p{L}\p{N}²³/])/gu;
+  return escapeHtml(String(value).replace(measure, (_,number,unit)=>`${number.replace(/[ \u202f]/g,'\u00a0')}\u00a0${unit}`));
 }
 
 function avatarArt(key) {
@@ -413,15 +418,15 @@ function rewardDetails(reward = null) {
   const project = projectById(mode);
   if (project) {
     const map = isWorld(mode) ? reward?.map || currentWorld(state, mode) : null;
-    if (isWorld(mode)) return {mode,project,map,...worldStatus(map),added:reward?.added,label:project.name};
+    if (isWorld(mode)) return {mode,project,map,...worldStatus(map??freshWorld(()=>0)),added:reward?.added,label:project.name};
     const completed = reward?.completed ?? state.projects[mode];
     return {mode,project,completed,total:project.total,added:reward?.added,full:completed===project.total,label:project.name};
   }
   if (mode !== 'bricks') {
     const garden = reward?.garden || state.garden;
     const plant = plantById(garden.plant);
-    const full = garden.stage === 5;
-    const label = full ? `${plant.name} er ferdig!` : `Vi dyrker ${plant.name.toLowerCase()}`;
+    const full = garden.stage === PLANT_STEPS;
+    const label = full ? `${plant.name} er ferdig!` : !state.active && needsPlantChoice(garden) ? msg('plant.garden') : `Vi dyrker ${plant.name.toLowerCase()}`;
     return { mode:'plant', garden, plant, full, label };
   }
   const build = reward?.build || state.brickBuild;
@@ -512,7 +517,66 @@ function projectAmbience(dialog, currentScene) {
   return sync;
 }
 
+function renderDemoControls(status) {
+  return `<div class="demo-controls" role="group" aria-label="Byggesteg i demoen">
+    <button class="secondary" data-demo-step="-1" disabled aria-label="Forrige byggesteg"><span class="demo-back">${icon('arrow')}</span> Forrige</button>
+    <p data-demo-status aria-live="polite">${status}</p>
+    <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
+  </div>`;
+}
+
+function showSmallRewardDemo(mode) {
+  if (CHANNEL !== 'preview') return;
+  const isPlant = mode==='plant';
+  const items = isPlant ? PLANTS : BUILD_MODELS;
+  let item = (isPlant ? plantById(state.garden.plant) : modelById(state.brickBuild?.model)) ?? items[0];
+  let step = 0;
+  const title = msg(isPlant?'reward.plants':'reward.bricks');
+  const total = () => isPlant ? PLANT_STEPS : item.pieces.length;
+  const status = () => msg('demo.step',{current:step,total:total()});
+  const art = (animate=false) => `<div class="${animate?'garden-grown':''}${animate&&step===total()?' reward-finished':''}">${isPlant
+    ? renderPlant(item.id,step) : renderBuildSvg({model:item.id,pieces:step},{mini:true,animate})}</div>`;
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title">${msg('demo.rewardTitle',{name:title})}</h2><button class="icon-button" data-action="close-dialog" aria-label="${msg('demo.close')}">${icon('close')}</button></div>
+    <label class="profile-field"><span>${msg(isPlant?'demo.plant':'demo.figure')}</span><select data-demo-variant>${items.map(option=>`<option value="${option.id}" ${option.id===item.id?'selected':''}>${escapeHtml(option.name[0].toUpperCase()+option.name.slice(1))}</option>`).join('')}</select></label>
+    <div class="small-demo-art" data-demo-art>${art()}</div>${renderDemoControls(status())}`, 'small-reward-demo', dialog => {
+    const choice = dialog.querySelector('[data-demo-variant]');
+    const frame = dialog.querySelector('[data-demo-art]');
+    const previous = dialog.querySelector('[data-demo-step="-1"]');
+    const next = dialog.querySelector('[data-demo-step="1"]');
+    const output = dialog.querySelector('[data-demo-status]');
+    const refresh = (animate=false) => {
+      frame.innerHTML = art(animate);
+      output.textContent = status();
+      previous.disabled = step===0;
+      next.disabled = step===total();
+      if (previous.disabled && document.activeElement===previous) next.focus({preventScroll:true});
+      if (next.disabled && document.activeElement===next) previous.focus({preventScroll:true});
+    };
+    const move = amount => {
+      if (step+amount<0 || step+amount>total()) return;
+      step += amount;
+      refresh(amount>0);
+      sounds.play(amount<0?'back':step===total()?'finish':'build',state.sound);
+    };
+    choice.addEventListener('change',()=>{
+      const selected = items.find(option=>option.id===choice.value);
+      if (!selected) return;
+      item = selected;
+      step = 0;
+      refresh();
+    });
+    previous.addEventListener('click',()=>move(-1));
+    next.addEventListener('click',()=>move(1));
+    dialog.addEventListener('keydown',event=>{
+      if (event.target.matches('select') || !['ArrowLeft','ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      move(event.key==='ArrowRight'?1:-1);
+    });
+  });
+}
+
 function showProject(id, demo = false, archivedMap = null, {galleryMap=null,place=null,fromCollection=galleryMap!==null} = {}) {
+  if (demo && (id==='plant'||id==='bricks')) { showSmallRewardDemo(id); return; }
   const project = projectById(id);
   if (!project || (demo && CHANNEL !== 'preview')) return;
   let trail = demo && isWorld(id) ? [freshWorld()] : null;
@@ -533,11 +597,7 @@ function showProject(id, demo = false, archivedMap = null, {galleryMap=null,plac
       <p data-demo-progress>${demo ? 'Byggedemo · ' : target ? project.name+' · ' : ''}${projectProgress(progress())}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Lukk byggeprosjektet">${icon('close')}</button></div>
     ${fromCollection ? `<button class="secondary project-back" data-action="collection" data-project="${id}" ${galleryMap===null?'':`data-map="${galleryMap}"`} ${place===null?'':`data-place="${place}"`}>Tilbake til samlingen</button>` : ''}
     <div class="project-viewer${scene.world?' map-viewer':''}" data-drag-mode="${scene.world?'move':'rotate'}">
-      ${demo ? `<div class="demo-controls" role="group" aria-label="Byggesteg i demoen">
-        <button class="secondary" data-demo-step="-1" disabled aria-label="Forrige byggesteg"><span class="demo-back">${icon('arrow')}</span> Forrige</button>
-        <p data-demo-status aria-live="polite">${latest()}</p>
-        <button class="secondary" data-demo-step="1" aria-label="Neste byggesteg">Neste ${icon('arrow')}</button>
-      </div>` : ''}
+      ${demo ? renderDemoControls(latest()) : ''}
       ${demo ? `<div class="demo-shortcuts">${trail?'<button class="secondary" data-demo-residence>Vis residensen</button>':''}<button class="secondary" data-demo-finish>Vis finalen</button></div>` : ''}
       <div class="project-map-stage">
         <canvas tabindex="0" role="img" aria-label="${escapeHtml(scene.world ? 'Kart: '+title : title+' i 3D')}" aria-describedby="project-instructions project-milestone"></canvas>
@@ -812,7 +872,7 @@ function badgeShelf(stars) {
 function collectible(kind, id) {
   if (kind === 'plant') {
     const plant = plantById(id);
-    return plant && { name:plant.name, art:mini => renderPlant(id, 5, {mini}) };
+    return plant && { name:plant.name, art:mini => renderPlant(id, PLANT_STEPS, {mini}) };
   }
   if (kind === 'brick') {
     const model = modelById(id);
@@ -1012,7 +1072,7 @@ function renderHome() {
   const g = rewardDetails(next);
   const shelf = g.project ? projectProgress(g) : g.mode === 'bricks'
     ? `${g.build.pieces} av ${g.model.pieces.length} klosser på plass.`
-    : `${g.garden.stage} av 5 vekststeg.`;
+    : msg('plant.progress',{current:g.garden.stage,total:PLANT_STEPS})+'.';
   const nextBuilding = g.map && worldBuilding(g.mode, g.building,g.map);
   const choose = g.map && g.building === null && !g.full;
   const firstBuild = g.map && g.completed === 0;
@@ -1047,10 +1107,20 @@ function showWorldChoices(id, choices) {
   });
 }
 
+function showPlantChoices() {
+  const cards = PLANTS.map(plant=>`<button class="plant-option" data-action="plant-choose" data-plant="${plant.id}">
+    ${renderPlant(plant.id,PLANT_STEPS,{mini:true})}<strong>${escapeHtml(plant.name)}</strong></button>`).join('');
+  sounds.play('open',state.sound);
+  showDialog(`<div class="dialog-header"><h2 id="dialog-title">${msg('plant.question')}</h2>
+    <button class="icon-button" data-action="close-dialog" aria-label="${msg('plant.close')}">${icon('close')}</button></div>
+    <div class="plant-options">${cards}</div>`, 'plant-chooser');
+}
+
 function startRoundLabel(info=rewardDetails()) {
   if (state.active) return msg('round.resume');
   if (state.focusBreakPending) return breakButtonLabel();
   if (info.map && info.building === null && !info.full) return info.completed === 0 ? msg('map.first') : msg('map.next');
+  if (info.mode==='plant' && needsPlantChoice(info.garden)) return msg(info.full?'plant.chooseNext':'plant.choose');
   return msg('round.start');
 }
 
@@ -1061,6 +1131,7 @@ function startRound() {
   }
   if (!state.active) {
     const id = state.rewardMode;
+    if (id==='plant' && needsPlantChoice(state.garden)) { showPlantChoices(); return; }
     const choices = isWorld(id) ? worldBuildingOptions(id,currentWorld(state,id),chosenProfileName(profile)) : [];
     if (choices.length) { showWorldChoices(id,choices); return; }
     focusGame = null;
@@ -1352,7 +1423,7 @@ function equationText(t) {
   return `${t.n} ${t.type === 'shift' && t.b > 0 ? '+' : '−'} ${Math.abs(t.b)} = ${t.answer}`;
 }
 function equation(t, solved) {
-  if (curriculumTopic(t.type)) return t.prompt ? `<p class="curriculum-prompt">${escapeHtml(t.prompt)}</p>` : '';
+  if (curriculumTopic(t.type)) return t.prompt ? `<p class="curriculum-prompt">${taskCopy(t.prompt)}</p>` : '';
   const blank = `<span class="blank ${solved ? 'answer-filled' : ''}">${solved ? t.answer : '?'}</span>`;
   if (t.type === 'place') return '<div class="place-equation"></div>';
   let content;
@@ -1470,8 +1541,8 @@ function curriculumVisual(model,solved) {
       <text x="134" y="134">x</text><text x="9" y="12">y</text><circle cx="${23+model.x*24}" cy="${117-model.y*24}" r="5"/></svg>`;
   }
   if (model.kind === 'table') {
-    const headers = model.headers.map(text => `<th scope="col">${escapeHtml(text)}</th>`).join('');
-    const rows = model.cells.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell).replace('-', '−'))}</td>`).join('')}</tr>`).join('');
+    const headers = model.headers.map(text => `<th scope="col">${taskCopy(text)}</th>`).join('');
+    const rows = model.cells.map(row => `<tr>${row.map(cell => `<td>${taskCopy(String(cell).replace('-', '−'))}</td>`).join('')}</tr>`).join('');
     return `<table class="curriculum-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
   }
   return '';
@@ -1532,15 +1603,15 @@ function renderRound() {
   if (r.solved) {
     const messages = [msg('round.praise1'), msg('round.praise2'), msg('round.praise3'), msg('round.praise4'), msg('round.praise5'), msg('round.praise6'), msg('round.praise7'), msg('round.praise8'), msg('round.praise9'), msg('round.praise10'), msg('round.praise11'), msg('round.praise12')];
     const message=messages[(state.roundsCompleted*5+r.index)%messages.length];
-    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${escapeHtml(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? msg('round.complete') : msg('round.next')}${icon('arrow')}</button>`;
+    feedback = `<div class="feedback-row">${icon('check', 'feedback-icon')}<div><p class="feedback-title">${message}</p><p class="feedback-detail">${taskCopy(equationText(t))}</p></div></div><button class="primary" data-action="next">${r.index === length - 1 ? msg('round.complete') : msg('round.next')}${icon('arrow')}</button>`;
   } else feedback = `<p class="idle-note">${msg('round.takeTime')}</p>`;
   root.innerHTML = `<div class="round-shell"><header class="round-header"><button class="icon-button" data-action="pause" aria-label="Ta en pause">${icon('close')}</button><div class="progress-wrap"><div class="progress-text"><span>${CHANNEL === 'preview' ? betaMark() : 'Din lille runde'}</span><strong>${msg('round.position', {current:r.index + 1,total:length})}</strong></div><div class="progress-track" role="progressbar" aria-label="Fullførte oppgaver" aria-valuemin="0" aria-valuemax="${length}" aria-valuenow="${done}">${progress}</div></div>${soundButton()}</header>
     <div class="task-scroll"><main class="task ${t.mode === 'input' && !r.solved ? 'with-keypad' : ''}"><div class="companion-strip"><div class="companion-stage"><div class="companion-buddy">${buddy(r.solved, Boolean(r.retry))}</div>
-    <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${escapeHtml(taskTitle(t))}</h1>
+    <p><span class="companion-message">${r.solved ? msg('round.solved') : r.attempts[r.index] ? msg('round.retry') : msg('round.unsolved')}</span><small class="perfect-progress" hidden></small></p><span class="companion-sparks" aria-hidden="true"></span></div></div><h1 tabindex="-1">${taskCopy(taskTitle(t))}</h1>
     ${equation(t, r.solved)}${renderVisual(t, r.solved)}
     ${!r.solved ? `<div class="task-tools"><button class="help-button" data-action="help" ${stage === 3 || r.retry ? 'disabled' : ''}>${icon('help')}${msg(helpLabel)}</button>
     ${state.scratchpadEnabled ? `<button class="scratchpad-trigger" data-action="scratchpad" aria-haspopup="dialog" ${r.retry ? 'disabled' : ''}>${icon('pencil')}${msg('scratchpad.title')}</button>` : ''}</div>` : ''}
-    ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${escapeHtml(hintText(t))}</div>` : ''}
+    ${stage && !r.solved ? `<div class="hint" id="hint-panel"><span class="eplo-hint-name">Eplo</span>${taskCopy(hintText(t))}</div>` : ''}
     ${t.mode === 'input' ? r.solved ? `<div class="entered-correct" aria-label="Svaret ${t.answer} er riktig">${t.answer} ${icon('check')}</div>` : keypad(Boolean(r.retry)) : renderAnswers(t, r.solved, r.retry)}
     <div class="feedback-area">${feedback}</div></main></div></div>`;
 }
@@ -1549,7 +1620,7 @@ function renderAnswers(t, solved, retry) {
   const labels = curriculumTopic(t.type) ? t.labels : null;
   const wide = labels?.some(label => label.length > 4);
   const buttons = t.choices.map(c => {
-    const label = escapeHtml(String(labels?.[c] ?? c));
+    const label = taskCopy(labels?.[c] ?? c);
     const tried = retry?.value === c, correct = solved && c === t.answer;
     return `<button class="answer ${correct ? 'correct' : ''} ${tried ? 'tried' : ''}" data-answer="${c}" ${solved || retry ? 'disabled' : ''} aria-label="Svar ${label}${tried ? ', prøvd' : correct ? ', riktig' : ''}">${label}${tried ? '<span class="answer-cross" aria-hidden="true">×</span>' : ''}</button>`;
   }).join('');
@@ -1568,7 +1639,7 @@ function renderComplete() {
     bonusSteps===1?'reward.bonus.brick':'reward.bonus.bricks',{count:bonusSteps}):'';
   const message = g.project
     ? `${g.label}${g.full ? ' er ferdig!' : ''}<br>${projectProgress(g)}.`
-    : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `${bonusSteps?'To nye klosser':'En ny kloss'} på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${g.garden.stage} av 5 vekststeg.`;
+    : g.mode === 'bricks' ? g.full ? `${g.model.done}<br>Fem klosser, ett flott bygg!` : `${bonusSteps?'To nye klosser':'En ny kloss'} på plass!<br>${g.build.pieces} av ${g.model.pieces.length} klosser.` : `${g.label}<br>${msg('plant.progress',{current:g.garden.stage,total:PLANT_STEPS})}.`;
   const earnedBrick = g.mode === 'bricks' || g.added;
   const rewardCount=earnedBrick?1+bonusSteps:1;
   const earnedLabel=g.map?(rewardCount===1?'Et nytt byggesteg':`${rewardCount} nye byggesteg`)
@@ -1583,7 +1654,8 @@ function renderComplete() {
   const inCollection=g.project&&(g.full||g.map&&stage?.finished);
   const gallery=inCollection ? `<button class="secondary result-gallery" data-action="collection" data-project="${g.mode}" ${g.map?`data-map="${mapIndex}"`:''}>${finishedProject?'Se '+(g.map?'kartet':'superhelten')+' i samlingen':'Se i samlingen'}${finishedProject?icon('arrow'):''}</button>` : '';
   const newMap = g.map && g.full && g.mode === state.rewardMode && !state.focusBreakPending;
-  const again = newMap ? msg('map.startNew') : state.focusBreakPending ? breakButtonLabel() : msg('round.repeat');
+  const newPlant = g.mode==='plant' && g.full && state.rewardMode==='plant';
+  const again = newMap ? msg('map.startNew') : state.focusBreakPending ? breakButtonLabel() : msg(newPlant?'plant.chooseNext':'round.repeat');
   const headline=finishedProject?`${g.label} er ferdig!`:'Du klarte runden!';
   root.innerHTML = `<div class="app-shell">${header()}${updateBanner()}<main class="complete"><div class="completion-garden ${g.project ? 'completion-project' : g.mode === 'bricks' ? 'completion-build' : ''}">${rewardArt(true,completedReward)}${finishedProject&&g.map?mapEplo(projectCongratulations(g.mode)):''}<span class="earned-star" aria-label="${earnedLabel}">${icon(earnedBrick ? 'brick' : 'star')} +${rewardCount}</span></div><h1 tabindex="-1">${headline}</h1>${bonus?`<p class="completion-bonus">${icon(g.mode==='plant'?'sprout':'brick')}<span>${escapeHtml(bonus)}</span></p>`:''}${finishedProject&&!g.map?projectCongratulations(g.mode):''}${latest}${(!projectStep || g.full&&!finishedProject) ? `<p>${message}</p>` : ''}<div class="completion-steps" aria-label="${length} oppgaver fullført">${Array.from({ length }, () => `<span class="completion-dot">${icon('check')}</span>`).join('')}</div><p class="gentle-note">Stjerne nummer ${state.roundsCompleted} er din.</p>${badge}${preview}<button class="primary" data-action="${newMap ? 'world-new' : 'again'}">${again}${icon('again')}</button><button class="secondary secondary-cta" data-action="home">Ferdig for nå${icon('check')}</button>${gallery}</main></div>${party}`;
   celebrateOnRender = false;
@@ -1687,10 +1759,10 @@ function showScratchpad(opener) {
   if (view !== 'round' || !round || round.solved || round.retry || !state.scratchpadEnabled) return;
   const task = round.tasks[round.index];
   const diagram = task.visual || task.type === 'place' ? renderVisual(task, false, null) : '';
-  const hint = hintStage() ? `<p class="scratchpad-hint">${escapeHtml(hintText(task))}</p>` : '';
+  const hint = hintStage() ? `<p class="scratchpad-hint">${taskCopy(hintText(task))}</p>` : '';
   showDialog(`<h2 id="dialog-title">${icon('pencil')}${msg('scratchpad.title')}</h2>
     <div class="scratchpad-workspace">
-      <div class="scratchpad-prompt"><h3>${escapeHtml(taskTitle(task))}</h3>${equation(task, false)}${diagram}${hint}</div>
+      <div class="scratchpad-prompt"><h3>${taskCopy(taskTitle(task))}</h3>${equation(task, false)}${diagram}${hint}</div>
       <div class="scratchpad-paper"><canvas role="img" aria-label="${msg('scratchpad.area')}"></canvas></div>
     </div>
     <div class="scratchpad-actions">
@@ -1746,9 +1818,9 @@ function pauseProgress(info) {
     return count ? `Du har bygd ${count===1?'én klossefigur':`${count} klossefigurer`}!` :
       `${info.build.pieces} av ${info.model.pieces.length} klosser er på plass.`;
   }
-  const count=Math.max(info.garden.collection.length,Math.floor(state.plantRounds/5));
+  const count=Math.max(info.garden.collection.length,Math.floor(state.plantRounds/PLANT_STEPS));
   return count ? `Du har dyrket ${count===1?'én plante':`${count} planter`}!` :
-    `Planten din er på vekststeg ${info.garden.stage} av 5.`;
+    `Planten din er på vekststeg ${info.garden.stage} av ${PLANT_STEPS}.`;
 }
 
 function eploGreeting(name=profile?.name) {
@@ -1889,13 +1961,18 @@ function rewardThumbnail(id) {
 }
 
 function projectOptions() {
-  return `<details class="project-choice-list" ${projectById(state.rewardMode) ? 'open' : ''}>
-    <summary>Store byggeprosjekter</summary><p class="adult-note">Hver runde gir ett byggesteg på prosjektet du velger.</p>
-    ${Object.entries(PROJECTS).map(([id,project]) => `<label class="level-option">
+  const options = Object.entries(PROJECTS).map(([id,project]) => {
+    const info=rewardDetails({mode:id});
+    const steps=isWorld(id) ? ` · ${msg('map.stepsTotal',{count:info.total})}` : '';
+    return `<label class="level-option">
       <input type="radio" name="reward-mode" value="${id}" ${state.rewardMode === id ? 'checked' : ''}>
       ${rewardThumbnail(id)}
-      <span><strong>${project.name}</strong><small>${project.description} ${projectProgress(rewardDetails({mode:id}))}.</small></span>
-    </label>`).join('')}
+      <span><strong>${project.name}</strong><small>${project.description}</small><small class="project-option-progress">${projectProgress(info)}${steps}</small></span>
+    </label>`;
+  });
+  return `<details class="project-choice-list" ${projectById(state.rewardMode) ? 'open' : ''}>
+    <summary>Store byggeprosjekter</summary><p class="adult-note">Hver runde gir ett byggesteg på prosjektet du velger.</p>
+    ${options.join('')}
   </details>`;
 }
 
@@ -1936,7 +2013,9 @@ function adultView() {
   </section>` : '';
   const demos = CHANNEL === 'preview' ? `<details class="beta-test-links project-demos">
     <summary>Byggedemoer</summary><p>Prøv byggestegene med piltastene eller knappene. Demoen lagrer ingen framgang.</p>
-    <div>${Object.entries(PROJECTS).map(([id,project]) => `<button class="secondary" data-action="project-demo" data-project="${id}">${project.name}</button>`).join('')}</div>
+    <div><button class="secondary" data-action="project-demo" data-project="plant">${msg('reward.plants')}</button>
+    <button class="secondary" data-action="project-demo" data-project="bricks">${msg('reward.bricks')}</button>
+    ${Object.entries(PROJECTS).map(([id,project]) => `<button class="secondary" data-action="project-demo" data-project="${id}">${project.name}</button>`).join('')}</div>
   </details>` : '';
   const testActions = CHANNEL === 'preview' ? `<details class="beta-test-links beta-test-actions">
     <summary>Start på nytt i Beta</summary><p>Avbryt en runde eller nullstill ett stort byggeprosjekt.</p>
@@ -1979,6 +2058,7 @@ function adultView() {
     </div></details>
     ${CHANNEL === 'preview' ? `<details class="adult-details admin-section"><summary>Testverktøy i Beta</summary><div class="admin-section-body">${release}${testLinks}${demos}${testActions}</div></details>` : ''}
     <details class="adult-details admin-section"><summary>App og lagring</summary><div class="admin-section-body"><div class="update-section"><p class="adult-section-title">Appversjon ${VERSION}</p><p class="adult-note" data-update-status role="status">${updateStatus.message}</p><div class="update-actions"><button class="secondary" data-action="check-update" ${updateStatus.checking || updateStatus.applying ? 'disabled' : ''}>Se etter oppdatering</button><button class="secondary update-apply" data-action="apply-update" ${updateStatus.ready ? '' : 'hidden'} ${updateStatus.applying ? 'disabled' : ''}>${updateStatus.applying ? 'Oppdaterer …' : 'Oppdater nå'}</button></div></div>
+    <details class="adult-details about-mattopia"><summary>${msg('adult.about')}</summary><p>${msg('adult.aboutPurpose')}</p><p>${msg('adult.aboutSource')} <a href="https://www.udir.no/lk20/mat01-05?lang=nob" target="_blank" rel="noopener">${msg('adult.aboutCurriculum')}</a>.</p></details>
     <details class="adult-details"><summary>Tips til en god økt</summary><p>La barnet tenke ferdig. Spør av og til «Hvordan fant du det ut?». Bruk gjerne klosser ved siden av. Avslutt når overskuddet er brukt opp; en halv runde kan fortsettes senere.</p><p>Appen gir øving og erstatter ikke lærerens kartlegging eller oppfølging.</p></details>
     <details class="adult-details"><summary>Legg appen på hjemskjermen</summary><p>På iPad og iPhone: åpne adressen i Safari, velg Del og «Legg til på Hjem-skjerm». Åpne appen på nett én gang før dere bruker den uten nett.</p><p>Profiler og framgang lagres lokalt i denne nettleseren eller i den installerte appen. Safari og hjemskjermappen kan ha hver sine profiler. Det er ingen konto, sporing eller eksterne ressurser.</p></details>
     <button class="delete-button" data-action="reset">${profile ? 'Slett denne spillerens øvingshistorikk' : 'Slett øvingshistorikken'}</button></div></details><button class="primary" data-action="close-dialog">Ferdig</button><p class="version">Mattopia ${VERSION}</p>`, 'adult-dialog', d => {
@@ -2126,7 +2206,7 @@ function showRetry() {
   const hints = showsSolution ? [...new Set([hintFor(task, 2), hintFor(task, 3)])] : [hintFor(task, plan.stage)];
   const label = msg({input:'round.retryInput',retry:'round.retryAgain',similar:'round.retrySimilar'}[plan.kind]);
   showDialog(`<h2 id="dialog-title" tabindex="-1" autofocus>${msg(showsSolution ? 'round.retrySolution' : 'round.retryHint')}</h2>
-    <div class="retry-hint" id="retry-explanation">${hints.map(hint => `<p>${escapeHtml(hint)}</p>`).join('')}</div>
+    <div class="retry-hint" id="retry-explanation">${hints.map(hint => `<p>${taskCopy(hint)}</p>`).join('')}</div>
     <button class="primary" data-action="retry">${label} ${icon('arrow')}</button>`, 'retry-sheet', dialog => {
     dialog.setAttribute('aria-describedby','retry-explanation');
     dialog.addEventListener('cancel', event => { event.preventDefault(); retryAnswer(); });
@@ -2283,7 +2363,7 @@ document.addEventListener('click', e => {
   }
   if (action === 'focus-continue' && view === 'focus-break' && focusGame.phase === 'done') {
     if (testBreakReturn) exitTestBreak();
-    else { focusGame = null; startRound(); }
+    else startRound();
   }
   if (action === 'test-break-exit' && testBreakReturn) exitTestBreak();
   if (action === 'help' && state.active && !state.active.retry) {
@@ -2329,6 +2409,12 @@ document.addEventListener('click', e => {
     const chosen = worldSelect(map,Number(building),project,owner);
     if (chosen === map) return;
     state = replaceCurrentWorld(state,project,chosen);
+    closeDialog(); startRound();
+  }
+  if (action === 'plant-choose' && !state.focusBreakPending) {
+    const chosen = selectPlant(state,actionButton.dataset.plant);
+    if (chosen === state) return;
+    state = chosen;
     closeDialog(); startRound();
   }
   if (action === 'world-new' && !state.active && isWorld(state.rewardMode)) {
