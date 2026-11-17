@@ -376,8 +376,11 @@ function brick(p,ghost=false,newPiece=false,outline=false,prefix='') {
   const paint=(fill,stroke,width)=>outline?'':` fill="${fill}" stroke="${stroke}" stroke-width="${width}"`;
   let surface,face,studs='';
   if(p.shape==='roof'){
-    surface=`<polygon class="brick-side" points="${points([[x+w/2,y],[x+w/2,y,DEPTH],[x+w,y+h,DEPTH],[x+w,y+h]])}"${paint(finish('top',top),edge,.9)}/>`;
-    face=`<path d="M${x} ${y+h} ${x+w/2} ${y} ${x+w} ${y+h}Z"/>`;
+    const ridge=x+w/2, base=y+h;
+    const slope=(eave,fill)=>`<polygon class="brick-roof-slope" points="${points([[eave,base],[eave,base,DEPTH],[ridge,y,DEPTH],[ridge,y]])}"${paint(fill,edge,.9)}/>`;
+    // The left slope is visible when it faces the camera in this projection.
+    surface=(h<w/2?slope(x,finish('top',top)):'')+slope(x+w,finish('side',side));
+    face=`<path d="M${x} ${base} ${ridge} ${y} ${x+w} ${base}Z"/>`;
   }else{
     const inset = p.shape === 'cape' ? 22 : 0;
     const left = x + inset, right = x + w - inset;
@@ -423,7 +426,26 @@ export function renderPuzzleBrick(color,mark='') {
   return `<svg class="puzzle-brick${color?'':' puzzle-shadow'}" viewBox="${PUZZLE_BOX.join(' ')}" aria-hidden="true" focusable="false">${art}</svg>`;
 }
 
-export function renderBuildSvg(build,{animate=false,mini=false,preview=false,newPieces=1}={}) {
+function brickSalute(left,top,width,height) {
+  return `<g class="brick-salutes" aria-hidden="true">
+    <g transform="translate(${left+width*.17} ${top+height*.34})">
+      <g class="brick-salute">
+        <path d="M0-15Q3-3 15 0 3 3 0 15-3 3-15 0-3-3 0-15Z" fill="#f4c35b"/>
+        <path d="m-13-13-6-6m2 26-8 3m32-24 3-7" fill="none" stroke="#a87625" stroke-width="2.6" stroke-linecap="round"/>
+        <circle cx="8" cy="20" r="2.8" fill="#6da580"/>
+      </g>
+    </g>
+    <g transform="translate(${left+width*.83} ${top+height*.24})">
+      <g class="brick-salute brick-salute-late">
+        <path d="M0-12Q2-2 12 0 2 2 0 12-2 2-12 0-2-2 0-12Z" fill="#efc863"/>
+        <path d="m-10-11-5-6m31 11 8-3M10 13l4 6" fill="none" stroke="#538fa9" stroke-width="2.6" stroke-linecap="round"/>
+        <circle cx="-15" cy="11" r="2.8" fill="#cf8177"/>
+      </g>
+    </g>
+  </g>`;
+}
+
+export function renderBuildSvg(build,{animate=false,mini=false,preview=false,newPieces=1,celebrate=false}={}) {
   const model=modelById(build?.model);if(!model)return '';
   const pieces=Math.max(0,Math.min(model.pieces.length,build.pieces));
   const label=preview ? 'Omrisset av neste bygg' : `${model.name}, ${pieces} av ${model.pieces.length} klosser på plass`;
@@ -432,7 +454,8 @@ export function renderBuildSvg(build,{animate=false,mini=false,preview=false,new
   bounds.push(project(left-7,floor),project(right+7,floor),project(left-7,floor,DEPTH),project(right+7,floor,DEPTH));
   const minX=Math.min(...bounds.map(p=>p[0]))-12,minY=Math.min(...bounds.map(p=>p[1]))-8,maxX=Math.max(...bounds.map(p=>p[0]))+12,maxY=Math.max(...bounds.map(p=>p[1]))+8;
   const ordered=model.pieces.map((p,i)=>({p,i})).sort((a,b)=>(b.p.y+b.p.h)-(a.p.y+a.p.h)||a.p.x-b.p.x);
-  const svg=`<svg class="brick-figure${mini?' mini-build':''}${preview?' build-outline':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${label}"`}>`;
+  const finished=celebrate&&!preview&&pieces===model.pieces.length;
+  const svg=`<svg class="brick-figure${mini?' mini-build':''}${preview?' build-outline':''}${finished?' brick-finale':''}" viewBox="${minX} ${minY} ${maxX-minX} ${maxY-minY}" ${mini?'aria-hidden="true"':`role="img" aria-label="${label}"`}>`;
   if (preview) {
     const silhouette=ordered.map(({p})=>brick(p,false,false,true)).join('');
     // Fill the shapes again to cover the strokes inside the silhouette.
@@ -444,5 +467,8 @@ export function renderBuildSvg(build,{animate=false,mini=false,preview=false,new
     <ellipse cx="${(left+right)/2}" cy="${DEPTH/2-1}" rx="${(right-left)/2+6}" ry="${DEPTH/2+4}" fill="#dae5da"/>
     <ellipse cx="${(left+right)/2}" cy="${DEPTH/2}" rx="${(right-left)/2-2}" ry="${DEPTH/2}" fill="#c5d4ca"/>
   </g>`;
-  return `${svg}${brickMaterials(finish,built.map(({p})=>p.color))}${base}${ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')}${built.map(({p,i})=>brick(p,false,animate&&i>=pieces-newPieces,false,finish)).join('')}</svg>`;
+  const bricks=ordered.filter(x=>x.i>=pieces).map(({p})=>brick(p,true)).join('')
+    +built.map(({p,i})=>brick(p,false,animate&&i>=pieces-newPieces,false,finish)).join('');
+  const body=finished?`<g class="brick-assembly">${bricks}</g>${brickSalute(minX,minY,maxX-minX,maxY-minY)}`:bricks;
+  return `${svg}${brickMaterials(finish,built.map(({p})=>p.color))}${base}${body}</svg>`;
 }

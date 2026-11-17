@@ -26,8 +26,9 @@ function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=n
     removeEventListener:(name,fn)=>{if(events[name]===fn) delete events[name];}};
   const heading={focus(){document.activeElement=heading;}};
   const count={textContent:''},check={disabled:true};
+  const countdown={textContent:''};
   const root={innerHTML:'',
-    querySelector:s=>s==='h1'?heading:s==='.focus-count'?count:s==='[data-action="focus-check"]'?check:null};
+    querySelector:s=>s==='h1'?heading:s==='.focus-count'?count:s==='[data-action="focus-check"]'?check:s==='[data-build-countdown]'?countdown:null};
   const output={textContent:'',animate:(...args)=>animations.push(args)};
   const submit={disabled:true},erase={disabled:true,animate:(...args)=>animations.push(args)};
   const digits=Object.fromEntries(Array.from({length:10},(_,i)=>[i,{animate:(...args)=>animations.push(args)}]));
@@ -44,8 +45,12 @@ function harness({sound=true,reduced=false,channel=core.CHANNEL,hash='',stored=n
   const run=code=>vm.runInContext(code,context);run(source);
   if (roundFixture) run(`state.sound=${sound}; state.active=createRound(1,42,true); state.active.tasks[0].mode='input'; view='round'; render();`);
   function click(digit){const button={disabled:false,dataset:{digit},closest:s=>s==='[data-digit]'?button:null};events.click({target:button});}
+  function clickAction(action,dataset={}){
+    const button={dataset:{action,...dataset},closest:s=>s==='[data-action]'?button:null};
+    events.click({target:button});
+  }
   function key(value,mods={}){events.keydown({key:value,...mods,preventDefault(){},target:{closest:()=>null}});}
-  return {run,click,key,events,plays,builds,buildingSounds,characterSounds,animations,timers,output,submit,erase,root,heading,document,count,check,location};
+  return {run,click,clickAction,key,events,plays,builds,buildingSounds,characterSounds,animations,timers,output,submit,erase,root,heading,document,count,check,countdown,location};
 }
 
 test('Touch and physical keys update the same entry, click once per accepted digit and enforce the limit',()=>{
@@ -75,6 +80,7 @@ test('Solved tasks, other task modes and browser shortcuts cannot accidentally t
 test('Starting another round clears previous answer states and moves focus to the new question',()=>{
   const h=harness();
   h.run("ui.entry='99';state.active=null;state=selectPlant(state,'sunflower');view='complete';startRound();");
+  h.clickAction('start-intro');
   assert.equal(h.run('ui.entry'),'');assert.equal(h.run('state.active.retry'),null);
   const buttons=[...h.root.innerHTML.matchAll(/<button class="answer ([^"]*)"[^>]*>/g)];
   assert.equal(buttons.length,3);assert.ok(buttons.every(b=>!b[0].includes('correct')&&!b[0].includes('tried')&&!b[0].includes('disabled')));
@@ -128,6 +134,10 @@ test('Opening a new plant round lets the player choose, saves the choice and kee
     h.events.click({target:button});
   };
   pick('monstera');
+  assert.equal(h.run('view'),'round-intro');
+  assert.match(h.root.innerHTML,/Vi dyrker monstera/);
+  assert.match(h.root.innerHTML,/class="growing-plant/);
+  h.clickAction('start-intro');
   assert.equal(h.run('view'),'round');
   assert.equal(h.run('state.garden.plant'),'monstera');
   assert.equal(h.run('readProfiles(storage).profiles[0].practice.garden.plant'),'monstera');
@@ -152,6 +162,64 @@ test('Opening a new plant round lets the player choose, saves the choice and kee
   assert.equal(h.run('state.garden.plant'),'rose');
   assert.equal(h.run('state.garden.stage'),0);
   assert.ok(h.run('state.garden.collection.includes("monstera")'));
+});
+
+test('A new map building is previewed for three counts and opens the saved round',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`state=selectRewardMode(state,'moon',()=>.3); view='home';
+    showDialog=()=>{};
+    const selected=worldBuildingOptions('moon',currentWorld(state,'moon'))[0];
+    startRound();`);
+  h.clickAction('world-choose',{project:'moon',building:String(h.run('selected'))});
+  const name=h.run("worldBuilding('moon',selected,currentWorld(state,'moon')).name");
+  assert.ok(h.root.innerHTML.includes(`Vi bygger ${name}`));
+  assert.match(h.root.innerHTML,/<canvas><\/canvas>/);
+  assert.match(h.root.innerHTML,/data-build-countdown aria-hidden="true">3/);
+  assert.doesNotMatch(h.root.innerHTML,/Oppgave 1 av/);
+  const activeId=h.run('state.active.id');
+  const timeout=h.timers.at(-1);
+  assert.equal(timeout.delay,1000);
+  h.document.hidden=true;
+  h.events.visibilitychange();
+  assert.equal(timeout.cancelled,true);
+  timeout.fn();
+  assert.equal(h.run('roundIntro.remaining'),3);
+  h.document.hidden=false;
+  h.events.visibilitychange();
+  for (const number of [2,1]) {
+    assert.equal(h.timers.at(-1).delay,1000);
+    h.timers.at(-1).fn();
+    assert.equal(h.countdown.textContent,number);
+  }
+  h.timers.at(-1).fn();
+  assert.equal(h.run('view'),'round');
+  assert.equal(h.run('state.active.id'),activeId);
+  assert.match(h.root.innerHTML,/Oppgave 1 av/);
+  h.run(`state.active=null; state=awardPractice(state,'intro-step',()=>.3).state; startRound();`);
+  assert.equal(h.run('view'),'round','the next stage of that building starts immediately');
+});
+
+test('A new brick build has a mystery preview, and skip cancels the countdown',()=>{
+  const h=harness({roundFixture:false});
+  h.run(`state=selectRewardMode(state,'bricks',()=>.3);
+    state.brickBuild={...state.brickBuild,model:'house'};
+    view='home'; startRound();`);
+  assert.match(h.root.innerHTML,/Hva skal klossen bli til\?/);
+  assert.match(h.root.innerHTML,/class="puzzle-brick"/);
+  assert.doesNotMatch(h.root.innerHTML,/et hus|brick-figure|build-outline/i);
+  const firstGreeting=h.run('roundIntro.greeting');
+  const id=h.run('state.active.id');
+  const timeout=h.timers.at(-1);
+  h.clickAction('start-intro');
+  assert.equal(timeout.cancelled,true);
+  timeout.fn();
+  assert.equal(h.run('view'),'round');
+  assert.equal(h.run('state.active.id'),id);
+  h.run(`state.active=null;
+    for (let i=0;i<5;i++) state=awardPractice(state,'brick-intro-'+i,()=>.3).state;
+    startRound();`);
+  assert.equal(h.run('view'),'round-intro');
+  assert.notEqual(h.run('roundIntro.greeting'),firstGreeting);
 });
 
 test('Numbers and units stay together in existing questions, choices and hints',()=>{
@@ -212,6 +280,10 @@ test('Beta demos let the player choose a plant or brick figure and step through 
   assert.match(h.run('demo.content'),/Byggedemo · Klossebygging/);
   assert.match(h.run('stage.innerHTML'),/class="brick-figure mini-build"/);
   assert.equal(h.run('status.textContent'),'Steg 1 av 5');
+  h.run('for(let i=0;i<4;i++)next.click();');
+  assert.match(h.run('stage.innerHTML'),/brick-salutes/);
+  h.run('previous.click();');
+  assert.doesNotMatch(h.run('stage.innerHTML'),/brick-salutes/);
   assert.equal(h.run('JSON.stringify(state)'),h.run('before'));
   const stable=harness({channel:'stable',roundFixture:false});
   stable.run(`let shown=0; showDialog=()=>shown++; showProject('plant',true); showProject('bricks',true);`);
@@ -771,6 +843,7 @@ test('Shorter rounds show their actual length and add exactly one building stage
     const h = harness();
     h.run(`state=selectRewardMode(state,'city',()=>.3); state.roundLength=${length}; state.active=null;
       const map=currentWorld(state,'city'); state=replaceCurrentWorld(state,'city',worldSelect(map,worldBuildingOptions('city',map)[1])); startRound();`);
+    h.clickAction('start-intro');
     assert.match(h.root.innerHTML, new RegExp(`Oppgave 1 av ${length}`));
     h.run(`state.roundLength=8;
       for (let index = 0; index < ${length}; index++) {
@@ -830,14 +903,15 @@ test('Only the new completion of a small build or plant animates the finished re
         const awarded=awardPractice(state,'small-'+i,()=>.3);
         state=awarded.state; completedReward=awarded.reward;
       }`);
-    assert.doesNotMatch(h.run('rewardArt(true,completedReward)'),/reward-finished/);
+    assert.doesNotMatch(h.run('rewardArt(true,completedReward)'),/reward-finished|brick-salutes/);
     h.run(`const finished=awardPractice(state,'small-4',()=>.3);
       state=finished.state; completedReward=finished.reward;
       state.active=null; view='complete'; render();`);
     assert.match(h.root.innerHTML,/reward-finished/);
     if (mode==='plant') assert.match(h.root.innerHTML,/class="plant-growth"/);
+    if (mode==='bricks') assert.match(h.root.innerHTML,/brick-salutes/);
     h.run('render();');
-    assert.doesNotMatch(h.root.innerHTML,/reward-finished/);
+    assert.doesNotMatch(h.root.innerHTML,/reward-finished|brick-salutes/);
   }
 });
 
@@ -977,8 +1051,10 @@ test('Explore the map can start a round, using the same building choice and resu
     showProject('city');`);
   assert.match(h.run('modal.html'),/data-action="map-start">Start runden/);
   h.events.click({target:button});
-  assert.equal(h.run('view'),'round');
+  assert.equal(h.run('view'),'round-intro');
   const roundId=h.run('state.active.id');
+  h.clickAction('start-intro');
+  assert.equal(h.run('view'),'round');
   h.run("showProject('city');");
   assert.match(h.run('modal.html'),/data-action="map-start">Fortsett runden/);
   h.events.click({target:button});

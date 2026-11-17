@@ -142,6 +142,15 @@ test('The superhero mask is earned with the final brick, and partial stages keep
   assert.equal(early.match(/viewBox="[^"]+"/)[0],complete.match(/viewBox="[^"]+"/)[0]);
   assert.equal((complete.match(/new-brick/g)||[]).length,1);
 });
+test('Both visible roof slopes meet along the ridge of the house',()=>{
+  const house=renderBuildSvg({model:'house',pieces:5});
+  const slopes=[...house.matchAll(/class="brick-roof-slope" points="([^"]+)"/g)].map(([,coords])=>coords);
+  assert.deepEqual(slopes,[
+    '24.25,108 62.35,86 124.7,72 86.6,94',
+    '148.95,180 187.06,158 124.7,72 86.6,94',
+  ]);
+  assert.equal((renderBuildSvg({model:'rocket',pieces:5}).match(/class="brick-roof-slope"/g)||[]).length,1);
+});
 test('Stored model corruption is isolated and cannot erase math progress',()=>{
   assert.equal(restoreBuild({model:'unknown',pieces:3}),null);assert.equal(restoreBuild({model:'robot',pieces:1000}),null);
   const s=restoreState({...freshState(),roundsCompleted:12,rewardMode:'bricks',brickBuild:{model:'bad',pieces:99}});

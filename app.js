@@ -34,11 +34,12 @@ alignPracticeLevel(profile?.grade);
 if (state.rewardMode === 'bricks' || isWorld(state.rewardMode)) state = selectRewardMode(state, state.rewardMode);
 let view = profile ? 'home' : 'onboarding';
 let completedReward = null;
+let roundIntro = null;
 let focusGame = null;
 let testBreakReturn = null;
 let brickDrag = null;
 let ignoredBrickClick = null;
-let disposeProjectPreview;
+let disposePreview;
 let disposeHomeSurprise;
 let setup = null;
 let ui = makeUI();
@@ -61,7 +62,7 @@ const updates = createUpdater({ currentVersion: VERSION, beforeReload: () => { c
   document.querySelectorAll('[data-update-status]').forEach(el => { el.textContent = next.message; });
   document.querySelectorAll('[data-action="check-update"]').forEach(el => { el.disabled = next.checking || next.applying; });
   document.querySelectorAll('[data-action="apply-update"]').forEach(el => { el.hidden = !next.ready; el.disabled = next.applying; el.textContent = next.applying ? 'Oppdaterer …' : el.closest('.update-banner') ? 'Oppdater' : 'Oppdater nå'; });
-  if (changed && view !== 'round' && view !== 'onboarding' && !document.querySelector('dialog')) render();
+  if (changed && view !== 'round' && view !== 'round-intro' && view !== 'onboarding' && !document.querySelector('dialog')) render();
 } });
 
 function makeUI() { return { removed: new Set(), added: new Set(), entry: '' }; }
@@ -443,10 +444,10 @@ function rewardArt(happy = false, reward = null, {showBuddy=true}={}) {
       <canvas data-project-preview="${info.mode}" data-completed="${info.completed}" ${happy && info.added && celebrateOnRender ? 'data-reveal' : ''} aria-hidden="true"></canvas><span>${label} ${icon('arrow')}</span>
     </button>`;
   }
-  const art = info.mode === 'bricks'
-    ? renderBuildSvg(info.build, {animate:happy, preview:info.build.pieces === 0, newPieces:1+(reward?.bonusSteps??0)})
-    : renderPlant(info.garden.plant, info.garden.stage);
   const finished = happy && reward && info.full && celebrateOnRender;
+  const art = info.mode === 'bricks'
+    ? renderBuildSvg(info.build, {animate:happy&&celebrateOnRender, preview:info.build.pieces === 0, newPieces:1+(reward?.bonusSteps??0), celebrate:finished})
+    : renderPlant(info.garden.plant, info.garden.stage);
   return `<div class="garden-art ${info.mode === 'bricks' ? 'brick-art' : ''} ${happy ? 'garden-grown' : ''}${finished?' reward-finished':''}">${showBuddy?`<div class="garden-friend">${buddy(happy)}</div>`:''}${art}</div>`;
 }
 
@@ -534,8 +535,11 @@ function showSmallRewardDemo(mode) {
   const title = msg(isPlant?'reward.plants':'reward.bricks');
   const total = () => isPlant ? PLANT_STEPS : item.pieces.length;
   const status = () => msg('demo.step',{current:step,total:total()});
-  const art = (animate=false) => `<div class="${animate?'garden-grown':''}${animate&&step===total()?' reward-finished':''}">${isPlant
-    ? renderPlant(item.id,step) : renderBuildSvg({model:item.id,pieces:step},{mini:true,animate})}</div>`;
+  const art = (animate=false) => {
+    const finished=animate&&step===total();
+    return `<div class="${animate?'garden-grown':''}${finished?' reward-finished':''}">${isPlant
+      ? renderPlant(item.id,step) : renderBuildSvg({model:item.id,pieces:step},{mini:true,animate,celebrate:finished})}</div>`;
+  };
   showDialog(`<div class="dialog-header"><h2 id="dialog-title">${msg('demo.rewardTitle',{name:title})}</h2><button class="icon-button" data-action="close-dialog" aria-label="${msg('demo.close')}">${icon('close')}</button></div>
     <label class="profile-field"><span>${msg(isPlant?'demo.plant':'demo.figure')}</span><select data-demo-variant>${items.map(option=>`<option value="${option.id}" ${option.id===item.id?'selected':''}>${escapeHtml(option.name[0].toUpperCase()+option.name.slice(1))}</option>`).join('')}</select></label>
     <div class="small-demo-art" data-demo-art>${art()}</div>${renderDemoControls(status())}`, 'small-reward-demo', dialog => {
@@ -1124,11 +1128,75 @@ function startRoundLabel(info=rewardDetails()) {
   return msg('round.start');
 }
 
+const BUILD_INTRO_GREETINGS = ['good','nice','perfect','great'];
+let introGreetingIndex;
+
+function newBuildIntro() {
+  const info = rewardDetails();
+  if (info.map) {
+    if (info.phase!==0 || info.building===null) return null;
+    const {name} = worldBuilding(info.mode,info.building,info.map);
+    return {title:msg('buildIntro.build',{name}), scene:worldBuildingPreview(info.mode,info.building,info.map)};
+  }
+  if (info.project && info.completed===0) {
+    return {title:msg('buildIntro.build',{name:info.label}), art:rewardIllustration(info.mode), kind:'hero'};
+  }
+  if (info.mode==='plant' && info.garden.stage===0) {
+    return {title:msg('buildIntro.plant',{name:info.plant.name.toLowerCase()}), art:renderPlant(info.plant.id,PLANT_STEPS,{mini:true})};
+  }
+  if (info.mode==='bricks' && info.build.pieces===0) {
+    return {title:msg('buildIntro.mystery'), art:renderPuzzleBrick('yellow')};
+  }
+  return null;
+}
+
+function renderRoundIntro() {
+  const {title,greeting,scene,art,kind,remaining} = roundIntro;
+  root.innerHTML = `<main class="round-intro" aria-labelledby="round-intro-title">
+    <p class="round-intro-greeting">${greeting}</p>
+    <h1 id="round-intro-title" tabindex="-1">${escapeHtml(title)}</h1>
+    <div class="round-intro-art${kind==='hero'?' round-intro-hero':''}" aria-hidden="true">${scene?'<canvas></canvas>':art}</div>
+    <p class="round-intro-question">${msg('buildIntro.ready')}</p>
+    <p class="sr-only">${msg('buildIntro.automatic')}</p>
+    <span class="round-intro-count" data-build-countdown aria-hidden="true">${remaining}</span>
+    <button type="button" class="secondary" data-action="start-intro">${msg('buildIntro.skip')}${icon('arrow')}</button>
+  </main>`;
+}
+
+function mountRoundIntro() {
+  const intro = roundIntro;
+  const count = root.querySelector('[data-build-countdown]');
+  const art = root.querySelector('.round-intro-art');
+  const stopArt = intro.scene && art ? mountProjectView(art,intro.scene,false,{still:true}) : null;
+  const events = new AbortController();
+  let timer;
+  const tick = () => {
+    if (view!=='round-intro' || roundIntro!==intro || document.hidden) return;
+    intro.remaining--;
+    if (!intro.remaining) { enterRound(); return; }
+    if (count) count.textContent=intro.remaining;
+    schedule();
+  };
+  const schedule = () => {
+    clearTimeout(timer);
+    if (!document.hidden) timer=setTimeout(tick,1000);
+  };
+  document.addEventListener('visibilitychange',schedule,{signal:events.signal});
+  schedule();
+  return () => {
+    clearTimeout(timer);
+    events.abort();
+    stopArt?.();
+  };
+}
+
 function startRound() {
+  if (view==='round-intro') return;
   if (!state.active && state.focusBreakPending) {
     openFocusBreak();
     return;
   }
+  let intro;
   if (!state.active) {
     const id = state.rewardMode;
     if (id==='plant' && needsPlantChoice(state.garden)) { showPlantChoices(); return; }
@@ -1136,6 +1204,7 @@ function startRound() {
     if (choices.length) { showWorldChoices(id,choices); return; }
     focusGame = null;
     state = prepareReward(state);
+    intro = newBuildIntro();
     const seed = globalThis.crypto?.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Date.now();
     state.active = createRound(state.level, seed, state.roundsCompleted === 0, {
       length:state.roundLength, mix:state.mix, grade:profile?.grade, history:state.history, alwaysShowVisuals:state.alwaysShowVisuals, preview:progressionPreview(state, profile?.grade),
@@ -1143,6 +1212,19 @@ function startRound() {
     save();
   }
   sounds.play('open',state.sound);
+  if (intro) {
+    const nextGreeting = introGreetingIndex===undefined ? state.roundsCompleted : introGreetingIndex+1;
+    introGreetingIndex=nextGreeting%BUILD_INTRO_GREETINGS.length;
+    const greeting = BUILD_INTRO_GREETINGS[introGreetingIndex];
+    roundIntro = {...intro,greeting:msg('buildIntro.'+greeting),remaining:3};
+    view = 'round-intro';
+    render(); goTop(); focusHeading();
+    return;
+  }
+  enterRound();
+}
+
+function enterRound() {
   view = 'round'; ui = makeUI(); announcer.textContent = ''; render(); goTop(); focusHeading();
   if (state.active?.retry) showRetry();
 }
@@ -1160,7 +1242,7 @@ function syncTestBreak() {
   const dialog = document.querySelector('dialog');
   if (dialog) { dialog.close(); dialog.remove(); }
   if (kind) {
-    testBreakReturn ||= { view, game:focusGame };
+    testBreakReturn ||= { view:view==='round-intro'?'round':view, game:focusGame };
     focusGame = createBreakGame(kind);
     view = 'focus-break';
   } else {
@@ -1670,14 +1752,16 @@ function render() {
     sounds.stopBuild();
     sounds.stopAmbience();
   }
-  disposeProjectPreview?.();
+  disposePreview?.();
   disposeHomeSurprise?.();
+  if (view !== 'round-intro') roundIntro = null;
   if (view === 'round') renderRound();
+  else if (view === 'round-intro') renderRoundIntro();
   else if (view === 'complete') renderComplete();
   else if (view === 'focus-break') renderFocusBreak();
   else if (view === 'onboarding') renderOnboarding();
   else renderHome();
-  disposeProjectPreview = mountProjectPreview(root);
+  disposePreview = view === 'round-intro' ? mountRoundIntro() : mountProjectPreview(root);
   disposeHomeSurprise = view === 'home' ? mountHomeSurprise() : null;
   const screen = view === 'round' ? `round-${state.active?.id}-${state.active?.index}`
     : view === 'focus-break' ? `${view}-${focusGame.kind}-${focusGame.phase}` : view;
@@ -1897,7 +1981,7 @@ function welcomeBack() {
     if (away) storage.removeItem(key);
   } catch { return; }
   if (!away || Date.now() - away < WELCOME_AFTER) return;
-  if (document.querySelector('dialog[open]') || (view === 'round' && state.active?.retry) || view === 'focus-break') return;
+  if (document.querySelector('dialog[open]') || (view === 'round' && state.active?.retry) || view === 'focus-break' || view === 'round-intro') return;
   const next = nextBuildReward();
   const g = rewardDetails(next);
   const note = state.active
@@ -2324,6 +2408,7 @@ document.addEventListener('click', e => {
     (stage.querySelector('.project-peek, canvas[tabindex], [data-action=close-dialog]')??document.querySelector('.complete h1'))?.focus({preventScroll:true});
   }
   if (action === 'start' || action === 'again') startRound();
+  if (action === 'start-intro' && view === 'round-intro') enterRound();
   if (action === 'welcome-start' || action === 'map-start') {
     closeDialog();
     if (view !== 'round') startRound();
